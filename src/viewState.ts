@@ -88,8 +88,13 @@ export interface ViewState {
   connection: ViewConnection;
   showShells: boolean;
   totals: Record<AgentStatus, number> & { agents: number; shells: number };
-  /** Blocked agents first, then done; oldest first within each. */
+  /**
+   * "Needs you": blocked agents first, then done; oldest first within each. Only this window's: agents of a
+   * space open here, or with a tab open here. Empty when the section is turned off (needsYou false).
+   */
   attention: PaneView[];
+  /** The Needs you section is on; when off, blocked and done agents are highlighted in their space instead. */
+  needsYou: boolean;
   spaces: SpaceView[];
   /** Plan usage of the coding agents with local data (Claude Code, Codex, Kiro). */
   usage: ProviderUsage[];
@@ -114,6 +119,8 @@ export interface ViewInputs {
   versions?: { cockpit: string; herdr?: string };
   /** Whether a space is open in this window; without it, none are. */
   here?(space: Space): boolean;
+  /** herdr.showNeedsYou: list blocked and done agents in a "Needs you" section (default true). */
+  needsYou?: boolean;
 }
 
 /**
@@ -285,10 +292,14 @@ export function buildViewState(i: ViewInputs): ViewState {
     };
   });
   const rank: Partial<Record<AgentStatus, number>> = { blocked: 0, done: 1 };
-  const attention = spaces
-    .flatMap((s) => s.agents)
-    .filter((a) => a.status === 'blocked' || a.status === 'done')
-    .sort((a, b) => rank[a.status!]! - rank[b.status!]! || (a.since ?? 0) - (b.since ?? 0));
+  const needsYou = i.needsYou ?? true;
+  let attention: PaneView[] = [];
+  if (needsYou) {
+    attention = spaces
+      .flatMap((s) => s.agents.filter((a) => s.here || a.attached))
+      .filter((a) => a.status === 'blocked' || a.status === 'done')
+      .sort((a, b) => rank[a.status!]! - rank[b.status!]! || (a.since ?? 0) - (b.since ?? 0));
+  }
   // Usage only for the agents running in Herdr right now.
   const running = new Set(spaces.flatMap((s) => s.agents.map((a) => (a.agentKind ?? '').toLowerCase())));
   return {
@@ -297,6 +308,7 @@ export function buildViewState(i: ViewInputs): ViewState {
     showShells: i.showShells,
     totals,
     attention,
+    needsYou,
     spaces,
     usage: i.usage.filter((u) => running.has(u.id)),
     versions: i.versions,

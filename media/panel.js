@@ -116,12 +116,14 @@
     const logo = agentLogo(p.agentKind);
     const initial = esc((p.agentKind || p.name || '?').charAt(0).toUpperCase());
     const open = !!opts.attention || !!ui.expanded[p.id];
+    // With the Needs you section off (herdr.showNeedsYou), a blocked or done agent stands out in its space instead.
+    const needs = !opts.attention && !state.needsYou && (p.status === 'blocked' || p.status === 'done');
     // Blocked/done agents show their screen; others the gist of their last reply. Never both.
     const story = p.preview.length ? lines(p.preview) : p.headline && p.headline !== p.detail ? `<div class="headline">${esc(p.headline)}</div>` : '';
     const body = open
       ? `${p.detail ? `<div class="sub">${esc(p.detail)}</div>` : ''}${story}${extras(p, p.agentKind && p.agentKind.toLowerCase() !== p.name.toLowerCase() ? [`<span class="chip">${icon('hubot')}${esc(p.agentKind)}</span>`] : [])}`
       : p.detail || p.headline ? `<div class="sub">${esc(p.detail || p.headline)}</div>` : '';
-    return `<div class="row agent st-${s}${p.focused ? ' herdr-focused' : ''}${open ? ' open' : ''}" tabindex="0" data-nav data-act="attach"
+    return `<div class="row agent st-${s}${p.focused ? ' herdr-focused' : ''}${open ? ' open' : ''}${needs ? ' needs' : ''}" tabindex="0" data-nav data-act="attach"
         data-space="${esc(p.spaceId)}" data-pane="${esc(p.id)}" data-key="pane:${esc(p.id)}"
         data-vscode-context="${ctx({ webviewSection: 'agent', spaceId: p.spaceId, paneId: p.id, spaceHere: spaceHere(p.spaceId) })}"
         title="${esc(`${p.name} · ${p.id}\n${hint(p)}`)}">

@@ -3,8 +3,17 @@
 Herdr Cockpit (the editor extension) and its Herdr plugin (`plugin/`) are released together from this repository.
 Versions up to 0.1.2 were published as **Herdr Hub** (`sriharirao.herdr-hub`).
 
-## Unreleased
+## 0.3.0 (2026-11-10)
 
+- **Talk to agents from the editor.** **Prompt Agent…** (right-click an agent) sends it a prompt as if you typed it in its tab. **Send to Agent…** (right-click in a file or in the Explorer) asks what the agent should do and sends it with the file or the selected lines (`src/app.ts:12-30`).
+- **Go to Agent or Shell…** picks any pane of any space, agents waiting on you first. **Jump to Agent Needing Attention** (the status bar's agent count) goes to the next waiting agent each time, and around.
+- **Needs you lists only this window's agents**: those of the spaces open here, or whose tab is open here. `herdr.showNeedsYou` turns the section off; blocked and done agents are then highlighted in their space.
+- **One notification per change.** With several editor windows open, each one used to show the same "Claude is done" notification. Now one window shows it: the one you're in, else one that has the agent's space.
+- **Reopen Closed Tab** (`herdr.reopenClosedTab`; bind it to ⇧⌘T): brings back a Herdr tab you closed, and still reopens files. A pane that's still in Herdr is attached again; a closed one is recreated where it was, and an agent restarts with its name, resuming its conversation when Herdr stored one.
+- **Review changes on a worktree space** covers the whole branch since it left the main branch, committed or not, with an option to see only what's uncommitted.
+- Agent pickers list every agent Herdr knows, not only the ones Herdr Cockpit names.
+- Settings: `herdr.autoAttach` (`all`, `agents`, `none`) replaces `herdr.autoAttachOnSwitch` and `herdr.autoAttachShells`, whose values are still used until you set it. `herdr.hubWindow` is gone (the Cockpit window is known by its workspace file). **Mount Space Alongside (Pin)** left the right-click menu (**Add to This Window** does it); **Show Raw Herdr Record** and **Show Raw Session Snapshot** moved to the Command Palette.
+- Fixes: Start Herdr could say it failed while Herdr was up; a pane opened even when the editor refused to add its space's folder; setting up Claude plan limits could undo a change Claude Code saved while the question was open; changing `herdr.socketPath` kept the old session's events.
 - **Tabs come back with the window**: close a window (or quit the editor) and open it again, and it reopens the Herdr tabs it had, in the same order, for the panes that still exist in Herdr. Turn it off with `herdr.restoreTabs`. A tab the editor breaks while the window is still starting (empty, named after a long id like `e7ab…bf1`) is closed and opened again a few seconds later.
 - **New Tab… from a keybinding**: run `herdr.newTab` from a shortcut or the Command Palette and it opens the shell/agent picker for the space you're working in (the space of the Herdr tab you're in, the one mounted space, or Herdr's focused space; it asks only when none applies). It has no default key; bind one in Keyboard Shortcuts, e.g. `{ "key": "cmd+t", "command": "herdr.newTab", "when": "herdr.connected" }`.
 

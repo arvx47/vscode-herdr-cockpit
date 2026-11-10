@@ -109,6 +109,25 @@ const mine = buildViewState({ ...inputs, here: (s) => s.id === 'w2' || s.id === 
 assert.deepStrictEqual(mine.spaces.filter((x) => x.here).map((x) => x.id).sort(), ['w2', 'w6'], "this window's spaces are marked");
 assert.deepStrictEqual(mine.spaces.map((x) => x.id), all.spaces.map((x) => x.id), 'every space is still listed, in the same order');
 assert.ok(all.spaces.every((x) => !x.here), 'without here(), no space is marked');
+// Needs you: only this window's agents (space here, or a tab open here); none when the section is off
+const waitingSpaces = new Set(model.spaces.filter((x) => x.agents.length).map((x) => x.id));
+const allDone = (x: (typeof model.spaces)[number]) => {
+  const tabs = x.tabs.map((t) => ({ ...t, panes: t.panes.map((p) => (p.isAgent ? { ...p, status: 'done' as const } : p)) }));
+  return { ...x, tabs, agents: tabs.flatMap((t) => t.panes.filter((p) => p.isAgent)) };
+};
+const needy = { ...inputs, model: { ...model, spaces: model.spaces.map(allDone) } };
+const allNeedy = buildViewState({ ...needy, here: () => true });
+assert.strictEqual(allNeedy.attention.length, 5, 'every agent when every space is here');
+const someNeedy = buildViewState({ ...needy, here: (s) => s.id === 'w2' });
+assert.ok(someNeedy.attention.length > 0 && someNeedy.attention.every((a) => a.spaceId === 'w2'), "only the agents of this window's spaces");
+const otherAgent = needy.model.spaces.find((x) => x.id !== 'w2' && x.agents.length)!.agents[0].id;
+const withTab = buildViewState({ ...needy, here: (s) => s.id === 'w2', attached: (id) => id === otherAgent });
+assert.ok(withTab.attention.some((a) => a.id === otherAgent), 'an agent whose tab is open here counts too');
+assert.deepStrictEqual(buildViewState({ ...needy, here: () => false }).attention, [], 'no space here: nothing');
+const off = buildViewState({ ...needy, here: () => true, needsYou: false });
+assert.deepStrictEqual([off.attention, off.needsYou, allNeedy.needsYou], [[], false, true], 'the section can be turned off');
+assert.ok(waitingSpaces.size > 1);
+console.log('✓ Needs you lists only this window\'s agents, and can be turned off');
 console.log("✓ spaces open in this window are marked for the This window group");
 
 // ---- switching to a space opens every pane: agents by urgency, then shells in tab order

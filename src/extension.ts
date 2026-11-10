@@ -512,6 +512,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined },
         here: (sp) => isOpenHere(sp),
+        needsYou: cfg().get<boolean>('showNeedsYou', true),
       }),
     );
   }
@@ -761,7 +762,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   }
 
   /**
-   * herdr.autoAttach. Until it's set, the two settings it replaced (0.2.11) still decide: autoAttachOnSwitch
+   * herdr.autoAttach. Until it's set, the two settings it replaced (0.3.0) still decide: autoAttachOnSwitch
    * false = none, autoAttachShells false = agents.
    */
   function autoAttachMode(): 'all' | 'agents' | 'none' {

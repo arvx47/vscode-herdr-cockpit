@@ -294,16 +294,17 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .term div:last-child { opacity: 1; }
 .sh-failed .term { color: var(--st-failed); }
 
-/* attention cards reuse rows, framed */
+/* attention cards reuse rows, framed; so does a blocked or done agent in its space when Needs you is off */
 .attention { padding: 0 8px; }
-.attention .row {
+.attention .row, .row.needs {
   background: color-mix(in srgb, var(--c) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--c) 28%, transparent);
   margin: 6px 0 0;
   padding: 8px 6px 8px 8px;
 }
-.attention .row:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
+.attention .row:hover, .row.needs:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
 .attention .where { font-size: 11px; color: var(--muted); }
+.row.needs { margin: 4px 0; }
 
 /* shells group */
 .group {
