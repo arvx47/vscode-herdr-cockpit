@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as assert from 'assert';
 import { describeProcess, isShellProcess, summarizeAgent, summarizeShell } from '../activity';
 import * as vm from 'vm';
-import { attachOrder, normalize } from '../model';
+import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize } from '../model';
 import { buildViewState, headline, orderByActivity, paneName, setAgentNames } from '../viewState';
 import type { PaneActivity } from '../activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
@@ -118,6 +118,23 @@ assert.deepStrictEqual(attachOrder(ka, false).map((p) => p.id), ['w2:p1']);
 const mixed = { ...ka, agents: ['idle', 'blocked', 'working', 'done'].map((status, n) => ({ ...ka.agents[0], id: `a${n}`, status: status as any })) };
 assert.deepStrictEqual(attachOrder(mixed, false).map((p) => p.status), ['blocked', 'done', 'working', 'idle']);
 console.log('✓ attach order');
+
+// ---- model helpers: every pane, one pane, counts, who's waiting on you
+assert.strictEqual(allPanes(model).length, 15, '5 agents and 10 shells');
+assert.strictEqual(findPane(model, 'w2:p8')?.space.id, 'w2');
+assert.strictEqual(findPane(model, 'nope'), undefined);
+assert.strictEqual(findPane(model, undefined), undefined);
+assert.strictEqual(Object.values(countByStatus(model)).reduce((a, b) => a + b, 0), 5);
+const waitingModel = {
+  ...model,
+  spaces: [
+    { ...ka, tabs: [{ ...ka.tabs[0], panes: ['done', 'idle', 'blocked', 'done'].map((status, n) => ({ ...ka.agents[0], id: `x${n}`, status: status as any })) }] },
+  ],
+};
+waitingModel.spaces[0].agents = waitingModel.spaces[0].tabs[0].panes;
+assert.deepStrictEqual(needingAttention(waitingModel).map((x) => x.pane.id), ['x2', 'x0', 'x3'], 'blocked first, then done in Herdr order');
+assert.deepStrictEqual(countByStatus(waitingModel), { idle: 1, working: 0, blocked: 1, done: 2, unknown: 0 });
+console.log('✓ model helpers');
 
 // ---- agent display names: generated names read as titles, chosen names as-is
 const named = (name: string | null, kind = 'claude', display: string | null = null, terminalTitle?: string) =>

@@ -60,7 +60,9 @@ async function main() {
   const platformKey = process.platform === 'darwin' ? 'osx' : 'linux';
   fs.writeFileSync(
     hub,
-    JSON.stringify({ folders: [{ path: '.', name: '· herdr cockpit' }], settings: { 'herdr.hubWindow': true, [`terminal.integrated.defaultProfile.${platformKey}`]: 'Herdr Shell' } }, null, 2),
+    // The suite switches spaces inside the Cockpit window: workspace mode. (In folder mode, the default since
+    // herdr.windowMode, Switch to Space asks "its own window or this one?" and the suite would wait on it.)
+    JSON.stringify({ folders: [{ path: '.', name: '· herdr cockpit' }], settings: { 'herdr.windowMode': 'workspace', [`terminal.integrated.defaultProfile.${platformKey}`]: 'Herdr Shell' } }, null, 2),
   );
   const userData = path.join(tmp, 'u');
   fs.mkdirSync(path.join(userData, 'User'), { recursive: true });

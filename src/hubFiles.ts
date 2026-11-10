@@ -236,6 +236,41 @@ export function pruneClaims(home?: string, isAlive = alive) {
   }
 }
 
+/** How long a notification claim is kept: long enough for every window to have seen the same change. */
+const NOTIFIED_TTL_MS = 10 * 60_000;
+
+/**
+ * Every window of every editor gets the same agent status change, so each would show the same notification.
+ * The first window to claim a change shows it: true means this one. `change` names it (socket, pane, status
+ * and Herdr's state_change_seq), so the next change of the same pane is a new claim.
+ */
+export function claimNotification(change: string, home?: string, now = Date.now()): boolean {
+  const dir = path.join(hubDir(home), 'notified');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const n of fs.readdirSync(dir)) {
+      const f = path.join(dir, n);
+      try {
+        if (now - fs.statSync(f).mtimeMs > NOTIFIED_TTL_MS) {
+          fs.rmSync(f, { force: true });
+        }
+      } catch {
+        // removed by another window meanwhile
+      }
+    }
+  } catch {
+    return true; // can't share the folder: better twice than never
+  }
+  const file = path.join(dir, crypto.createHash('sha256').update(change).digest('hex').slice(0, 24));
+  try {
+    // 'wx' fails when the file exists: exactly one window creates it.
+    fs.closeSync(fs.openSync(file, 'wx'));
+    return true;
+  } catch (e: any) {
+    return e?.code !== 'EEXIST';
+  }
+}
+
 /**
  * Who has the pane, from this window's point of view: another live window's claim. `since` = when this window
  * took the pane: a claim older than that is from before (that window lost the pane to us since).
@@ -279,7 +314,7 @@ export function removeWindowRecord(scheme: string, pid: number, home?: string) {
 }
 
 /** Live windows' records; those of windows that quit are removed. */
-export function readWindowRecords(home?: string, isAlive = alive): WindowRecord[] {
+function readWindowRecords(home?: string, isAlive = alive): WindowRecord[] {
   const dir = path.join(hubDir(home), 'windows');
   let names: string[] = [];
   try {

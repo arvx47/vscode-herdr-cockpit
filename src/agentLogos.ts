@@ -6,7 +6,7 @@ export interface AgentLogo {
   mono: boolean;
 }
 
-export const AGENT_LOGOS: Record<string, AgentLogo> = {
+const AGENT_LOGOS: Record<string, AgentLogo> = {
   claude: { file: 'claude-color', mono: false },
   codex: { file: 'codex-color', mono: false },
   openai: { file: 'openai', mono: true },

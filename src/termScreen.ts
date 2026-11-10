@@ -497,7 +497,7 @@ export class Screen {
 }
 
 /** SGR parameters for a cell (starting from a reset), inverted when selected, highlighted for a find match. */
-export function sgrOf(c: IBufferCell, selected: boolean, mark?: 'match' | 'current'): string {
+function sgrOf(c: IBufferCell, selected: boolean, mark?: 'match' | 'current'): string {
   if (mark && !selected) return mark === 'current' ? '0;1;30;48;5;208' : '0;30;43';
   const p = ['0'];
   if (c.isBold()) p.push('1');

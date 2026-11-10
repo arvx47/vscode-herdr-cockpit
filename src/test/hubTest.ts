@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   claimant,
+  claimNotification,
   editorCli,
   ensureHubWorkspace,
   hubWorkspaceFile,
@@ -217,6 +218,15 @@ fs.writeFileSync(path.join(home, '.local', 'bin', 'hb-fake-tool'), '');
 assert.strictEqual(findTool('hb-fake-tool', [], home, 'linux'), path.join(home, '.local', 'bin', 'hb-fake-tool'));
 assert.strictEqual(findTool('hb-missing-tool', [], home, 'linux'), 'hb-missing-tool', 'bare name: PATH lookup');
 console.log('✓ tool lookup on macOS and Linux');
+
+// ---- agent notifications: the first window to claim a change shows it, the others don't
+const change = 'sock\nw1:p1\ndone\n7';
+assert.strictEqual(claimNotification(change, home), true, 'first window claims it');
+assert.strictEqual(claimNotification(change, home), false, 'the next window sees it claimed');
+assert.strictEqual(claimNotification('sock\nw1:p1\ndone\n8', home), true, 'the next change of the same pane is new');
+const old = Date.now() + 11 * 60_000;
+assert.strictEqual(claimNotification(change, home, old), true, 'claims older than 10 minutes are dropped');
+console.log('✓ notification claims');
 
 fs.rmSync(home, { recursive: true, force: true });
 console.log('\nhub tests passed');

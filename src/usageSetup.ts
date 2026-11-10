@@ -4,33 +4,56 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { errorText } from './herdrClient';
 import { claudeCaptureFile, claudeStatusLineScript } from './usage';
+
+/**
+ * Claude Code's settings as an object ({} when the file doesn't exist). Undefined, after saying why, when it
+ * can't be read or isn't a JSON object: then nothing is written.
+ */
+async function readSettings(settingsFile: string): Promise<Record<string, unknown> | undefined> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8'));
+  } catch (e: any) {
+    if (e?.code === 'ENOENT') {
+      return {};
+    }
+    vscode.window.showErrorMessage(`Herdr: couldn't read ${settingsFile}: ${errorText(e)}`);
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    vscode.window.showErrorMessage(`Herdr: ${settingsFile} isn't a JSON object, so Herdr left it alone.`);
+    return undefined;
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/** Never replace someone's status line; show how to add the capture to it instead. */
+async function explainExistingStatusLine(capture: string) {
+  const snippet = `tee "${capture}" | `;
+  const pick = await vscode.window.showInformationMessage(
+    'You already have a Claude Code status line, so Herdr left it alone.',
+    {
+      modal: true,
+      detail: `To show plan limits in the sidebar, make your status line command also save its input: put ${snippet}in front of the command in ~/.claude/settings.json ("statusLine" → "command").`,
+    },
+    'Copy Snippet',
+  );
+  if (pick) {
+    await vscode.env.clipboard.writeText(snippet);
+  }
+}
 
 export async function setUpClaudeUsage(home: string, log: (m: string) => void): Promise<boolean> {
   const settingsFile = path.join(home, '.claude', 'settings.json');
   const capture = claudeCaptureFile(home);
-  let settings: Record<string, unknown> = {};
-  try {
-    settings = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8'));
-  } catch (e: any) {
-    if (e?.code !== 'ENOENT') {
-      vscode.window.showErrorMessage(`Herdr: couldn't read ${settingsFile}: ${e?.message ?? e}`);
-      return false;
-    }
+  const before = await readSettings(settingsFile);
+  if (!before) {
+    return false;
   }
-
-  if (settings.statusLine) {
-    // Never replace someone's status line; show how to add the capture to it instead.
-    const snippet = `tee "${capture}" | `;
-    const pick = await vscode.window.showInformationMessage(
-      'You already have a Claude Code status line, so Herdr left it alone.',
-      {
-        modal: true,
-        detail: `To show plan limits in the sidebar, make your status line command also save its input: put ${snippet}in front of the command in ~/.claude/settings.json ("statusLine" → "command").`,
-      },
-      'Copy Snippet',
-    );
-    if (pick) await vscode.env.clipboard.writeText(snippet);
+  if (before.statusLine) {
+    await explainExistingStatusLine(capture);
     return false;
   }
 
@@ -48,6 +71,15 @@ export async function setUpClaudeUsage(home: string, log: (m: string) => void): 
   );
   if (!ok) return false;
 
+  // Read it again: Claude Code may have saved its own changes while the question was open.
+  const settings = await readSettings(settingsFile);
+  if (!settings) {
+    return false;
+  }
+  if (settings.statusLine) {
+    await explainExistingStatusLine(capture);
+    return false;
+  }
   try {
     const script = path.join(path.dirname(capture), 'claude-statusline.sh');
     await fs.promises.mkdir(path.dirname(capture), { recursive: true });
@@ -60,7 +92,7 @@ export async function setUpClaudeUsage(home: string, log: (m: string) => void): 
     vscode.window.showInformationMessage('Herdr: done. Claude plan limits appear after the next Claude reply.');
     return true;
   } catch (e: any) {
-    vscode.window.showErrorMessage(`Herdr: couldn't set up the status line: ${e?.message ?? e}`);
+    vscode.window.showErrorMessage(`Herdr: couldn't set up the status line: ${errorText(e)}`);
     return false;
   }
 }

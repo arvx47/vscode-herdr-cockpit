@@ -2,10 +2,12 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { HerdrClient, resolveSocketPath, Subscription, subscriptionsFor } from './herdrClient';
-import { AgentStatus, attachOrder, Model, normalize, Pane, Space } from './model';
-import type { PaneProcessInfoResult, SessionSnapshotResult } from './herdrTypes';
+import { errorText, HerdrClient, resolveSocketPath, sessionSocketPath } from './herdrClient';
+import { allPanes, AgentStatus, attachOrder, countByStatus, findPane, Model, needingAttention, Pane, Space } from './model';
+import type { PaneProcessInfoResult } from './herdrTypes';
 import { HerdrPanel, PanelAction } from './panel';
+import { HerdrSync } from './herdrSync';
+import { decidePlacement, followsInto, Placement, WindowMode } from './placement';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './activity';
 import { AGENT_TAB_PREFIX, AgentNames, buildViewState, paneName, setAgentNames, tabName, ViewConnection } from './viewState';
 import { agentLogo } from './agentLogos';
@@ -14,13 +16,13 @@ import { isMounted, mountSpace, PREFIX, unmountSpace } from './folders';
 import { AttachTerminals, TerminalLocationSetting } from './terminals';
 import { TabAction } from './builtinTerminal';
 import { findFileRefs } from './termLinks';
-import { backoffDelay, binaryFound, diagnose, Diagnosis, DownReason, herdrEnv, resolveBinary, serverStatus, sessionOfSocket, startServer } from './connection';
-import { claimant, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, windowKey, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, normPath, parseLink, removeHubStatus, removeWindowRecord, spacesWorkspaceFile, takePendingLink, WindowRecord, windowWithSpace, writeEditorRecord, writeHubStatus, writePendingLink, writeWindowRecord } from './hubFiles';
+import { binaryFound, diagnose, DownReason, herdrEnv, resolveBinary, serverStatus, sessionOfSocket, startServer } from './connection';
+import { claimant, claimNotification, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, windowKey, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, normPath, parseLink, removeHubStatus, removeWindowRecord, spacesWorkspaceFile, takePendingLink, WindowRecord, windowWithSpace, writeEditorRecord, writeHubStatus, writePendingLink, writeWindowRecord } from './hubFiles';
 import { HERDR_PROTOCOL } from './herdrTypes';
 import { reviewChanges } from './review';
 import { showHelp } from './help';
 import { agentSlug, HerdrActions } from './herdrActions';
-import { closeInHerdr, ManageDeps, newSpace, newTab, rename } from './manage';
+import { ClosedTab, closedTab, closeInHerdr, ManageDeps, newSpace, newTab, rename, reopenTab } from './manage';
 import { registerProfiles, SHELL_PROFILE_TITLE } from './profiles';
 import { codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './usage';
 import { setUpClaudeUsage } from './usageSetup';
@@ -37,17 +39,9 @@ const OPEN_TABS_KEY = 'herdr.openTabs';
 const UNDRAWN_CHECK_MS = 3000;
 /** How many times to look (and replace) before giving up. */
 const UNDRAWN_ATTEMPTS = 3;
+/** Each window waits this much more than a likelier one before claiming an agent notification (notify()). */
+const NOTIFY_STEP_MS = 300;
 
-/** Where a space this window doesn't have goes: its own window, or added to this workspace. */
-type Placement = 'window' | 'workspace';
-
-/** The extension's view of the Herdr server. */
-export type Conn =
-  | { kind: 'connecting' }
-  | { kind: 'connected'; protocol?: number; version?: string }
-  | { kind: 'reconnecting'; since: number }
-  | { kind: 'starting' }
-  | ({ kind: 'down' } & Diagnosis);
 
 /** One line per reason Herdr is unreachable (status bar, menus). */
 const DOWN_TEXT: Record<DownReason, string> = {
@@ -66,14 +60,15 @@ const shellQuote = (s: string) => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replac
 /** Only task terminals get a description; others show just their name. */
 const HUB_TAB_DESCRIPTION = '${task}';
 
+/** The editor's Welcome / walkthrough page: a tab without an input, known only by its label (English UI). */
+const isWelcomeTab = (t: vscode.Tab) => t.input === undefined && /^(Welcome|Get(ting)? Started)\b/.test(t.label);
+
 /** What a command acts on: from the webview, its context menu, or nothing (then ask). */
 type Target = { spaceId?: string; paneId?: string };
 
 /** Webview action -> command id. */
 const PANEL_COMMANDS: Record<string, string> = {
   switch: 'herdr.switchSpace',
-  pinSpace: 'herdr.pinSpace',
-  unmountSpace: 'herdr.unmountSpace',
   attach: 'herdr.attach',
   review: 'herdr.reviewChanges',
   attention: 'herdr.focusAttention',
@@ -100,6 +95,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     const append = log.appendLine.bind(log);
     log.appendLine = (line: string) => (console.log(`[herdr-cockpit log] ${line}`), append(line));
   }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** A .catch() handler that logs instead of leaving an unhandled rejection. */
+  const logError = (what: string) => (e: unknown) => log.appendLine(`${what}: ${errorText(e)}`);
   const client = new HerdrClient(() => resolveSocketPath(cfg().get<string>('socketPath')));
   // When did each agent enter its current state? (observed locally; Herdr exposes only a sequence number)
   const stateSince = new Map<string, { status?: AgentStatus; at: number }>();
@@ -136,7 +134,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       saveOpenTabs();
     },
     {
-      binary: () => resolveBinary(cfg().get<string>('binaryPath')),
+      binary: () => binary(),
       env: () => herdrEnvNow(),
       log: (line) => log.appendLine(line),
       // Herdr doesn't say who took a pane over: windows record the panes they take (hubFiles.ts, claims).
@@ -146,8 +144,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       onTakenOver: (paneId, who, expected) => !expected && tookOver(paneId, who),
       request: (method, params, timeoutMs) => client.request(method, params, timeoutMs),
     },
-    (paneId) => void closedTabByUser(paneId).catch((e) => log.appendLine(`close in Herdr: ${e?.message ?? e}`)),
-    (paneId, name) => void renamedTabByUser(paneId, name).catch((e) => log.appendLine(`rename in Herdr: ${e?.message ?? e}`)),
+    (paneId) => void closedTabByUser(paneId).catch(logError('close in Herdr')),
+    (paneId, name) => void renamedTabByUser(paneId, name).catch(logError('rename in Herdr')),
   );
   /** Restored (or nothing to restore): until then, the saved list is the one from the last session. */
   let tabsRestored = false;
@@ -171,7 +169,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       return;
     }
     const saved = ctx.workspaceState.get<{ paneId: string; spaceId: string }[]>(OPEN_TABS_KEY, []);
-    const panes = new Map((model?.spaces ?? []).flatMap((s) => s.tabs.flatMap((t) => t.panes.map((p) => [p.id, p] as const))));
+    const panes = new Map(allPanes(model).map(({ pane }) => [pane.id, pane] as const));
     const reopened: Pane[] = [];
     for (const { paneId } of saved) {
       const pane = panes.get(paneId);
@@ -221,7 +219,7 @@ export function activate(ctx: vscode.ExtensionContext) {
           setTimeout(() => redrawUndrawn(broken, attempt + 1), UNDRAWN_CHECK_MS);
         }
       },
-      (e) => log.appendLine(`closing broken tabs: ${e?.message ?? e}`),
+      logError('closing broken tabs'),
     );
   }
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
@@ -236,106 +234,63 @@ export function activate(ctx: vscode.ExtensionContext) {
   setAgentNames(cfg().get<AgentNames>('agentNames', 'title'));
   /** Set further down: write the Cockpit window's status file for the Herdr plugin (debounced). */
   let scheduleHubStatus = () => {};
-  let eventsLive = false;
-  let sub: Subscription | undefined;
   let lastStatus = new Map<string, AgentStatus | undefined>();
   let lastFocusedSpace: string | undefined;
   let firstLoad = true;
   let switching = false;
 
-  // The Cockpit window is our own ~/.herdr-cockpit workspace (or, from before the rename, ~/.herdr-hub's); a repo's
-  // settings claiming `herdr.hubWindow` don't make it one (the Cockpit window writes terminal settings into its file).
+  // The Cockpit window is our own ~/.herdr-cockpit workspace file (or, from before the rename, ~/.herdr-hub's), and
+  // nothing else: no setting a repository could ship makes a window the Cockpit window.
   const hubFiles = [hubWorkspaceFile(), legacyHubWorkspaceFile()];
-  const isHubWindow = () => !!cfg().get<boolean>('hubWindow') && hubFiles.includes(vscode.workspace.workspaceFile?.fsPath ?? '');
+  const isHubWindow = () => hubFiles.includes(vscode.workspace.workspaceFile?.fsPath ?? '');
   const isManagedWindow = () => isHubWindow() || ctx.workspaceState.get<boolean>(MANAGED_KEY, false);
   // git reads each repo's own config; only run it once the window is trusted (see gitInfo.ts).
   const git = (cwd?: string) => (vscode.workspace.isTrusted ? gitInfo(cwd, scheduleRender) : undefined);
 
-  // ---------- connection ----------
-  // connecting (startup) / connected → request fails → reconnecting: keep the last view, greyed, for a few
-  // seconds (Herdr updates hand off live) → down: diagnose why (connection.ts) and keep retrying with backoff.
-  const RECONNECT_GRACE_MS = 4000;
+  // ---------- connection (herdrSync.ts) ----------
   const socketPath = () => resolveSocketPath(cfg().get<string>('socketPath'));
   const binary = () => resolveBinary(cfg().get<string>('binaryPath'));
   const herdrEnvNow = () => herdrEnv(cfg().get<string>('socketPath') || undefined);
-  let conn: Conn = { kind: 'connecting' };
-  let failures = 0;
-  let lastDiagnosis = 0;
   /** The space whose tabs were open when Herdr went away, to offer reopening them. */
   let lostSpace: { id: string; label: string } | undefined;
   let lostNotified = false;
-  const isConnected = () => conn.kind === 'connected';
-
-  let inFlight = false;
-  let again = false;
-  async function refresh() {
-    if (inFlight) {
-      again = true;
-      return;
-    }
-    inFlight = true;
-    try {
-      do {
-        again = false;
-        const res = await client.request<SessionSnapshotResult>('session.snapshot');
-        const next = normalize(res);
-        const wasConnected = isConnected();
-        conn = { kind: 'connected', protocol: res.snapshot.protocol, version: res.snapshot.version };
-        failures = 0;
-        apply(next);
-        if (!wasConnected) onConnected();
-        // Panes came or went: move the live subscription to the new set. (Only a live one: restarting a
-        // failed stream is the poll's job, so a stream that keeps failing can't loop through here.)
-        if (sub && [...paneIdsOf(next)].sort().join(' ') !== subscribedPanes) startEvents();
-      } while (again);
-    } catch (e) {
-      await onFailure(e);
-    } finally {
-      inFlight = false;
-    }
-  }
-
-  function onConnected() {
-    log.appendLine(`connected to herdr ${conn.kind === 'connected' ? (conn.version ?? '') : ''}`.trim());
-    stopWatchingSocket();
-    lostNotified = false;
-    restoreOpenTabs();
-    const lost = lostSpace;
-    lostSpace = undefined;
-    if (lost) offerReopen(lost);
-  }
-
-  async function onFailure(e: unknown) {
-    failures++;
-    const now = Date.now();
-    if (conn.kind === 'connected') {
-      log.appendLine(`lost herdr: ${e instanceof Error ? e.message : e}`);
-      const attached = terms.spaces()[0];
-      const sp = model?.spaces.find((s) => s.id === attached);
+  const sync = new HerdrSync({
+    client,
+    socketPath,
+    diagnose: (e) => diagnose(binary(), socketPath(), !!cfg().get<string>('socketPath'), herdrEnvNow(), e),
+    onSnapshot: (next) => apply(next),
+    onConnected() {
+      lostNotified = false;
+      restoreOpenTabs();
+      const lost = lostSpace;
+      lostSpace = undefined;
+      if (lost) {
+        void offerReopen(lost).catch(logError('reopen after outage'));
+      }
+    },
+    onLost() {
+      const sp = model?.spaces.find((s) => s.id === terms.spaces()[0]);
       lostSpace = sp ? { id: sp.id, label: sp.label } : undefined;
-      conn = { kind: 'reconnecting', since: now };
+    },
+    onDown(afterLoss) {
+      model = undefined;
+      if (afterLoss && !lostNotified) {
+        void notifyLost().catch(logError('lost Herdr'));
+      }
+    },
+    onChange() {
       render();
       renderStatus();
-      return;
-    }
-    if (conn.kind === 'starting') return; // startHerdr owns the state until it's done
-    if (conn.kind === 'reconnecting' && now - conn.since < RECONNECT_GRACE_MS) return;
-    const lost = conn.kind === 'reconnecting';
-    // Diagnosing runs `herdr status`; while it stays down, do that at most every 10s.
-    if (conn.kind === 'down' && now - lastDiagnosis < 10_000) return;
-    lastDiagnosis = now;
-    const before = conn.kind === 'down' ? conn.reason : undefined;
-    model = undefined;
-    conn = { kind: 'down', ...(await diagnose(binary(), socketPath(), !!cfg().get<string>('socketPath'), herdrEnvNow(), e)) };
-    if (conn.reason !== before) log.appendLine(`herdr unavailable: ${conn.reason}${conn.detail ? ` (${conn.detail})` : ''}`);
-    render();
-    renderStatus();
-    watchSocket();
-    if (lost && !lostNotified) notifyLost();
-  }
+    },
+    log: (line) => log.appendLine(line),
+  });
+  const isConnected = () => sync.connected;
+  const refresh = () => sync.refresh();
+  const kick = () => sync.kick();
 
   /** Herdr was connected and went away: say so once, since the agents stopped with it. */
   async function notifyLost() {
+    const conn = sync.conn;
     if (conn.kind !== 'down') return;
     lostNotified = true;
     const msg =
@@ -345,9 +300,13 @@ export function activate(ctx: vscode.ExtensionContext) {
           ? 'Herdr stopped. Your agents run inside Herdr, so they stopped too.'
           : `Lost the connection to Herdr${conn.detail ? `: ${conn.detail}` : ''}.`;
     const pick = await vscode.window.showWarningMessage(msg, ...(conn.reason === 'not-running' || conn.reason === 'crashed' ? ['Start Herdr', 'Open Herdr TUI'] : ['Retry']));
-    if (pick === 'Start Herdr') startHerdr();
-    else if (pick === 'Open Herdr TUI') vscode.commands.executeCommand('herdr.openTui');
-    else if (pick === 'Retry') kick();
+    if (pick === 'Start Herdr') {
+      await startHerdr();
+    } else if (pick === 'Open Herdr TUI') {
+      await vscode.commands.executeCommand('herdr.openTui');
+    } else if (pick === 'Retry') {
+      await kick();
+    }
   }
 
   /**
@@ -357,7 +316,14 @@ export function activate(ctx: vscode.ExtensionContext) {
   async function closedTabByUser(paneId: string) {
     const mode = cfg().get<'ask' | 'always' | 'never'>('closeTabInHerdr', 'ask');
     const hit = paneOf({ paneId });
-    if (mode === 'never' || !hit || !isConnected()) return;
+    if (!hit) {
+      return;
+    }
+    const closed = closedTab(hit.space, hit.pane);
+    rememberClosed(closed);
+    if (mode === 'never' || !isConnected()) {
+      return;
+    }
     const { space, pane } = hit;
     const name = paneName(space.tabs.find((t) => t.id === pane.tabId), pane);
     let running: string | undefined;
@@ -379,9 +345,47 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (pick !== 'Close in Herdr') return;
     }
     await manage.actions.closePane(paneId);
+    closed.closedInHerdr = true;
     log.appendLine(`closed ${paneId} in Herdr (tab closed)`);
     kick();
   }
+
+  /**
+   * What ⇧⌘T should reopen, newest last: a Herdr tab, or "editor" for any other editor tab, which only
+   * VS Code's Reopen Closed Editor can bring back. VS Code can't rebuild our tabs (their stream belongs to
+   * this extension), so herdr.reopenClosedTab replaces that command and hands "editor" entries to it.
+   */
+  /**
+   * A closed editor tab that Reopen Closed Editor would bring back. Not: terminal tabs (ours or not, they're not
+   * in VS Code's history), the text tabs VS Code opens for terminals it couldn't draw and the Welcome page (this
+   * extension closes both itself), or a tab that only moved to another group (closed there, opened here).
+   */
+  function reopenableEditor(tab: vscode.Tab, opened: readonly vscode.Tab[]): boolean {
+    if (tab.input instanceof vscode.TabInputTerminal || isWelcomeTab(tab)) {
+      return false;
+    }
+    if (tab.input instanceof vscode.TabInputText && tab.input.uri.scheme === 'vscode-terminal') {
+      return false;
+    }
+    return !opened.some((o) => o.label === tab.label && o.input?.constructor === tab.input?.constructor);
+  }
+  const closedHistory: (ClosedTab | 'editor')[] = [];
+  const CLOSED_HISTORY_MAX = 50;
+  function rememberClosed(entry: ClosedTab | 'editor') {
+    closedHistory.push(entry);
+    if (closedHistory.length > CLOSED_HISTORY_MAX) {
+      closedHistory.shift();
+    }
+  }
+  ctx.subscriptions.push(
+    vscode.window.tabGroups.onDidChangeTabs((e) => {
+      for (const tab of e.closed) {
+        if (reopenableEditor(tab, e.opened)) {
+          rememberClosed('editor');
+        }
+      }
+    }),
+  );
 
   /** You renamed a Herdr tab: rename the shell's pane, or the agent, in Herdr to match. */
   async function renamedTabByUser(paneId: string, name: string) {
@@ -414,44 +418,6 @@ export function activate(ctx: vscode.ExtensionContext) {
     else vscode.window.showWarningMessage(`Herdr: "${lost.label}" isn't in Herdr anymore.`);
   }
 
-  // Poll: fast without an event stream, every 5s as a safety net with one (Herdr sends no event for pane
-  // renames, so that's how they arrive), backing off while Herdr is down.
-  let pollTimer: NodeJS.Timeout | undefined;
-  function schedulePoll() {
-    clearTimeout(pollTimer);
-    const delay = isConnected() ? (eventsLive ? 5000 : 1500) : conn.kind === 'reconnecting' ? 1000 : backoffDelay(failures);
-    pollTimer = setTimeout(async () => {
-      await refresh();
-      startEvents();
-      schedulePoll();
-    }, delay);
-  }
-  /** Try right now (Retry, window focus, sidebar shown, socket appeared, Herdr started). */
-  async function kick() {
-    clearTimeout(pollTimer);
-    lastDiagnosis = 0;
-    await refresh();
-    startEvents();
-    schedulePoll();
-  }
-
-  // While Herdr is down, reconnect the moment its socket appears.
-  let socketWatch: fs.FSWatcher | undefined;
-  function watchSocket() {
-    if (socketWatch) return;
-    try {
-      socketWatch = fs.watch(path.dirname(socketPath()), () => {
-        if (!isConnected() && !inFlight && fs.existsSync(socketPath())) kick();
-      });
-    } catch {
-      // The folder doesn't exist yet: backoff polling covers it.
-    }
-  }
-  function stopWatchingSocket() {
-    socketWatch?.close();
-    socketWatch = undefined;
-  }
-
   /** Start the headless server in the background (it outlives VS Code), then connect. */
   async function startHerdr(): Promise<boolean> {
     if (isConnected()) return true;
@@ -462,19 +428,14 @@ export function activate(ctx: vscode.ExtensionContext) {
       else if (pick === 'Settings') vscode.commands.executeCommand('herdr.openSettings');
       return false;
     }
-    const prev = conn;
-    conn = { kind: 'starting' };
-    render();
-    renderStatus();
+    const prev = sync.beginStarting();
     const logFile = vscode.Uri.joinPath(ctx.globalStorageUri, 'herdr-server.log').fsPath;
     const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting Herdr…' }, () =>
       startServer(bin, herdrEnvNow(), logFile),
     );
-    conn = prev.kind === 'starting' ? { kind: 'connecting' } : prev;
+    sync.endStarting(prev);
     if (!r.ok) {
       log.appendLine(`start herdr failed: ${r.error}`);
-      render();
-      renderStatus();
       const pick = await vscode.window.showErrorMessage(`Herdr: couldn't start the server. ${r.error ?? ''}`, 'Show Log');
       if (pick) vscode.window.showTextDocument(vscode.Uri.file(logFile));
       return false;
@@ -486,10 +447,13 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   /** The Cockpit window opened with Herdr stopped: start it, per herdr.startServer (asked once, then remembered). */
   async function maybeAutoStart() {
-    if (!isHubWindow() || conn.kind !== 'down' || (conn.reason !== 'not-running' && conn.reason !== 'crashed')) return;
+    if (!isHubWindow() || sync.conn.kind !== 'down' || (sync.conn.reason !== 'not-running' && sync.conn.reason !== 'crashed')) return;
     const mode = cfg().get<'ask' | 'always' | 'never'>('startServer', 'ask');
     if (mode === 'never') return;
-    if (mode === 'always') return void startHerdr();
+    if (mode === 'always') {
+      await startHerdr();
+      return;
+    }
     const pick = await vscode.window.showInformationMessage(
       "Herdr isn't running. Start it in the background whenever the Herdr Cockpit window opens?",
       'Always Start Herdr',
@@ -498,7 +462,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     );
     if (pick === 'Always Start Herdr') {
       await cfg().update('startServer', 'always', vscode.ConfigurationTarget.Global);
-      startHerdr();
+      await startHerdr();
     } else if (pick === 'Never') await cfg().update('startServer', 'never', vscode.ConfigurationTarget.Global);
   }
 
@@ -509,52 +473,20 @@ export function activate(ctx: vscode.ExtensionContext) {
     return pick ? startHerdr() : false;
   }
 
-  let debounce: NodeJS.Timeout | undefined;
-  const scheduleRefresh = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(refresh, 120);
-  };
-
-  // Agent status events are per pane (see subscriptionsFor), so the subscription follows the pane set.
-  const paneIdsOf = (m: Model | undefined) => (m?.spaces ?? []).flatMap((s) => s.tabs.flatMap((t) => t.panes.map((p) => p.id)));
-  let subscribedPanes = '';
-  function startEvents() {
-    const panes = paneIdsOf(model);
-    const key = [...panes].sort().join(' ');
-    if (sub && key !== subscribedPanes) {
-      sub.dispose(); // dispose() doesn't call onEnd: no "ended" log, no fast polling
-      sub = undefined;
-    }
-    if (sub || !isConnected()) return;
-    subscribedPanes = key;
-    const self: Subscription = client.subscribe(
-      subscriptionsFor(panes),
-      () => scheduleRefresh(),
-      (err) => {
-        if (sub !== self) return;
-        sub = undefined;
-        if (eventsLive || err) log.appendLine(`event stream ended${err ? `: ${err.message}` : ''}; polling`);
-        eventsLive = false;
-        scheduleRefresh(); // events_lost or reconnect => re-read authoritative state
-        schedulePoll(); // poll fast again until the stream is back
-      },
-    );
-    sub = self;
-    eventsLive = true;
-  }
-
   // ---------- sidebar ----------
   /** When each space (by name: ids change across Herdr restarts) was last active, kept across reloads. */
   const ACTIVITY_KEY = 'herdr.spaceActivity';
   const spaceActivity = new Map<string, number>(Object.entries(ctx.globalState.get<Record<string, number>>(ACTIVITY_KEY, {})));
   let activitySave: NodeJS.Timeout | undefined;
+  function saveActivity() {
+    activitySave = undefined;
+    const keep = [...spaceActivity].sort((a, b) => b[1] - a[1]).slice(0, 200);
+    void ctx.globalState.update(ACTIVITY_KEY, Object.fromEntries(keep));
+  }
   function touchSpace(label: string) {
     spaceActivity.set(label, Date.now());
     clearTimeout(activitySave);
-    activitySave = setTimeout(() => {
-      const keep = [...spaceActivity].sort((a, b) => b[1] - a[1]).slice(0, 200);
-      void ctx.globalState.update(ACTIVITY_KEY, Object.fromEntries(keep));
-    }, 2000);
+    activitySave = setTimeout(saveActivity, 2000);
   }
 
   function render() {
@@ -574,11 +506,11 @@ export function activate(ctx: vscode.ExtensionContext) {
         attached: (id) => terms.has(id),
         activity: (id) => activity.get(id),
         usage,
-        connection: { ...(conn as object), kind: conn.kind, expectedProtocol: HERDR_PROTOCOL } as ViewConnection,
+        connection: { ...(sync.conn as object), kind: sync.conn.kind, expectedProtocol: HERDR_PROTOCOL } as ViewConnection,
         order: cfg().get<'activity' | 'herdr'>('spaceOrder', 'herdr'),
         lastActive: (sp) => spaceActivity.get(sp.label),
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
-        versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: conn.kind === 'connected' ? (conn.version ?? undefined) : undefined },
+        versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined },
         here: (sp) => isOpenHere(sp),
       }),
     );
@@ -618,7 +550,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
     const opts = { codexLive: codexLive.data, only, kiroMonthlyCredits: cfg().get<number>('kiroMonthlyCredits', 0) };
     const next = await readUsage(os.homedir(), Date.now(), opts).catch((e) => {
-      log.appendLine(`usage: ${e?.message ?? e}`);
+      log.appendLine(`usage: ${errorText(e)}`);
       return usage;
     });
     if (JSON.stringify(next) !== JSON.stringify(usage)) {
@@ -662,7 +594,9 @@ export function activate(ctx: vscode.ExtensionContext) {
           if (!firstLoad) touchSpace(sp.label); // an agent started, finished, needs you
         }
         const before = lastStatus.get(a.id);
-        if (!firstLoad && before && a.status && before !== a.status && notifyOn.has(a.status)) notify(sp, a);
+        if (!firstLoad && before && a.status && before !== a.status && notifyOn.has(a.status)) {
+          void notify(sp, a).catch(logError('notify'));
+        }
       }
     lastStatus = nextStatus;
     // Focused in Herdr or switched to here: recently used.
@@ -671,7 +605,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     for (const id of [...stateSince.keys()]) if (!nextStatus.has(id)) stateSince.delete(id);
 
     // Detach VS Code terminals for panes that no longer exist.
-    const live = new Set(next.spaces.flatMap((s) => s.tabs.flatMap((t) => t.panes.map((p) => p.id))));
+    const live = new Set(allPanes(next).map(({ pane }) => pane.id));
     if (live.size > 0) terms.prune(live);
 
     // Follow mode: Herdr focus moved (e.g. you switched spaces in the Mac terminal).
@@ -688,7 +622,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       const sp = next.spaces.find((s) => s.id === focused);
       if (sp) {
         log.appendLine(`follow: herdr focused ${sp.label}`);
-        switchTo(sp, { fromHerdr: true });
+        void switchTo(sp, { fromHerdr: true }).catch(logError('follow'));
       }
     }
     lastFocusedSpace = focused;
@@ -701,13 +635,30 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (kinds(prev) !== kinds(next)) pollUsage();
   }
 
+  /**
+   * Every window running this extension sees the same status change. One of them shows it: the focused window
+   * first, then a window that has the space, then any other (each waits a little longer before claiming it).
+   */
   async function notify(space: Space, agent: Pane) {
+    let wait = 2 * NOTIFY_STEP_MS;
+    if (vscode.window.state.focused) {
+      wait = 0;
+    } else if (isOpenHere(space)) {
+      wait = NOTIFY_STEP_MS;
+    }
+    if (wait) {
+      await sleep(wait);
+    }
+    const change = [socketPath(), agent.id, agent.status, agent.raw.agent?.state_change_seq ?? Math.floor(Date.now() / 60_000)].join('\n');
+    if (!claimNotification(change)) {
+      return;
+    }
     const msg = `${agent.label} in ${space.label} is ${agent.status}`;
     const actions = agent.status === 'done' ? ['Review changes', 'Attach'] : ['Attach'];
     const show = agent.status === 'blocked' ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
     const pick = await show(`Herdr: ${msg}`, ...actions);
     if (pick === 'Attach') await attachPane(space, agent);
-    if (pick === 'Review changes') await reviewChanges(agent.cwd ?? space.cwd, agent.label);
+    if (pick === 'Review changes') await review(space, agent);
   }
 
   function renderStatus() {
@@ -715,19 +666,16 @@ export function activate(ctx: vscode.ExtensionContext) {
       // Nothing current to count: no stale badge or "blocked" color while Herdr is away.
       panel.badge = undefined;
       status.backgroundColor = undefined;
-      status.text = conn.kind === 'down' ? '$(debug-disconnect) Herdr' : `$(sync~spin) ${conn.kind === 'starting' ? 'Starting Herdr' : 'Herdr'}`;
+      status.text = sync.conn.kind === 'down' ? '$(debug-disconnect) Herdr' : `$(sync~spin) ${sync.conn.kind === 'starting' ? 'Starting Herdr' : 'Herdr'}`;
       status.tooltip =
-        conn.kind === 'down' ? `${DOWN_TEXT[conn.reason]} Click for options.` : conn.kind === 'starting' ? 'Starting Herdr…' : 'Connecting to Herdr…';
+        sync.conn.kind === 'down' ? `${DOWN_TEXT[sync.conn.reason]} Click for options.` : sync.conn.kind === 'starting' ? 'Starting Herdr…' : 'Connecting to Herdr…';
       status.command = 'herdr.connectionMenu';
       vscode.commands.executeCommand('setContext', 'herdr.connected', false);
       return;
     }
     vscode.commands.executeCommand('setContext', 'herdr.connected', true);
     const agents = model.spaces.flatMap((s) => s.agents);
-    const count = (s: AgentStatus) => agents.filter((a) => a.status === s).length;
-    const blocked = count('blocked');
-    const done = count('done');
-    const working = count('working');
+    const { blocked, done, working } = countByStatus(model);
     status.text = [
       `$(hubot) ${agents.length}`,
       working ? `$(sync~spin) ${working}` : '',
@@ -743,6 +691,20 @@ export function activate(ctx: vscode.ExtensionContext) {
   }
 
   // ---------- actions ----------
+  /**
+   * Hand a space (and a pane of it) over to another window through the pending link: the window that opens on
+   * `folder`, or the Cockpit window when there's no folder. That window opens the space's tabs once it's up.
+   */
+  function handOver(space: Space, pane?: Pane, folder?: string) {
+    const q = new URLSearchParams({ v: String(LINK_VERSION), space: space.id, label: space.label, ...(pane && { pane: pane.id }) });
+    writePendingLink(vscode.env.uriScheme, '/open', q.toString(), undefined, folder);
+  }
+  /** Review an agent's (or a space's) changes; on a worktree space, the whole branch. */
+  function review(space: Space, pane?: Pane) {
+    return reviewChanges(pane?.cwd ?? space.cwd, pane?.label ?? space.label, { worktree: !!space.worktree?.is_linked_worktree });
+  }
+  const warnNoCwd = (space: Space) => void vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
+
   async function ensureMounted(space: Space, pin = false): Promise<boolean> {
     const r = await mountSpace(space, pin);
     if (r === 'no-window') {
@@ -754,7 +716,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       return false;
     }
     if (r === 'no-cwd') {
-      vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
+      warnNoCwd(space);
       return false;
     }
     if (r === 'failed') {
@@ -775,8 +737,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   async function useThisWindow(space: Space, pane?: Pane): Promise<boolean> {
     if (isHubWindow() || ctx.workspaceState.get<boolean>(THIS_WINDOW_KEY)) return true;
     const toHub = async () => {
-      const q = new URLSearchParams({ v: String(LINK_VERSION), space: space.id, label: space.label, ...(pane && { pane: pane.id }) });
-      writePendingLink(scheme, '/open', q.toString());
+      handOver(space, pane);
       await openHub();
       return false;
     };
@@ -799,7 +760,26 @@ export function activate(ctx: vscode.ExtensionContext) {
     return true;
   }
 
-  const windowMode = () => cfg().get<'folder' | 'workspace'>('windowMode', 'folder');
+  /**
+   * herdr.autoAttach. Until it's set, the two settings it replaced (0.2.11) still decide: autoAttachOnSwitch
+   * false = none, autoAttachShells false = agents.
+   */
+  function autoAttachMode(): 'all' | 'agents' | 'none' {
+    const set = cfg().inspect<'all' | 'agents' | 'none'>('autoAttach');
+    const chosen = set?.workspaceFolderValue ?? set?.workspaceValue ?? set?.globalValue;
+    if (chosen) {
+      return chosen;
+    }
+    if (cfg().get<boolean>('autoAttachOnSwitch') === false) {
+      return 'none';
+    }
+    if (cfg().get<boolean>('autoAttachShells') === false) {
+      return 'agents';
+    }
+    return 'all';
+  }
+
+  const windowMode = () => cfg().get<WindowMode>('windowMode', 'folder');
   const myFolders = () => (vscode.workspace.workspaceFolders ?? []).map((f) => normPath(f.uri.fsPath));
   /** This window is the space's own window: its only folder is the space's. */
   const isOwnWindow = (space: Space) => {
@@ -833,7 +813,7 @@ export function activate(ctx: vscode.ExtensionContext) {
    */
   async function openInWindow(space: Space, pane?: Pane, win = otherWindow(space)) {
     if (!space.cwd) {
-      vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
+      warnNoCwd(space);
       return;
     }
     // The space lives in that window from now on: close its tabs here (only detaches; the panes keep running in
@@ -845,8 +825,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (win && !win.folders.includes(cwd)) {
       target = win.folders[0];
     }
-    const q = new URLSearchParams({ v: String(LINK_VERSION), space: space.id, label: space.label, ...(pane && { pane: pane.id }) });
-    writePendingLink(vscode.env.uriScheme, '/open', q.toString(), undefined, target);
+    handOver(space, pane, target);
     if (win && !win.focus) {
       vscode.window.showInformationMessage(`Herdr: "${space.label}" is open in another window (an untitled workspace). Switch to it from the Window menu.`);
       return;
@@ -868,7 +847,7 @@ export function activate(ctx: vscode.ExtensionContext) {
    */
   async function reopenWithSpace(space: Space, pane?: Pane) {
     if (!space.cwd) {
-      vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
+      warnNoCwd(space);
       return;
     }
     const folders: { path: string; name?: string }[] = (vscode.workspace.workspaceFolders ?? []).map((f) => ({ path: f.uri.fsPath, name: f.name }));
@@ -887,11 +866,10 @@ export function activate(ctx: vscode.ExtensionContext) {
     try {
       file = spacesWorkspaceFile(folders, settings);
     } catch (e: any) {
-      vscode.window.showErrorMessage(`Herdr: could not write a workspace file for this window: ${e?.message ?? e}`);
+      vscode.window.showErrorMessage(`Herdr: could not write a workspace file for this window: ${errorText(e)}`);
       return;
     }
-    const q = new URLSearchParams({ v: String(LINK_VERSION), space: space.id, label: space.label, ...(pane && { pane: pane.id }) });
-    writePendingLink(vscode.env.uriScheme, '/open', q.toString(), undefined, space.cwd);
+    handOver(space, pane, space.cwd);
     log.appendLine(`reopening this window on ${file} to add ${space.label}`);
     await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(file), { forceNewWindow: false });
   }
@@ -916,7 +894,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       lastWindowRecord = key;
       writeWindowRecord({ ...rec, updated: Date.now() });
     } catch (e: any) {
-      log.appendLine(`could not record this window: ${e?.message ?? e}`);
+      log.appendLine(`could not record this window: ${errorText(e)}`);
     }
   }
 
@@ -950,56 +928,58 @@ export function activate(ctx: vscode.ExtensionContext) {
    * 'elsewhere' = another window has it or gets it (or you cancelled). `how` is an explicit choice (right-click).
    */
   async function placeSpace(space: Space, pane?: Pane, how?: Placement): Promise<'here' | 'add' | 'stay' | 'elsewhere'> {
-    if (how === 'window') {
-      if (isOwnWindow(space)) return 'here';
-      await openInWindow(space, pane);
-      return 'elsewhere';
+    const decision = decidePlacement({
+      how,
+      pane: !!pane,
+      mode: windowMode(),
+      ownWindow: isOwnWindow(space),
+      openHere: isOpenHere(space),
+      mounted: isMounted(space),
+      otherWindow: !!otherWindow(space),
+      hasFolders: !!vscode.workspace.workspaceFolders?.length,
+      remembered: ctx.workspaceState.get<Placement>(PLACE_KEY),
+    });
+    let choice: Placement | undefined;
+    switch (decision) {
+      case 'here':
+      case 'add':
+      case 'stay':
+        return decision;
+      case 'askHub':
+        if (await useThisWindow(space, pane)) {
+          return 'here';
+        }
+        return 'elsewhere';
+      case 'window':
+        await openInWindow(space, pane);
+        return 'elsewhere';
+      case 'ask':
+        choice = await askPlacement(space, pane);
+        if (choice === 'workspace') {
+          return 'add';
+        }
+        if (choice === 'window') {
+          await openInWindow(space, pane);
+        }
+        return 'elsewhere';
     }
-    if (how === 'workspace') return 'add';
-    // 1. The space is open in this window: a pane opens here, next to the other spaces (nothing is swapped out).
-    if (isOpenHere(space)) {
-      if (pane && !isMounted(space)) {
-        return 'stay'; // its tabs are here but its shell moved to another folder: don't mount that one
-      }
-      if (pane || windowMode() === 'folder') {
-        return 'add';
-      }
-      return 'here'; // workspace mode, the space itself clicked: switch to it as before
-    }
-    // 2. Another window has it: open the pane there. 3. Otherwise ask (folder mode).
-    const win = otherWindow(space);
-    if (win) {
-      await openInWindow(space, pane, win);
-      return 'elsewhere';
-    }
-    if (windowMode() === 'workspace') return (await useThisWindow(space, pane)) ? 'here' : 'elsewhere';
-    // Folder mode. A window without a folder becomes the space's window.
-    if (!vscode.workspace.workspaceFolders?.length) {
-      await openInWindow(space, pane, undefined);
-      return 'elsewhere';
-    }
-    const choice = ctx.workspaceState.get<Placement>(PLACE_KEY) ?? (await askPlacement(space, pane));
-    if (choice === 'workspace') return 'add';
-    if (choice === 'window') await openInWindow(space, pane, undefined);
-    return 'elsewhere';
   }
 
-  /** False when the switch didn't happen in this window (handed to the Cockpit window, or cancelled). */
   /**
    * The editor's Welcome / walkthrough page is in the way once a space is open: close it. The tab API shows
    * it as a tab without an input (like other built-in editors), so it's recognized by its label.
    */
   function closeWelcome() {
-    const welcome = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input === undefined && /^(Welcome|Get(ting)? Started)\b/.test(t.label));
+    const welcome = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter(isWelcomeTab);
     if (welcome.length) vscode.window.tabGroups.close(welcome).then(undefined, () => undefined);
   }
 
+  /** False when the switch didn't happen in this window (handed to another window, cancelled, or the folder couldn't be mounted). */
   async function switchTo(space: Space, opts: { fromHerdr?: boolean; pin?: boolean; autoAttach?: boolean; pane?: Pane; place?: Placement } = {}): Promise<boolean> {
     if (opts.fromHerdr) {
-      // Following Herdr: leave a space another window has to that window, and in folder mode a window of its
-      // own only follows into its own space (the Cockpit window still follows everywhere).
-      if (otherWindow(space)) return false;
-      if (windowMode() === 'folder' && !isHubWindow() && !isMounted(space)) return false;
+      if (!followsInto({ otherWindow: !!otherWindow(space), mode: windowMode(), hub: isHubWindow(), mounted: isMounted(space) })) {
+        return false;
+      }
     } else {
       const where = await placeSpace(space, opts.pane, opts.place);
       if (where === 'elsewhere') return false;
@@ -1014,7 +994,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
     switching = true;
     try {
-      if (!(await ensureMounted(space, !!opts.pin))) return true;
+      if (!(await ensureMounted(space, !!opts.pin))) {
+        return false;
+      }
       closeWelcome();
       if (space.cwd && cfg().get<boolean>('revealInExplorer', false)) {
         vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(space.cwd)).then(undefined, () => {});
@@ -1024,10 +1006,11 @@ export function activate(ctx: vscode.ExtensionContext) {
         lastFocusedSpace = space.id; // don't let follow-mode bounce us
       }
       if (!opts.pin && cfg().get<boolean>('closeTerminalsOnSwitch', true)) terms.closeOtherSpaces(space.id);
-      if (opts.autoAttach ?? cfg().get<boolean>('autoAttachOnSwitch', true)) {
+      const mode = autoAttachMode();
+      if (opts.autoAttach ?? mode !== 'none') {
         // Every pane gets its own tab: agents (most urgent first), then shells in Herdr's tab order.
         // Tabs appear in the order they're opened (editor and panel alike): open all, then focus the first.
-        const panes = attachOrder(space, cfg().get<boolean>('autoAttachShells', true));
+        const panes = attachOrder(space, mode === 'all');
         // Following Herdr, a pane another editor's Cockpit window has stays with it (shown read-only here).
         const polite = !!opts.fromHerdr;
         for (const p of panes) terms.attach(p, { preserveFocus: true, polite });
@@ -1074,13 +1057,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (pane.isAgent) client.request('agent.focus', { target: pane.id }).catch(() => {});
   }
 
-  const paneOf = (t?: Target): { space: Space; pane: Pane } | undefined => {
-    for (const space of model?.spaces ?? [])
-      for (const tab of space.tabs) {
-        const pane = tab.panes.find((p) => p.id === t?.paneId);
-        if (pane) return { space, pane };
-      }
-  };
+  const paneOf = (t?: Target): { space: Space; pane: Pane } | undefined => findPane(model, t?.paneId);
   const spaceFrom = async (t?: Target): Promise<Space | undefined> => {
     const hit = model?.spaces.find((s) => s.id === t?.spaceId) ?? paneOf(t)?.space;
     if (hit) return hit;
@@ -1099,8 +1076,116 @@ export function activate(ctx: vscode.ExtensionContext) {
     return pick?.s;
   };
 
+  /** Pick an agent or shell from every space (only agents with `agentsOnly`). Undefined when cancelled. */
+  async function pickPane(title: string, agentsOnly = false): Promise<{ space: Space; pane: Pane } | undefined> {
+    if (!isConnected() && !(await ensureConnected())) {
+      return undefined;
+    }
+    const all = allPanes(model).filter(({ pane }) => pane.isAgent || (!agentsOnly && showShells()));
+    if (!all.length) {
+      vscode.window.showInformationMessage(agentsOnly ? 'Herdr: no agents running.' : 'Herdr: no panes yet.');
+      return undefined;
+    }
+    // Agents first, the ones waiting on you on top; shells after them, in Herdr's order.
+    const waiting = needingAttention(model).map((x) => x.pane.id);
+    const rank = (p: Pane) => {
+      const i = waiting.indexOf(p.id);
+      if (i >= 0) {
+        return i;
+      }
+      if (p.isAgent) {
+        return waiting.length;
+      }
+      return waiting.length + 1;
+    };
+    const sorted = all.map((x, i) => ({ ...x, i })).sort((a, b) => rank(a.pane) - rank(b.pane) || a.i - b.i);
+    type Item = vscode.QuickPickItem & { hit: { space: Space; pane: Pane } };
+    const items: Item[] = sorted.map(({ space, pane }) => {
+      const tab = space.tabs.find((t) => t.id === pane.tabId);
+      const parts = [space.label];
+      if (pane.isAgent && pane.status) {
+        parts.push(pane.status);
+      }
+      if (terms.has(pane.id)) {
+        parts.push('open');
+      }
+      return {
+        label: paneName(tab, pane),
+        description: parts.join(' · '),
+        iconPath: agentIcon(pane.isAgent ? pane.agentKind : undefined) ?? new vscode.ThemeIcon(pane.isAgent ? 'hubot' : 'terminal'),
+        hit: { space, pane },
+      };
+    });
+    const pick = await vscode.window.showQuickPick(items, { title, matchOnDescription: true });
+    return pick?.hit;
+  }
+
+  /** The agent a command acts on: the one clicked, the agent tab you're in, or pick one. */
+  async function agentFrom(t: Target | undefined, title: string): Promise<{ space: Space; pane: Pane } | undefined> {
+    const clicked = paneOf(t);
+    if (clicked?.pane.isAgent) {
+      return clicked;
+    }
+    const here = paneOf({ paneId: terms.paneOf(vscode.window.activeTerminal)?.paneId });
+    if (!t && here?.pane.isAgent) {
+      return here;
+    }
+    return pickPane(title, true);
+  }
+
+  /** Send a prompt to an agent, as if you typed it in its pane and pressed Enter. */
+  async function promptAgent(hit: { space: Space; pane: Pane }, text: string) {
+    const name = paneName(hit.space.tabs.find((t) => t.id === hit.pane.tabId), hit.pane);
+    try {
+      await manage.actions.promptAgent(hit.pane.id, text);
+      vscode.window.setStatusBarMessage(`Herdr: sent to ${name}`, 3000);
+      log.appendLine(`prompted ${hit.pane.id} (${text.length} characters)`);
+      kick();
+    } catch (e) {
+      vscode.window.showErrorMessage(`Herdr: couldn't send to ${name}: ${errorText(e)}`);
+    }
+  }
+
+  /** `src/app.ts:12-30` for a selection, relative to the agent's folder when the file is inside it. */
+  function fileReference(editor: vscode.TextEditor, agentCwd: string | undefined): string {
+    const file = editor.document.uri.fsPath;
+    let shown = file;
+    if (agentCwd) {
+      const rel = path.relative(agentCwd, file);
+      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+        shown = rel;
+      }
+    }
+    const sel = editor.selection;
+    if (sel.isEmpty) {
+      return shown;
+    }
+    let last = sel.end.line;
+    // A selection ending at the start of a line doesn't include that line.
+    if (sel.end.character === 0 && last > sel.start.line) {
+      last--;
+    }
+    if (last === sel.start.line) {
+      return `${shown}:${sel.start.line + 1}`;
+    }
+    return `${shown}:${sel.start.line + 1}-${last + 1}`;
+  }
+
   // ---------- create / rename / close ----------
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /** Herdr's agent manifests, asked once per connection (they change only with a Herdr update). */
+  let agentKindsCache: { version?: string; kinds: Promise<string[]> } | undefined;
+  function herdrAgentKinds(): Promise<string[]> {
+    const version = sync.conn.kind === 'connected' ? sync.conn.version : undefined;
+    if (!agentKindsCache || agentKindsCache.version !== version) {
+      const kinds = new HerdrActions(client).agentKinds().catch((e) => {
+        log.appendLine(`agent manifests: ${errorText(e)}`);
+        agentKindsCache = undefined; // ask again next time
+        return [];
+      });
+      agentKindsCache = { version, kinds };
+    }
+    return agentKindsCache.kinds;
+  }
   const manage: ManageDeps = {
     actions: new HerdrActions(client),
     async findPane(paneId) {
@@ -1120,6 +1205,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     },
     agentNames: () => model?.spaces.flatMap((s) => s.agents.map((a) => a.raw.agent?.name).filter((n): n is string => !!n)) ?? [],
     agents: () => cfg().get<string[]>('agents', ['claude', 'codex', 'kiro', 'cursor']),
+    herdrAgentKinds: () => herdrAgentKinds(),
     renameTerminal: async (paneId, name) => terms.rename(paneId, name),
     ensureConnected: () => ensureConnected(),
     log: (m) => log.appendLine(m),
@@ -1173,7 +1259,21 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.window.onDidChangeWindowState((w) => w.focused && !isConnected() && kick()),
     status,
     terms,
-    { dispose: () => { clearTimeout(pollTimer); clearInterval(redrawTimer); clearInterval(activityTimer); clearInterval(usageTimer); clearTimeout(renderTimer); stopWatchingSocket(); sub?.dispose(); } },
+    {
+      dispose: () => {
+        sync.dispose();
+        clearTimeout(renderTimer);
+        clearTimeout(takenOverTimer);
+        clearInterval(redrawTimer);
+        clearInterval(activityTimer);
+        clearInterval(usageTimer);
+        // A pending write of the space order would be lost with the window.
+        if (activitySave) {
+          clearTimeout(activitySave);
+          saveActivity();
+        }
+      },
+    },
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration('herdr')) return;
       if (e.affectsConfiguration('herdr.agentNames')) {
@@ -1181,6 +1281,10 @@ export function activate(ctx: vscode.ExtensionContext) {
         if (model) {
           syncNames(model);
         }
+      }
+      if (e.affectsConfiguration('herdr.socketPath')) {
+        // Another session: watch its socket folder, take its events instead of the old one's, and connect now.
+        void sync.socketChanged();
       }
       render();
       if (e.affectsConfiguration('herdr.showShellPanes')) pollActivity();
@@ -1195,7 +1299,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       const st = await serverStatus(binary(), herdrEnvNow());
       const text = [
         `Herdr Cockpit ${ctx.extension.packageJSON.version} · VS Code ${vscode.version} · ${process.platform}`,
-        `connection: ${JSON.stringify(conn)}`,
+        `connection: ${JSON.stringify(sync.conn)}`,
         `binary: ${binary()} (${binaryFound(binary()) ? 'found' : 'NOT FOUND'})`,
         `socket: ${socketPath()}${cfg().get<string>('socketPath') ? ' (herdr.socketPath)' : ''} (${fs.existsSync(socketPath()) ? 'exists' : 'missing'})`,
         `herdr status server: ${st ? JSON.stringify(st) : 'no answer'}`,
@@ -1206,6 +1310,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     }),
     vscode.commands.registerCommand('herdr.connectionMenu', async () => {
       if (isConnected()) return vscode.commands.executeCommand('herdr.focusAttention');
+      const conn = sync.conn;
       const down = conn.kind === 'down' ? conn : undefined;
       type Item = vscode.QuickPickItem & { cmd: string };
       const items: Item[] = [
@@ -1225,10 +1330,6 @@ export function activate(ctx: vscode.ExtensionContext) {
       const sp = await spaceFrom(t);
       if (sp) await switchTo(sp);
     }),
-    vscode.commands.registerCommand('herdr.pinSpace', async (t?: Target) => {
-      const sp = await spaceFrom(t);
-      if (sp) await switchTo(sp, { pin: true });
-    }),
     // Space cards say Open / Add, pane rows say Attach (a menu label is per command); both run placeIn.
     vscode.commands.registerCommand('herdr.openInOwnWindow', (t?: Target) => placeIn(t, 'window')),
     vscode.commands.registerCommand('herdr.addToWorkspace', (t?: Target) => placeIn(t, 'workspace')),
@@ -1246,14 +1347,74 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
     }),
     vscode.commands.registerCommand('herdr.attach', async (t?: Target) => {
-      const hit = paneOf(t);
-      if (hit) await attachPane(hit.space, hit.pane);
+      const hit = paneOf(t) ?? (await pickPane('Go to a Herdr agent or shell'));
+      if (hit) {
+        await attachPane(hit.space, hit.pane);
+      }
+    }),
+    vscode.commands.registerCommand('herdr.goToPane', async () => {
+      const hit = await pickPane('Go to a Herdr agent or shell');
+      if (hit) {
+        await attachPane(hit.space, hit.pane);
+      }
+    }),
+    vscode.commands.registerCommand('herdr.promptAgent', async (t?: Target) => {
+      const hit = await agentFrom(t, 'Send a prompt to which agent?');
+      if (!hit) {
+        return;
+      }
+      const name = paneName(hit.space.tabs.find((x) => x.id === hit.pane.tabId), hit.pane);
+      const text = await vscode.window.showInputBox({
+        title: `Prompt ${name} (${hit.space.label})`,
+        prompt: hit.pane.status === 'working' ? `${name} is working: the agent gets this when it reads its input.` : 'Sent as if you typed it in its tab and pressed Enter.',
+        placeHolder: 'e.g. run the tests and fix what fails',
+        validateInput: (v) => {
+          if (v.trim()) {
+            return undefined;
+          }
+          return 'Enter a prompt';
+        },
+      });
+      if (text?.trim()) {
+        await promptAgent(hit, text.trim());
+      }
+    }),
+    vscode.commands.registerCommand('herdr.sendToAgent', async (uri?: vscode.Uri) => {
+      // From the editor (selection or whole file) or the Explorer's right-click (a file).
+      let editor = vscode.window.activeTextEditor;
+      if (uri && editor?.document.uri.toString() !== uri.toString()) {
+        editor = await vscode.window.showTextDocument(uri, { preview: true, preserveFocus: true });
+      }
+      if (!editor) {
+        vscode.window.showInformationMessage('Herdr: open a file first.');
+        return;
+      }
+      const hit = await agentFrom(undefined, 'Send to which agent?');
+      if (!hit) {
+        return;
+      }
+      const ref = fileReference(editor, hit.pane.cwd ?? hit.space.cwd);
+      const name = paneName(hit.space.tabs.find((x) => x.id === hit.pane.tabId), hit.pane);
+      const ask = await vscode.window.showInputBox({
+        title: `Send ${ref} to ${name}`,
+        prompt: `What should ${name} do with it? The prompt ends with "(see ${ref})".`,
+        placeHolder: 'e.g. explain this, or add tests for it',
+        validateInput: (v) => {
+          if (v.trim()) {
+            return undefined;
+          }
+          return 'Say what the agent should do';
+        },
+      });
+      if (ask?.trim()) {
+        await promptAgent(hit, `${ask.trim()} (see ${ref})`);
+      }
     }),
     vscode.commands.registerCommand('herdr.reviewChanges', async (t?: Target) => {
       const hit = paneOf(t);
-      if (hit) return reviewChanges(hit.pane.cwd ?? hit.space.cwd, hit.pane.label);
+      if (hit) return review(hit.space, hit.pane);
       const sp = await spaceFrom(t);
-      if (sp) await reviewChanges(sp.cwd, sp.label);
+      if (sp) await review(sp);
     }),
     vscode.commands.registerCommand('herdr.toggleShellPanes', () =>
       cfg().update('showShellPanes', !showShells(), vscode.ConfigurationTarget.Global),
@@ -1285,6 +1446,15 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
       if (sp) await newTab(manage, sp);
     }),
+    vscode.commands.registerCommand('herdr.reopenClosedTab', async () => {
+      const last = closedHistory.pop();
+      if (last === undefined || last === 'editor') {
+        await vscode.commands.executeCommand('workbench.action.reopenClosedEditor');
+        return;
+      }
+      log.appendLine(`reopening closed tab ${last.paneId} (${last.closedInHerdr ? 'closed in Herdr' : 'detached'})`);
+      await reopenTab(manage, last);
+    }),
     vscode.commands.registerCommand('herdr.rename', async (t?: Target) => {
       const it = itemOf(t);
       if (it) await rename(manage, it);
@@ -1297,26 +1467,31 @@ export function activate(ctx: vscode.ExtensionContext) {
       vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${ctx.extension.id}`),
     ),
     vscode.commands.registerCommand('herdr.showRaw', async (t?: Target) => {
-      const hit = paneOf(t);
+      const hit = paneOf(t) ?? (t ? undefined : await pickPane('Show the raw Herdr record of'));
       const raw = hit ? { pane: hit.pane.raw.pane, agent: hit.pane.raw.agent, activity: activity.get(hit.pane.id) } : model?.spaces.find((s) => s.id === t?.spaceId)?.raw;
       if (!raw) return;
       const doc = await vscode.workspace.openTextDocument({ language: 'json', content: JSON.stringify(raw, null, 2) });
       vscode.window.showTextDocument(doc);
     }),
     vscode.commands.registerCommand('herdr.focusAttention', async () => {
-      if (!model) return refresh();
-      const rank: AgentStatus[] = ['blocked', 'done'];
-      for (const s of rank)
-        for (const sp of model.spaces) {
-          const a = sp.agents.find((x) => x.status === s);
-          if (a) return attachPane(sp, a);
-        }
-      vscode.window.showInformationMessage('Herdr: no agent needs attention right now.');
+      if (!model) {
+        return refresh();
+      }
+      // Blocked agents first, then done ones; again from one of them goes to the next, and around.
+      const waiting = needingAttention(model);
+      if (!waiting.length) {
+        vscode.window.showInformationMessage('Herdr: no agent needs attention right now.');
+        return;
+      }
+      const current = terms.paneOf(vscode.window.activeTerminal)?.paneId;
+      const i = waiting.findIndex((x) => x.pane.id === current);
+      const next = waiting[(i + 1) % waiting.length];
+      await attachPane(next.space, next.pane);
     }),
     vscode.commands.registerCommand('herdr.openTui', () => {
       const t = vscode.window.createTerminal({
         name: 'herdr',
-        shellPath: resolveBinary(cfg().get<string>('binaryPath')),
+        shellPath: binary(),
         iconPath: new vscode.ThemeIcon('layout-sidebar-left'),
         location: { viewColumn: vscode.ViewColumn.Active },
       });
@@ -1357,7 +1532,6 @@ export function activate(ctx: vscode.ExtensionContext) {
   /** Create the hub workspace if needed and open it (an editor focuses it if it's already open). */
   async function openHub(newWindow = true) {
     const file = ensureHubWorkspace({
-      'herdr.hubWindow': true,
       'files.exclude': { 'herdr-cockpit.code-workspace': true },
       // Cockpit window = editor + Herdr; hide the built-in AI chat here only.
       'chat.disableAIFeatures': true,
@@ -1401,15 +1575,15 @@ export function activate(ctx: vscode.ExtensionContext) {
         `Switch to "${req.session}"`,
       );
       if (!pick) return;
-      const base = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'herdr');
-      await cfg().update('socketPath', path.join(base, 'sessions', req.session, 'herdr.sock'), vscode.ConfigurationTarget.Global);
+      await cfg().update('socketPath', sessionSocketPath(req.session), vscode.ConfigurationTarget.Global);
       await kick();
     }
     if (req.kind === 'file') {
       // Files in your spaces, panes or open folders open directly; anything else asks.
       const roots = [
         ...(vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
-        ...(model?.spaces ?? []).flatMap((s) => [s.cwd, ...s.tabs.flatMap((t) => t.panes.map((p) => p.cwd))]),
+        ...(model?.spaces ?? []).map((s) => s.cwd),
+        ...allPanes(model).map(({ pane }) => pane.cwd),
       ].filter((r): r is string => !!r && r !== '/' && r !== os.homedir());
       if (!isInsideRoots(req.path, roots)) {
         const ok = await vscode.window.showWarningMessage(
@@ -1434,7 +1608,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (req.space || req.label || req.pane) vscode.window.showWarningMessage(`Herdr Cockpit: that space or pane isn't in Herdr anymore.`);
       return;
     }
-    if (req.kind === 'review') return reviewChanges(hit?.pane.cwd ?? sp.cwd, hit?.pane.label ?? sp.label);
+    if (req.kind === 'review') return review(sp, hit?.pane);
     await ctx.workspaceState.update(MANAGED_KEY, true);
     if (terms.spaces()[0] !== sp.id || !isMounted(sp)) await switchTo(sp);
     if (hit) await attachPane(sp, hit.pane);
@@ -1493,7 +1667,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   terminalContext();
 
   ctx.subscriptions.push(
-    vscode.window.registerUriHandler({ handleUri: (uri) => void handleLink(uri).catch((e) => log.appendLine(`link failed: ${e?.message ?? e}`)) }),
+    vscode.window.registerUriHandler({ handleUri: (uri) => void handleLink(uri).catch(logError('link failed')) }),
   );
 
   /** A link handed over by another window of this editor: to the Cockpit window, or to the window with its folder. */
@@ -1501,7 +1675,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     const p = takePendingLink(scheme, undefined, undefined, (folder) => (folder ? myFolders().includes(folder) : isHubWindow()));
     if (!p) return;
     try {
-      runLink(parseLink(p.path, p.query)).catch((e) => log.appendLine(`link failed: ${e?.message ?? e}`));
+      runLink(parseLink(p.path, p.query)).catch(logError('link failed'));
     } catch {
       // validated before it was written; a stale or edited file is ignored
     }
@@ -1536,7 +1710,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       updated: Date.now(),
     });
   } catch (e: any) {
-    log.appendLine(`could not write the editor record: ${e?.message ?? e}`);
+    log.appendLine(`could not write the editor record: ${errorText(e)}`);
   }
   try {
     pruneClaims();
@@ -1550,17 +1724,15 @@ export function activate(ctx: vscode.ExtensionContext) {
   function writeStatusNow() {
     recordWindow();
     if (!isHubWindow()) return;
-    const counts = { working: 0, blocked: 0, done: 0, idle: 0 };
-    for (const sp of model?.spaces ?? [])
-      for (const tab of sp.tabs)
-        for (const p of tab.panes) if (p.isAgent && p.status && p.status in counts) counts[p.status as keyof typeof counts]++;
+    const { working, blocked, done, idle } = countByStatus(model);
+    const counts = { working, blocked, done, idle };
     const attached = terms.spaces()[0];
     const s: Omit<HubStatus, 'updated'> = {
       editor: vscode.env.appName,
       scheme,
       pid: process.pid,
       connected: isConnected(),
-      state: conn.kind === 'down' ? conn.reason : conn.kind,
+      state: sync.conn.kind === 'down' ? sync.conn.reason : sync.conn.kind,
       session: currentSession(),
       space: model?.spaces.find((x) => x.id === attached)?.label,
       tabs: terms.count(),
@@ -1600,53 +1772,42 @@ export function activate(ctx: vscode.ExtensionContext) {
    * marked so) is left alone.
    *  - tabs.description: tabs show just their name; the default adds the cwd folder and can't be set per terminal.
    */
+  /** Set `section.key` for this workspace unless it has a value here (or, with `respectUser`, in user settings). */
+  function setOnce(section: string, key: string, value: unknown, respectUser: boolean) {
+    const conf = vscode.workspace.getConfiguration(section);
+    const set = conf.inspect(key);
+    if (set?.workspaceValue !== undefined || (respectUser && set?.globalValue !== undefined)) {
+      return;
+    }
+    conf.update(key, value, vscode.ConfigurationTarget.Workspace).then(undefined, logError(`could not set ${section}.${key}`));
+  }
   function terminalDefaults() {
     const hub = isHubWindow();
     if (!hub && !(isManagedWindow() && vscode.workspace.workspaceFile)) return;
-    const term = vscode.workspace.getConfiguration('terminal.integrated');
-    const once = (key: string, value: unknown, respectUser: boolean) => {
-      const set = term.inspect(key);
-      if (set?.workspaceValue !== undefined || (respectUser && set?.globalValue !== undefined)) return;
-      term.update(key, value, vscode.ConfigurationTarget.Workspace).then(undefined, (e) =>
-        log.appendLine(`could not set terminal.integrated.${key}: ${e?.message ?? e}`),
-      );
-    };
-    once('tabs.description', HUB_TAB_DESCRIPTION, !hub);
+    setOnce('terminal.integrated', 'tabs.description', HUB_TAB_DESCRIPTION, !hub);
   }
   terminalDefaults();
 
   // Cockpit window: make "+" create Herdr tabs here: "Herdr Shell" becomes this workspace's default profile.
   // VS Code only applies a workspace default profile in a trusted workspace.
   if (isHubWindow()) {
-    const term = vscode.workspace.getConfiguration('terminal.integrated');
-    const once = (key: string, value: string) => {
-      if (term.inspect(key)?.workspaceValue !== undefined) return;
-      term.update(key, value, vscode.ConfigurationTarget.Workspace).then(undefined, (e) =>
-        log.appendLine(`could not set terminal.integrated.${key}: ${e?.message ?? e}`),
-      );
-    };
-    once(`defaultProfile.${PLATFORM_KEY}`, SHELL_PROFILE_TITLE);
+    setOnce('terminal.integrated', `defaultProfile.${PLATFORM_KEY}`, SHELL_PROFILE_TITLE, false);
     // No Welcome page when the Cockpit window opens (a value you set is left alone).
-    const wb = vscode.workspace.getConfiguration('workbench');
-    const startup = wb.inspect('startupEditor');
-    if (startup?.workspaceValue === undefined && startup?.globalValue === undefined)
-      wb.update('startupEditor', 'none', vscode.ConfigurationTarget.Workspace).then(undefined, (e) => log.appendLine(`could not set workbench.startupEditor: ${e?.message ?? e}`));
+    setOnce('workbench', 'startupEditor', 'none', true);
     if (!vscode.workspace.isTrusted) log.appendLine('hub workspace is not trusted: VS Code ignores its default terminal profile, so "+" opens local shells');
     // Open the sidebar the first time this Cockpit window opens. Editors with a horizontal activity bar (Cursor) hide
     // extension icons behind an overflow menu, so new users can't find it. Once only: after that, wherever the
     // user put (or closed) the view is left alone.
     if (!ctx.workspaceState.get<boolean>(REVEALED_KEY)) {
       ctx.workspaceState.update(REVEALED_KEY, true);
-      vscode.commands.executeCommand('herdr.spaces.focus').then(undefined, (e) => log.appendLine(`could not open the sidebar: ${e?.message ?? e}`));
+      vscode.commands.executeCommand('herdr.spaces.focus').then(undefined, (e) => log.appendLine(`could not open the sidebar: ${errorText(e)}`));
     }
   }
 
-  refresh().then(() => {
-    startEvents();
-    schedulePoll();
-    maybeAutoStart();
+  void sync.start().then(() => {
+    void maybeAutoStart().catch(logError('auto-start'));
     takeHandoff();
-    void maybeOfferHub();
+    void maybeOfferHub().catch(logError('hub offer'));
   });
 
   /**

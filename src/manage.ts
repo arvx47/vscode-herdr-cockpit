@@ -3,7 +3,9 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
-import { AGENT_KINDS, AGENT_NAME, agentName, agentTitle, HerdrActions } from './herdrActions';
+import { AGENT_KINDS, AGENT_NAME, agentName, agentTitle, HerdrActions, resumeArgs } from './herdrActions';
+import { errorText } from './herdrClient';
+import type { AgentSessionInfo } from './herdrTypes';
 import type { Pane, Space } from './model';
 import { paneName, tabName } from './viewState';
 
@@ -29,18 +31,32 @@ export interface ManageDeps {
   agentNames(): string[];
   /** Agents listed first when choosing (setting herdr.agents). */
   agents(): string[];
+  /** The agent kinds the running Herdr knows (its agent manifests); empty when it couldn't say. */
+  herdrAgentKinds(): Promise<string[]>;
   renameTerminal(paneId: string, name: string): Promise<void>;
   /** Herdr is connected, offering to start it if not. */
   ensureConnected(): Promise<boolean>;
   log(msg: string): void;
 }
 
-const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const err = errorText;
+
+/** Agent kinds to offer: the ones this extension knows by name, plus any other the running Herdr knows. */
+async function knownKinds(deps: ManageDeps): Promise<string[]> {
+  const kinds = Object.keys(AGENT_KINDS);
+  for (const k of await deps.herdrAgentKinds()) {
+    if (!kinds.includes(k)) {
+      kinds.push(k);
+    }
+  }
+  return kinds;
+}
 
 /** "Shell", "Shell with a name…", then agents with their logos. Undefined if cancelled. */
-export async function pickWhat(deps: ManageDeps, title: string): Promise<What | undefined> {
+async function pickWhat(deps: ManageDeps, title: string): Promise<What | undefined> {
   type Item = vscode.QuickPickItem & { what?: What; more?: boolean; named?: boolean };
-  const favorites = deps.agents().filter((k) => k in AGENT_KINDS);
+  const known = await knownKinds(deps);
+  const favorites = deps.agents().filter((k) => known.includes(k));
   const agentItem = (kind: string): Item => ({ label: agentTitle(kind), description: kind, iconPath: deps.agentIcon(kind) ?? new vscode.ThemeIcon('hubot'), what: { kind } });
   const items: Item[] = [
     { label: 'Shell', iconPath: new vscode.ThemeIcon('terminal'), what: {} },
@@ -56,15 +72,16 @@ export async function pickWhat(deps: ManageDeps, title: string): Promise<What | 
     return label?.trim() ? { label: label.trim() } : undefined;
   }
   if (pick.more) {
-    const kind = await pickAgent(deps, title, favorites);
+    const kind = await pickAgent(deps, title, favorites, known);
     return kind ? { kind } : undefined;
   }
   return pick.what;
 }
 
 /** Any agent Herdr can start, except `skip`. Undefined if cancelled. */
-export async function pickAgent(deps: ManageDeps, title: string, skip: string[] = []): Promise<string | undefined> {
-  const items = Object.keys(AGENT_KINDS)
+export async function pickAgent(deps: ManageDeps, title: string, skip: string[] = [], known?: string[]): Promise<string | undefined> {
+  known ??= await knownKinds(deps);
+  const items = known
     .filter((k) => !skip.includes(k))
     .map((agent) => ({ label: agentTitle(agent), description: agent, iconPath: deps.agentIcon(agent) ?? new vscode.ThemeIcon('hubot'), agent }));
   return (await vscode.window.showQuickPick(items, { title, placeHolder: 'Agent to start' }))?.agent;
@@ -74,13 +91,17 @@ export async function pickAgent(deps: ManageDeps, title: string, skip: string[] 
  * Start an agent in a fresh pane, in the background: the tab is already open, so you watch it
  * launch. Herdr waits until the agent is ready for input.
  */
-export function startAgent(deps: ManageDeps, paneId: string, kind: string, where: string) {
+export function startAgent(deps: ManageDeps, paneId: string, kind: string, where: string, opts: { name?: string; args?: string[] } = {}) {
   const name = agentTitle(kind);
+  let verb = 'Starting';
+  if (opts.args?.length) {
+    verb = 'Resuming';
+  }
   void vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Starting ${name} in ${where}…` },
+    { location: vscode.ProgressLocation.Notification, title: `${verb} ${name} in ${where}…` },
     async () => {
       try {
-        await deps.actions.startAgent(paneId, kind, agentName(kind, deps.agentNames()));
+        await deps.actions.startAgent(paneId, kind, opts.name ?? agentName(kind, deps.agentNames()), opts.args);
       } catch (e) {
         deps.log(`agent.start ${kind} in ${paneId}: ${err(e)}`);
         vscode.window.showErrorMessage(`Herdr: couldn't start ${name}: ${err(e)}`);
@@ -113,6 +134,108 @@ export async function newTab(deps: ManageDeps, space: Space, what?: What) {
     await openCreated(deps, pane.pane_id, what, space.label);
   } catch (e) {
     vscode.window.showErrorMessage(`Herdr: couldn't create a tab in ${space.label}: ${err(e)}`);
+  }
+}
+
+/** A Herdr tab you closed in this window, kept so herdr.reopenClosedTab can open it again. */
+export interface ClosedTab {
+  paneId: string;
+  /** Closed in Herdr too. False when only the VS Code tab went away (Keep Running, closeTabInHerdr "never"). */
+  closedInHerdr: boolean;
+  space: { id: string; label: string; cwd?: string };
+  /** The Herdr tab the pane was in; other panes may still be in it. */
+  tabId: string;
+  tabLabel?: string;
+  cwd?: string;
+  /** A shell's own pane label. */
+  paneLabel?: string;
+  agentKind?: string;
+  agentName?: string;
+  /** The agent's own session, when Herdr stored one: reopening resumes it (resumeArgs()). */
+  session?: AgentSessionInfo;
+}
+
+export function closedTab(space: Space, pane: Pane): ClosedTab {
+  const tab = space.tabs.find((t) => t.id === pane.tabId);
+  let tabLabel = tab?.label;
+  // Herdr numbers unnamed tabs ("3"); a new tab gets its own number.
+  if (tabLabel && /^\d+$/.test(tabLabel)) {
+    tabLabel = undefined;
+  }
+  return {
+    paneId: pane.id,
+    closedInHerdr: false,
+    space: { id: space.id, label: space.label, cwd: space.cwd },
+    tabId: pane.tabId,
+    tabLabel,
+    cwd: pane.cwd,
+    paneLabel: pane.raw.pane?.label ?? undefined,
+    agentKind: pane.isAgent ? pane.agentKind : undefined,
+    agentName: pane.raw.agent?.name ?? undefined,
+    session: pane.raw.agent?.agent_session ?? pane.raw.pane?.agent_session ?? undefined,
+  };
+}
+
+/**
+ * Open a closed tab again. A pane still running in Herdr is just attached. Otherwise a new one is made
+ * where it was (next to the panes left in its Herdr tab, else a new tab; a new space if Herdr closed the
+ * space with it) and, for an agent, the same kind is started under the same name, resuming its session
+ * when Herdr stored one.
+ */
+export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
+  if (!(await deps.ensureConnected())) {
+    return;
+  }
+  const spaces = deps.spaces();
+  if (!closed.closedInHerdr) {
+    for (const space of spaces) {
+      const pane = space.tabs.flatMap((t) => t.panes).find((p) => p.id === closed.paneId);
+      if (pane) {
+        await deps.attach(space, pane);
+        return;
+      }
+    }
+  }
+  // Ids change when Herdr restarts, so fall back to the name and folder.
+  const space = spaces.find((s) => s.id === closed.space.id) ?? spaces.find((s) => s.label === closed.space.label && s.cwd === closed.space.cwd);
+  const where = space?.label ?? closed.space.label;
+  const cwd = closed.cwd ?? closed.space.cwd;
+  try {
+    let paneId: string;
+    if (!space) {
+      const r = await deps.actions.createSpace({ cwd: closed.space.cwd ?? cwd, label: closed.space.label });
+      paneId = r.pane.pane_id;
+      if (closed.tabLabel) {
+        await deps.actions.renameTab(r.tab.tab_id, closed.tabLabel).catch(() => undefined);
+      }
+    } else {
+      // The last snapshot may still list the closed pane itself.
+      const sibling = space.tabs.find((t) => t.id === closed.tabId)?.panes.find((p) => p.id !== closed.paneId);
+      if (sibling) {
+        paneId = (await deps.actions.splitPane({ target_pane_id: sibling.id, direction: 'right', cwd })).pane_id;
+      } else {
+        paneId = (await deps.actions.createTab({ workspace_id: space.id, cwd, label: closed.tabLabel })).pane.pane_id;
+      }
+    }
+    if (closed.paneLabel) {
+      await deps.actions.renamePane(paneId, closed.paneLabel).catch(() => undefined);
+    }
+    const hit = await deps.findPane(paneId);
+    if (!hit) {
+      vscode.window.showWarningMessage(`Herdr created ${paneId} but it hasn't appeared yet. Refresh and click it in the sidebar.`);
+      return;
+    }
+    await deps.attach(hit.space, hit.pane, closed.agentKind);
+    if (closed.agentKind) {
+      const taken = deps.agentNames();
+      let name = closed.agentName;
+      if (!name || taken.includes(name)) {
+        name = agentName(closed.agentKind, taken);
+      }
+      startAgent(deps, paneId, closed.agentKind, where, { name, args: resumeArgs(closed.agentKind, closed.session) });
+    }
+  } catch (e) {
+    vscode.window.showErrorMessage(`Herdr: couldn't reopen the tab in ${where}: ${err(e)}`);
   }
 }
 

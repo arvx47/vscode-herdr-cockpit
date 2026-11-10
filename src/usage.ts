@@ -166,7 +166,7 @@ export function codexLiveUsage(bin: string, timeoutMs = 10_000): Promise<Provide
   });
 }
 
-export async function codexUsage(home: string, now = Date.now()): Promise<ProviderUsage | undefined> {
+async function codexUsage(home: string, now = Date.now()): Promise<ProviderUsage | undefined> {
   const root = path.join(home, '.codex', 'sessions');
   if (!(await exists(root))) return;
   const files = await recentFiles(root, '.jsonl', now - 30 * 24 * HOUR, 3);
@@ -208,7 +208,7 @@ export function currentBlock(entries: { ts: number; tokens: number; cacheRead: n
   return block && block.endsAt > now ? block : undefined;
 }
 
-export async function claudeUsage(home: string, now = Date.now()): Promise<ProviderUsage | undefined> {
+async function claudeUsage(home: string, now = Date.now()): Promise<ProviderUsage | undefined> {
   const projects = path.join(home, '.claude', 'projects');
   if (!(await exists(path.join(home, '.claude')))) return;
   const usage: ProviderUsage = { id: 'claude', name: 'Claude Code', windows: [] };
@@ -272,7 +272,7 @@ export async function claudeUsage(home: string, now = Date.now()): Promise<Provi
 
 // ---------- Kiro ----------
 
-export async function kiroUsage(home: string, now = Date.now(), monthlyLimit = 0): Promise<ProviderUsage | undefined> {
+async function kiroUsage(home: string, now = Date.now(), monthlyLimit = 0): Promise<ProviderUsage | undefined> {
   const dir = path.join(home, '.kiro', 'sessions', 'cli');
   if (!(await exists(dir))) return;
   const d = new Date(now);

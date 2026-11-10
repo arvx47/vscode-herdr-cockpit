@@ -7,7 +7,7 @@ import * as assert from 'assert';
 import { HerdrClient, HerdrError, DEFAULT_SUBSCRIPTIONS, subscriptionsFor } from '../herdrClient';
 import { normalize } from '../model';
 import { ActivityWatcher } from '../activity';
-import { HerdrActions, agentName, agentSlug, agentTitle } from '../herdrActions';
+import { HerdrActions, agentName, agentSlug, agentTitle, resumeArgs } from '../herdrActions';
 
 import type { AgentInfo, PaneInfo, SessionSnapshotResult, TabInfo, WorkspaceInfo } from '../herdrTypes';
 
@@ -112,6 +112,13 @@ const server = net.createServer((c) => {
           // agent.start blocks until the agent is ready; answer after the client's default 5s would have passed.
           setTimeout(() => reply({ result: { type: 'agent_started', argv: [req.params.kind],
             agent: { ...pane(req.params.pane_id, 'w1:t7', { agent: req.params.kind }), agent_status: 'idle', name: req.params.name } } }), 5200);
+          break;
+        case 'agent.prompt':
+          calls.push(req);
+          reply({ result: { type: 'agent_prompted', agent: { ...pane(req.params.target, 'w1:t1', { agent: 'claude' }), agent_status: 'working', name: 'claude' } } });
+          break;
+        case 'server.agent_manifests':
+          reply({ result: { type: 'agent_manifest_status', manifests: ['claude', 'codex', 'gemini'].map((agent) => ({ agent, source: 'remote', source_kind: 'remote', local_override_shadowing_remote: false })) } });
           break;
         case 'worktree.remove':
           calls.push(req);
@@ -249,8 +256,11 @@ async function main() {
   assert.deepStrictEqual([t7.tab.tab_id, t7.pane.pane_id], ['w1:t7', 'w1:p7']);
   const wt = await actions.createWorktreeSpace({ workspace_id: 'w1', branch: 'feat/y' });
   assert.strictEqual(wt.worktree.branch, 'feat/y');
-  const started = await actions.startAgent('w1:p7', 'claude', agentName('claude', ['claude']));
+  const started = await actions.startAgent('w1:p7', 'claude', agentName('claude', ['claude']), resumeArgs('claude', { agent: 'claude', kind: 'id', source: 'hook', value: 'abc-123' }));
   assert.deepStrictEqual([started.agent, started.name], ['claude', 'claude-2'], 'agent.start outlives the 5s default timeout');
+  const prompted = await actions.promptAgent('w1:p1', 'fix the failing test');
+  assert.strictEqual(prompted.agent_status, 'working');
+  assert.deepStrictEqual(await actions.agentKinds(), ['claude', 'codex', 'gemini']);
   await actions.renameTab('w1:t7', 'tests');
   await actions.closeTab('w1:t7');
   await actions.renameSpace('w9', 'renamed');
@@ -264,7 +274,8 @@ async function main() {
       ['workspace.create', { focus: false, cwd: '/repo/new', label: 'new' }],
       ['tab.create', { focus: false, workspace_id: 'w1', cwd: '/repo/api' }],
       ['worktree.create', { focus: false, workspace_id: 'w1', branch: 'feat/y' }],
-      ['agent.start', { pane_id: 'w1:p7', kind: 'claude', name: 'claude-2', timeout_ms: 60000 }],
+      ['agent.start', { pane_id: 'w1:p7', kind: 'claude', name: 'claude-2', timeout_ms: 60000, args: ['--resume', 'abc-123'] }],
+      ['agent.prompt', { target: 'w1:p1', text: 'fix the failing test' }],
       ['tab.rename', { tab_id: 'w1:t7', label: 'tests' }],
       ['tab.close', { tab_id: 'w1:t7' }],
       ['workspace.rename', { workspace_id: 'w9', label: 'renamed' }],
@@ -278,6 +289,17 @@ async function main() {
   assert.deepStrictEqual([agentTitle('kiro'), agentTitle('agy'), agentTitle('newagent')], ['Kiro', 'Antigravity', 'Newagent']);
   assert.deepStrictEqual([agentName('claude', []), agentName('claude', ['claude', 'claude-2']), agentName('Mastra Code', [])], ['claude', 'claude-3', 'mastra-code']);
   assert.deepStrictEqual(['Reviewer Bot', '  2nd try!', 'ok_name-1', '???', 'É'].map(agentSlug), ['reviewer-bot', 'nd-try', 'ok_name-1', undefined, undefined]);
+  assert.deepStrictEqual(
+    [
+      resumeArgs('codex', { agent: 'codex', kind: 'id', source: 'hook', value: 's1' }),
+      resumeArgs('claude', { agent: 'claude', kind: 'path', source: 'hook', value: '/x.jsonl' }),
+      resumeArgs('kiro', { agent: 'kiro', kind: 'id', source: 'hook', value: 's1' }),
+      resumeArgs('claude', undefined),
+      resumeArgs('Claude', { agent: 'claude', kind: 'id', source: 'hook', value: 'c1' }),
+    ],
+    [['resume', 's1'], undefined, undefined, undefined, ['--resume', 'c1']],
+    'resumes only agents whose CLI takes a session id',
+  );
   console.log('✓ create space/tab/worktree, start agent, rename, close');
 
   // 4. subscription: ack is swallowed, events delivered, close reported

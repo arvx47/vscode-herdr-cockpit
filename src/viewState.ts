@@ -68,7 +68,7 @@ export interface SpaceView {
   shells: PaneView[];
 }
 
-/** The connection, as the sidebar shows it (see Conn in extension.ts). */
+/** The connection, as the sidebar shows it (see Conn in herdrSync.ts). */
 export interface ViewConnection {
   kind: 'connecting' | 'connected' | 'reconnecting' | 'starting' | 'down';
   reason?: DownReason;

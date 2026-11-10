@@ -46,7 +46,6 @@
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Set Up Cockpit Window</b></td><td>Opens a dedicated VS Code window for Herdr. See <a href="#follow">the Cockpit window</a>.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Refresh</b></td><td>Re-reads everything from Herdr now. Rarely needed: the view updates by itself.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Settings</b></td><td>Opens this extension's settings (listed <a href="#settings">below</a>).</td></tr>
-    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Show Raw Session Snapshot</b></td><td>Everything Herdr reports, as JSON. For troubleshooting.</td></tr>
   </table>
   <div class="demo top">
     <div class="stats">
@@ -170,7 +169,7 @@
       <b>Add to this window</b> (for a pane: <b>Attach in its space's window</b> or <b>Attach in this window</b>), once or always for this window;
       right-click a space, or a pane whose space isn't in this window, for either one any time. A pane whose space is here offers <b>Attach Terminal</b>. Switching mounts its folder (Explorer, Search and Source Control follow), focuses it in
       Herdr, closes the previous space's terminal tabs and opens <b>every pane of the space as its own tab</b>: agents
-      first (most urgent first), then shells. Turn off <code>herdr.autoAttachShells</code> to open agents only.</dd>
+      first (most urgent first), then shells. Set <code>herdr.autoAttach</code> to <code>agents</code> to open agents only, or <code>none</code> to open nothing.</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Chevron</dt>
     <dd>Collapses or expands the card without switching. A collapsed card shows one colored dot per agent.</dd>
     <dt>Colored bar on the left edge</dt>
@@ -198,7 +197,7 @@
     <tr><td><span class="space-meta inline"><span class="g-staged"><span class="codicon codicon-circle-filled"></span>2 staged</span></span></td><td>Changes added to the index, ready to commit.</td></tr>
     <tr><td><span class="space-meta inline"><span class="g-modified"><span class="codicon codicon-circle-filled"></span>3 modified</span></span></td><td>Tracked files changed but not staged.</td></tr>
     <tr><td><span class="space-meta inline"><span class="g-new"><span class="codicon codicon-add"></span>1 new</span></span></td><td>Untracked files.</td></tr>
-    <tr><td><span class="space-meta inline"><span class="m changes"><span class="review"><span class="codicon codicon-diff"></span>Review</span></span></span></td><td>Click the change counts or <b>Review</b> to list the changed files and open side-by-side diffs (last commit ↔ working tree). Pick one file or open them all.</td></tr>
+    <tr><td><span class="space-meta inline"><span class="m changes"><span class="review"><span class="codicon codicon-diff"></span>Review</span></span></span></td><td>Click the change counts or <b>Review</b> to list the changed files and open side-by-side diffs (last commit ↔ working tree). Pick one file or open them all. In a git worktree space (made with <b>New git worktree of…</b>), the list covers the whole branch since it left the main branch, committed or not, with an item to see only what's uncommitted.</td></tr>
   </table>
 </section>
 
@@ -273,7 +272,7 @@
     <tr class="st-idle"><td><span class="state">Idle</span></td><td>At its prompt, nothing new to see.</td><td>No</td></tr>
     <tr class="st-unknown"><td><span class="state">Unknown</span></td><td>Herdr can't tell yet (for example, just started).</td><td>No</td></tr>
   </table>
-  <p class="note">Which statuses alert you is the <code>herdr.notifyOn</code> setting. If an agent sets a custom label for a status (for example "reviewing PR"), the pill shows that label in the status color.</p>
+  <p class="note">Which statuses alert you is the <code>herdr.notifyOn</code> setting. With several editor windows open, only one shows each alert: the window you're in, else one that has the agent's space. The status bar's agent count jumps to the agent that needs you; click again for the next one. If an agent sets a custom label for a status (for example "reviewing PR"), the pill shows that label in the status color.</p>
 </section>
 
 <section id="shells">
@@ -320,7 +319,7 @@
     <li>Right-click opens the editor's terminal menu (with Find and Open Output). Selected text is already copied when you let go; to make right-click paste, set <code>terminal.integrated.rightClickBehavior</code> to <code>paste</code>.</li>
     <li>A click without dragging goes to the program in the pane (Herdr 0.9.2 or newer), so buttons in mouse-aware programs such as Kiro still work.</li>
     <li>Herdr Cockpit draws these tabs from Herdr's live stream of the pane; there is no shell inside them, so every key goes straight to the agent or shell in Herdr.</li>
-    <li><b>Closing a tab with its X closes it in Herdr too</b> (setting <code>herdr.closeTabInHerdr</code>). An idle shell closes right away. For an agent, a shell that's running something, or a space's last tab (Herdr then closes the space), it asks first: <b>Keep Running</b> leaves it in Herdr. Switching spaces, and closing or reloading the window, never close anything in Herdr: those tabs only detach.</li>
+    <li><b>Closing a tab with its X closes it in Herdr too</b> (setting <code>herdr.closeTabInHerdr</code>). An idle shell closes right away. For an agent, a shell that's running something, or a space's last tab (Herdr then closes the space), it asks first: <b>Keep Running</b> leaves it in Herdr. Switching spaces, and closing or reloading the window, never close anything in Herdr: those tabs only detach. To get a closed tab back, run <b>Herdr Cockpit: Reopen Closed Tab</b> (bind it to ⇧⌘T in place of Reopen Closed Editor: it still reopens files). A pane still running in Herdr is attached again; one that was closed comes back as a new shell or agent of the same kind in the same place, and Claude Code and Codex resume their conversation when Herdr knows its session.</li>
     <li>The terminal <b>+</b> creates a new tab in the current Herdr space, and <b>Split Terminal</b> on a Herdr tab splits that pane in Herdr (in the editor area; in the bottom panel a split makes a new Herdr tab). A pane you close in Herdr closes its tab here.</li>
     <li><b>Renaming</b> a tab (right-click → Rename) renames the shell's pane in Herdr, or the agent (agent names become lowercase, like <code>reviewer-bot</code>). A pane renamed in Herdr renames its tab here within a few seconds.</li>
     <li>In the Cockpit window, tabs show only their name. Elsewhere VS Code adds the folder name after it; to hide that in every window, set <code>terminal.integrated.tabs.description</code> to <code>${task}</code> in your user settings.</li>
@@ -333,11 +332,11 @@
   <h2>More actions (right-click)</h2>
   <table>
     <tr><th>On</th><th>Actions</th></tr>
-    <tr><td>Space</td><td><b>New Tab…</b> · <b>Switch to Space</b> · <b>Mount Space Alongside (Pin)</b>: add its folder without removing the current one · <b>Unmount Space</b>: remove its folder from this window · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b> · <b>Show Raw Herdr Record</b></td></tr>
-    <tr><td>Agent</td><td><b>Attach Terminal</b> · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b> · <b>Show Raw Herdr Record</b></td></tr>
-    <tr><td>Shell</td><td><b>Attach Terminal</b> · <b>Rename…</b> · <b>Close in Herdr…</b> · <b>Show Raw Herdr Record</b></td></tr>
+    <tr><td>Space</td><td><b>New Tab…</b> · <b>Switch to Space</b> · <b>Open in Its Own Window</b> / <b>Add to This Window</b> · <b>Unmount Space</b>: remove its folder from this window · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
+    <tr><td>Agent</td><td><b>Attach Terminal</b> · <b>Prompt Agent…</b>: type a prompt and the agent gets it as if you typed it in its tab · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
+    <tr><td>Shell</td><td><b>Attach Terminal</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
   </table>
-  <p class="note">"Show Raw Herdr Record" opens everything Herdr reports about the item as JSON, useful when something looks wrong.</p>
+  <p class="note">From the Command Palette: <b>Go to Agent or Shell…</b> picks any pane of any space (agents waiting on you first), <b>Send to Agent…</b> sends a prompt about the open file or its selected lines (also in the editor's and the Explorer's right-click menu), and for troubleshooting <b>Show Raw Herdr Record</b> and <b>Show Raw Session Snapshot</b> show what Herdr reports, as JSON.</p>
 </section>
 
 <section id="elsewhere">
@@ -465,7 +464,7 @@
     <dt>An agent is missing from Usage</dt><dd>Usage lists only Claude Code, Codex and Kiro, and only while one of their panes is open in Herdr.</dd>
     <dt>Claude Code shows no bars</dt><dd>Click <b>Show plan limits…</b>. Bars need a claude.ai Pro or Max plan and appear after Claude's next reply.</dd>
     <dt>Codex shows "as of …" instead of "live"</dt><dd>The live check couldn't reach Codex (not installed where VS Code looks, or logged out); the numbers come from its logs instead.</dd>
-    <dt>Something looks wrong</dt><dd>Right-click it → <b>Show Raw Herdr Record</b>, or <span class="codicon codicon-ellipsis"></span> → <b>Show Raw Session Snapshot</b>. The <b>Herdr Cockpit</b> output panel logs connections and follow-mode switches.</dd>
+    <dt>Something looks wrong</dt><dd>Command Palette → <b>Herdr Cockpit: Show Raw Herdr Record</b> (pick the pane) or <b>Show Raw Session Snapshot</b>. The <b>Herdr Cockpit</b> output panel logs connections and follow-mode switches.</dd>
   </dl>
   <p><button class="btn secondary" data-cmd="refresh"><span class="codicon codicon-refresh"></span> Refresh now</button></p>
 </section>

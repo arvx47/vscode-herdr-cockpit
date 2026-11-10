@@ -16,17 +16,32 @@ export interface Subscription {
   dispose(): void;
 }
 
+/** The message of anything thrown (Errors, HerdrErrors, plain objects with a message, strings). */
+export function errorText(e: unknown): string {
+  if (e instanceof Error) {
+    return e.message;
+  }
+  if (e && typeof e === 'object' && 'message' in e) {
+    return String((e as { message: unknown }).message);
+  }
+  return String(e);
+}
+
 function expandHome(p: string): string {
   return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+}
+
+/** The socket of a named session (`herdr --session <name>`), or of the default one. */
+export function sessionSocketPath(session?: string): string {
+  const base = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'herdr');
+  return session ? path.join(base, 'sessions', session, 'herdr.sock') : path.join(base, 'herdr.sock');
 }
 
 /** Mirrors Herdr's resolution order: HERDR_SOCKET_PATH, HERDR_SESSION, default. */
 export function resolveSocketPath(override?: string, session?: string): string {
   if (override) return expandHome(override);
   if (process.env.HERDR_SOCKET_PATH) return process.env.HERDR_SOCKET_PATH;
-  const base = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'herdr');
-  const s = session || process.env.HERDR_SESSION;
-  return s ? path.join(base, 'sessions', s, 'herdr.sock') : path.join(base, 'herdr.sock');
+  return sessionSocketPath(session || process.env.HERDR_SESSION);
 }
 
 let seq = 0;

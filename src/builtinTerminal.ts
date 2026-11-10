@@ -1,5 +1,5 @@
-// The built-in Herdr terminal (herdr.terminalClient = "builtin"): a tab the extension draws itself from
-// `herdr terminal session control`, instead of running `herdr agent/terminal attach` in it. It handles the
+// A Herdr terminal tab: the extension draws it itself from `herdr terminal session control` (herdr attach
+// can't be used: it turns on mouse reporting, so a drag couldn't select in shells; see CLAUDE.md). It handles the
 // mouse like the Herdr TUI: drag / double-click / triple-click selects and copies, the wheel scrolls Herdr's
 // scrollback, a drag held on the top or bottom row scrolls it and keeps selecting, and Backspace / Delete deletes a
 // selection on the line being typed (typing replaces it), Option+click moves the cursor there, Shift+click extends
@@ -45,7 +45,6 @@ export const TAB_ACTIONS = ['find', 'find-next', 'find-previous', 'page-up', 'pa
 export type TabAction = (typeof TAB_ACTIONS)[number];
 // eslint-disable-next-line no-control-regex -- the sequence is made of control characters
 const ACTION_SEQ = /\x1b\]777;herdr-cockpit;([a-z-]+)\x07/g;
-export const actionSequence = (a: TabAction) => `\x1b]777;herdr-cockpit;${a}\x07`;
 
 /** Typed text or a paste (not a control key): what replaces a selection on the line being typed. */
 // eslint-disable-next-line no-control-regex -- control characters are what it excludes

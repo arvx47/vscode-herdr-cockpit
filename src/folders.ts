@@ -10,7 +10,7 @@ export const PREFIX = '⬢ ';
 
 const norm = (p: string) => path.resolve(p).replace(/\/+$/, '');
 
-export function mountedPaths(): Set<string> {
+function mountedPaths(): Set<string> {
   return new Set((vscode.workspace.workspaceFolders ?? []).map((f) => norm(f.uri.fsPath)));
 }
 

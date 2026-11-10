@@ -118,6 +118,37 @@ export function attachOrder(space: Space, withShells: boolean): Pane[] {
   return [...agents, ...shells];
 }
 
+/** Every pane of every space, with its space. */
+export function allPanes(m: Model | undefined): { space: Space; pane: Pane }[] {
+  return (m?.spaces ?? []).flatMap((space) => space.tabs.flatMap((t) => t.panes.map((pane) => ({ space, pane }))));
+}
+
+/** The pane with this id, with its space. */
+export function findPane(m: Model | undefined, paneId: string | undefined): { space: Space; pane: Pane } | undefined {
+  if (!paneId) {
+    return undefined;
+  }
+  return allPanes(m).find((x) => x.pane.id === paneId);
+}
+
+/** Agents waiting on you, most urgent first (blocked, then done), in Herdr's order within each. */
+export function needingAttention(m: Model | undefined): { space: Space; pane: Pane }[] {
+  const waiting = allPanes(m).filter((x) => x.pane.isAgent && (x.pane.status === 'blocked' || x.pane.status === 'done'));
+  // sort is stable, so Herdr's order is kept within each status
+  return waiting.sort((a, b) => URGENCY[a.pane.status!] - URGENCY[b.pane.status!]);
+}
+
+/** How many agents are in each state. */
+export function countByStatus(m: Model | undefined): Record<AgentStatus, number> {
+  const counts = emptyCounts();
+  for (const sp of m?.spaces ?? []) {
+    for (const a of sp.agents) {
+      counts[a.status ?? 'unknown']++;
+    }
+  }
+  return counts;
+}
+
 /** Normalizes the `result` of a `session.snapshot` request. */
 export function normalize(res: SessionSnapshotResult): Model {
   const s = res?.snapshot;

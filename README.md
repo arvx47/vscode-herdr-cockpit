@@ -11,7 +11,7 @@ Herdr keeps your coding agents (Claude Code, Codex, Kiro, Cursor Agent, Copilot,
 - **One window instead of a stack of plugins and windows.** No need to add separate Herdr plugins for a file explorer, a web UI or a git reviewer, or to juggle a terminal and several VS Code windows. Switch a space and its folder, files, Source Control, diffs and every agent and shell (as terminal tabs) are right there.
 - **Everything VS Code can do, next to your agents.** Your extensions, language servers, debuggers, notebooks, Markdown preview, image and PDF viewers, and side-by-side diffs work on the files your agents are changing.
 - **Agent usage in one place.** Plan limits for Claude Code, Codex and Kiro side by side: 5-hour and weekly windows with reset times, tokens in the current session, and Kiro credits.
-- **Terminal tabs that behave like Herdr.** Drag to select and copy, scroll Herdr's scrollback, and keep tabs and Herdr in sync: **+** and **Split** create panes, renames go both ways, and closing a tab closes it in Herdr (it asks first for agents). **Find (⌘F) searches the pane's whole history** with every match highlighted and a list to jump through; drag past the edge to keep selecting, Backspace or typing replaces a selection on the line you're typing, Option+click moves the cursor, ⌘+click opens `file:line`, and Shift+PageUp / ⌘Home / ⌘End scroll the history. Cockpit windows in several editors can share a session: a pane another window or `herdr attach` is using stays visible read-only, says who has it, and typing takes it back.
+- **Terminal tabs that behave like Herdr.** Drag to select and copy, scroll Herdr's scrollback, and keep tabs and Herdr in sync: **+** and **Split** create panes, renames go both ways, and closing a tab closes it in Herdr (it asks first for agents), and **Reopen Closed Tab** brings it back (bind it to ⇧⌘T; it still reopens files). **Find (⌘F) searches the pane's whole history** with every match highlighted and a list to jump through; drag past the edge to keep selecting, Backspace or typing replaces a selection on the line you're typing, Option+click moves the cursor, ⌘+click opens `file:line`, and Shift+PageUp / ⌘Home / ⌘End scroll the history. Cockpit windows in several editors can share a session: a pane another window or `herdr attach` is using stays visible read-only, says who has it, and typing takes it back.
 
 **From Herdr's terminal to VS Code in one keystroke.** The companion [Herdr plugin](#the-herdr-plugin) opens the space you're on, with its folder and every agent and shell as a tab:
 
@@ -31,7 +31,8 @@ Works in **VS Code, Cursor, Kiro and Positron** on **macOS and Linux**. A commun
 - **Open panes and spaces**: click an agent or shell to open it as a tab, or right-click a space and pick **Switch to Space** to open it with its folder (Explorer, Search and Source Control follow) and its agents and shells as tabs, most urgent first. By default each space gets a window of its own: a space another window has opens there, and for a new one you pick its own window or this workspace (right-click a space or pane for either). `herdr.windowMode` = `workspace` keeps all spaces as folders of one window. Put agents and shells side by side with `herdr.terminalLocation` = `editorSplit`.
 - **Create from the editor**: new spaces (a folder or a new git worktree), new tabs with a shell or an agent (bind `herdr.newTab` to a key, e.g. ⌘T); the terminal **+** creates Herdr tabs in the Cockpit window. Rename and close in Herdr.
 - **Usage**: Claude Code, Codex and Kiro plan limits (5-hour and weekly windows, reset times, Kiro credits) while their agents run.
-- **Review changes**: an agent's diffs, offered when it finishes.
+- **Talk to agents from the editor**: **Prompt Agent…** (right-click an agent) sends it a prompt; **Send to Agent…** (right-click in a file or the Explorer) sends a prompt about the file or the selected lines (`src/app.ts:12-30`). **Go to Agent or Shell…** jumps to any pane, and **Jump to Agent Needing Attention** (the status bar) goes through blocked and done agents one after the other.
+- **Review changes**: an agent's diffs, offered when it finishes. In a git worktree space, the whole branch since it left the main branch.
 - **Follow mode**: switch spaces in Herdr's terminal and the Cockpit window follows.
 - **When Herdr isn't running**: says why (not installed, not running, crashed, incompatible), starts it in the background on request, and reconnects when it's back.
 
@@ -72,7 +73,7 @@ All settings start with `herdr.`; the guide (`?` in the sidebar) lists them. Mos
 | Setting | |
 |---|---|
 | `herdr.terminalLocation` | `editor`, `editorSplit` (agents left, shells right) or `panel` |
-| `herdr.autoAttachShells` | Also open plain shells when switching spaces |
+| `herdr.autoAttach` | Which panes open as tabs when switching spaces: `all`, `agents` or `none` |
 | `herdr.closeTabInHerdr` | Closing a tab's X closes it in Herdr: `ask` (idle shells close at once; agents and busy shells ask), `always`, `never` |
 | `herdr.offerHubOnStartup` | Offer to open Herdr Cockpit when a window opens: `emptyWindows` (default), `allWindows`, `never` |
 | `herdr.startServer` | Start Herdr when the Cockpit window opens: `ask`, `always`, `never` |

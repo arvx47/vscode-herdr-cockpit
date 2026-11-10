@@ -29,6 +29,7 @@ const ROOTS = {
     'AgentRenameParams',
     'EventsSubscribeParams',
     'PaneSplitParams',
+    'AgentPromptParams',
   ],
 };
 /** `ResponseResult` variants (discriminated by `type`) to emit as `<Pascal>Result` interfaces
@@ -43,6 +44,8 @@ const RESULT_VARIANTS = [
   'worktree_removed',
   'agent_started',
   'pane_info',
+  'agent_prompted',
+  'agent_manifest_status',
   'ok',
 ];
 

@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "Herdr Cockpit",
   "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.2.9",
+  "version": "0.2.11",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -75,12 +75,6 @@
         "icon": "$(arrow-right)"
       },
       {
-        "command": "herdr.pinSpace",
-        "title": "Mount Space Alongside (Pin)",
-        "category": "Herdr Cockpit",
-        "icon": "$(pin)"
-      },
-      {
         "command": "herdr.unmountSpace",
         "title": "Unmount Space",
         "category": "Herdr Cockpit",
@@ -133,6 +127,23 @@
         "category": "Herdr Cockpit"
       },
       {
+        "command": "herdr.goToPane",
+        "title": "Go to Agent or Shell…",
+        "category": "Herdr Cockpit"
+      },
+      {
+        "command": "herdr.promptAgent",
+        "title": "Prompt Agent…",
+        "category": "Herdr Cockpit",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "herdr.sendToAgent",
+        "title": "Send to Agent…",
+        "category": "Herdr Cockpit",
+        "icon": "$(send)"
+      },
+      {
         "command": "herdr.openTui",
         "title": "Open Herdr TUI",
         "category": "Herdr Cockpit",
@@ -183,6 +194,11 @@
         "title": "New Tab…",
         "category": "Herdr Cockpit",
         "icon": "$(add)"
+      },
+      {
+        "command": "herdr.reopenClosedTab",
+        "title": "Reopen Closed Tab (Herdr Tabs and Editors)",
+        "category": "Herdr Cockpit"
       },
       {
         "command": "herdr.rename",
@@ -315,18 +331,9 @@
           "command": "herdr.openSettings",
           "when": "view == herdr.spaces",
           "group": "3_tools@2"
-        },
-        {
-          "command": "herdr.dumpSnapshot",
-          "when": "view == herdr.spaces",
-          "group": "3_tools@3"
         }
       ],
       "commandPalette": [
-        {
-          "command": "herdr.pinSpace",
-          "when": "false"
-        },
         {
           "command": "herdr.unmountSpace",
           "when": "false"
@@ -349,10 +356,6 @@
         },
         {
           "command": "herdr.attach",
-          "when": "false"
-        },
-        {
-          "command": "herdr.showRaw",
           "when": "false"
         },
         {
@@ -402,6 +405,18 @@
         {
           "command": "herdr.terminal.openOutput",
           "when": "herdr.terminalActive"
+        },
+        {
+          "command": "herdr.promptAgent",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.sendToAgent",
+          "when": "herdr.connected && editorIsOpen"
+        },
+        {
+          "command": "herdr.goToPane",
+          "when": "herdr.connected"
         }
       ],
       "webview/context": [
@@ -409,11 +424,6 @@
           "command": "herdr.switchSpace",
           "when": "webviewId == herdr.spaces && webviewSection =~ /^space/",
           "group": "1_space@1"
-        },
-        {
-          "command": "herdr.pinSpace",
-          "when": "webviewId == herdr.spaces && webviewSection == space",
-          "group": "1_space@2"
         },
         {
           "command": "herdr.unmountSpace",
@@ -446,14 +456,14 @@
           "group": "1_pane@1"
         },
         {
+          "command": "herdr.promptAgent",
+          "when": "webviewId == herdr.spaces && webviewSection == agent",
+          "group": "1_pane@2"
+        },
+        {
           "command": "herdr.reviewChanges",
           "when": "webviewId == herdr.spaces && webviewSection =~ /^(space|space-mounted|agent)$/",
           "group": "2_review@1"
-        },
-        {
-          "command": "herdr.showRaw",
-          "when": "webviewId == herdr.spaces && webviewSection",
-          "group": "9_debug@1"
         },
         {
           "command": "herdr.newTab",
@@ -493,6 +503,20 @@
           "command": "herdr.terminal.openOutput",
           "when": "herdr.terminalActive",
           "group": "0_herdr@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "herdr.sendToAgent",
+          "when": "herdr.connected && resourceScheme == file",
+          "group": "herdr@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "herdr.sendToAgent",
+          "when": "herdr.connected && !explorerResourceIsFolder",
+          "group": "herdr@1"
         }
       ]
     },
@@ -604,15 +628,20 @@
           ],
           "description": "What closing a Herdr terminal tab yourself (its X) does in Herdr. Switching spaces and closing the window never close anything in Herdr."
         },
-        "herdr.autoAttachOnSwitch": {
-          "type": "boolean",
-          "default": true,
-          "description": "When switching to a space, open each of its panes as its own terminal tab: agents first (most urgent first), then shells (see herdr.autoAttachShells)."
-        },
-        "herdr.autoAttachShells": {
-          "type": "boolean",
-          "default": true,
-          "description": "Also open the space's plain shell panes when switching to it (needs herdr.autoAttachOnSwitch)."
+        "herdr.autoAttach": {
+          "type": "string",
+          "enum": [
+            "all",
+            "agents",
+            "none"
+          ],
+          "enumDescriptions": [
+            "Every pane: agents first (most urgent first), then shells in tab order.",
+            "Only the agents; shells stay in the sidebar until you click one.",
+            "Nothing: click a pane in the sidebar to open it."
+          ],
+          "default": "all",
+          "description": "Which of a space's panes open as terminal tabs when you switch to it. Replaces herdr.autoAttachOnSwitch and herdr.autoAttachShells, which are still read until this is set."
         },
         "herdr.agentNames": {
           "type": "string",
@@ -672,11 +701,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show plain shell panes under each space (Herdr's own agent list hides them)."
-        },
-        "herdr.hubWindow": {
-          "type": "boolean",
-          "default": false,
-          "description": "Marks this window as the Herdr Cockpit window (set automatically by 'Set Up Cockpit Window')."
         },
         "herdr.spaceOrder": {
           "type": "string",
@@ -885,7 +909,7 @@
     "gen:icons": "node scripts/gen-agent-icons.mjs",
     "codicons": "node scripts/copy-codicons.mjs",
     "pretest": "tsc -p .",
-    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/connectionTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/gitTest.js",
+    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/connectionTest.js && node out/test/syncTest.js && node out/test/placementTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/gitTest.js",
     "package": "npm run codicons && tsc -p . && vsce package",
     "install-local": "npm run package && node scripts/install-local.mjs",
     "lint": "eslint --no-warn-ignored src media/*.js scripts",
@@ -907,10 +931,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In untrusted windows the sidebar doesn't run git, and workspace settings can't mark the window as the Herdr Cockpit window.",
-      "restrictedConfigurations": [
-        "herdr.hubWindow"
-      ]
+      "description": "In untrusted windows the sidebar doesn't run git."
     }
   },
   "extensionKind": [

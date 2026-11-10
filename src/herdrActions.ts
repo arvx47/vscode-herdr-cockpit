@@ -5,7 +5,11 @@
 import type { HerdrClient } from './herdrClient';
 import type {
   AgentInfo,
+  AgentManifestStatusResult,
+  AgentPromptedResult,
+  AgentSessionInfo,
   AgentStartedResult,
+  AgentStartParams,
   PaneInfo,
   PaneInfoResult,
   PaneSplitParams,
@@ -73,6 +77,24 @@ export function agentName(kind: string, taken: Iterable<string>): string {
 /** "claude" -> "Claude"; unknown kinds are title-cased. */
 export const agentTitle = (kind: string) => AGENT_KINDS[kind.toLowerCase()] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
 
+/**
+ * The arguments that make an agent resume its own conversation, from the session Herdr stored for it
+ * (agent_session). Only agents whose CLI resumes by id; undefined means the agent starts a fresh one.
+ */
+export function resumeArgs(kind: string | undefined, session: AgentSessionInfo | null | undefined): string[] | undefined {
+  if (!session || session.kind !== 'id' || !session.value) {
+    return undefined;
+  }
+  const k = kind?.toLowerCase();
+  if (k === 'claude') {
+    return ['--resume', session.value];
+  }
+  if (k === 'codex') {
+    return ['resume', session.value];
+  }
+  return undefined;
+}
+
 /** How long to wait for an agent to be ready (Herdr's default is 30s, max 300s). */
 const AGENT_START_TIMEOUT_MS = 60_000;
 /** A pane Herdr just created isn't at its prompt yet ("agent_pane_busy"); retry this long. */
@@ -83,7 +105,7 @@ type Requester = Pick<HerdrClient, 'request'>;
 
 export interface Created {
   tab: TabInfo;
-  /** The new tab's first pane: attach it with `herdr terminal attach <terminal_id>`. */
+  /** The new tab's first pane. */
   pane: PaneInfo;
 }
 
@@ -118,23 +140,39 @@ export class HerdrActions {
 
   /**
    * Start an agent in a pane that is at its shell prompt; resolves once the agent is ready.
-   * `name` must match AGENT_NAME and be unused (see agentName()).
+   * `name` must match AGENT_NAME and be unused (see agentName()). `args` go to the agent's own CLI
+   * (e.g. resumeArgs()).
    */
-  async startAgent(paneId: string, kind: string, name: string): Promise<AgentInfo> {
+  async startAgent(paneId: string, kind: string, name: string, args?: string[]): Promise<AgentInfo> {
+    const params: AgentStartParams = { pane_id: paneId, kind, name, timeout_ms: AGENT_START_TIMEOUT_MS };
+    if (args?.length) {
+      params.args = args;
+    }
     const deadline = Date.now() + PANE_READY_TIMEOUT_MS;
     for (;;) {
       try {
-        const r = await this.client.request<AgentStartedResult>(
-          'agent.start',
-          { pane_id: paneId, kind, name, timeout_ms: AGENT_START_TIMEOUT_MS },
-          AGENT_START_TIMEOUT_MS + 5_000,
-        );
+        const r = await this.client.request<AgentStartedResult>('agent.start', params, AGENT_START_TIMEOUT_MS + 5_000);
         return r.agent;
       } catch (e: any) {
         if (e?.code !== 'agent_pane_busy' || Date.now() > deadline) throw e;
         await sleep(250);
       }
     }
+  }
+
+  /**
+   * Type a prompt into an agent and submit it, as if you typed it in its pane. Returns right away; the
+   * agent's status changes once it starts working.
+   */
+  async promptAgent(target: string, text: string): Promise<AgentInfo> {
+    const r = await this.client.request<AgentPromptedResult>('agent.prompt', { target, text });
+    return r.agent;
+  }
+
+  /** The agent kinds Herdr knows how to detect (its agent manifests), e.g. claude, codex, gemini. */
+  async agentKinds(): Promise<string[]> {
+    const r = await this.client.request<AgentManifestStatusResult>('server.agent_manifests');
+    return r.manifests.map((m) => m.agent);
   }
 
   renameSpace(workspaceId: string, label: string) {
