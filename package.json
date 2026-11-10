@@ -402,17 +402,17 @@
         },
         {
           "command": "herdr.openInOwnWindow",
-          "when": "webviewId == herdr.spaces && webviewSection =~ /^(space|space-mounted|agent|shell)$/",
+          "when": "webviewId == herdr.spaces && (webviewSection == space || webviewSection =~ /^(agent|shell)$/ && !spaceHere)",
           "group": "1_window@1"
         },
         {
           "command": "herdr.addToWorkspace",
-          "when": "webviewId == herdr.spaces && webviewSection =~ /^(space|space-mounted|agent|shell)$/",
+          "when": "webviewId == herdr.spaces && (webviewSection == space || webviewSection =~ /^(agent|shell)$/ && !spaceHere)",
           "group": "1_window@2"
         },
         {
           "command": "herdr.attach",
-          "when": "webviewId == herdr.spaces && webviewSection =~ /^(agent|shell)$/",
+          "when": "webviewId == herdr.spaces && webviewSection =~ /^(agent|shell)$/ && spaceHere",
           "group": "1_pane@1"
         },
         {

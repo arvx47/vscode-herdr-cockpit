@@ -36,6 +36,8 @@
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] || c);
   const icon = (/** @type {string} */ name, cls = '') => `<span class="codicon codicon-${name} ${cls}"></span>`;
   const ctx = (/** @type {object} */ o) => esc(JSON.stringify({ ...o, preventDefaultContextMenuItems: true }));
+  /** The pane's space is open in this window (its folder is mounted): the right-click menu offers Attach, else where to open it. */
+  const spaceHere = (/** @type {string} */ spaceId) => !!state?.spaces?.find((/** @type {any} */ sp) => sp.id === spaceId)?.mounted;
 
   function ago(/** @type {number} */ ms) {
     const s = Math.max(0, Math.round(ms / 1000));
@@ -121,7 +123,7 @@
       : p.detail || p.headline ? `<div class="sub">${esc(p.detail || p.headline)}</div>` : '';
     return `<div class="row agent st-${s}${p.focused ? ' herdr-focused' : ''}${open ? ' open' : ''}" tabindex="0" data-nav data-act="attach"
         data-space="${esc(p.spaceId)}" data-pane="${esc(p.id)}" data-key="pane:${esc(p.id)}"
-        data-vscode-context="${ctx({ webviewSection: 'agent', spaceId: p.spaceId, paneId: p.id })}"
+        data-vscode-context="${ctx({ webviewSection: 'agent', spaceId: p.spaceId, paneId: p.id, spaceHere: spaceHere(p.spaceId) })}"
         title="${esc(`${p.name} · ${p.id}\n${hint(p)}`)}">
       <div class="avatar${logo ? ' logo' : ''}">${logo || initial}</div>
       <div class="main">
@@ -156,7 +158,7 @@
     const body = open ? `${main}${sh.command && sh.typed ? cmdLine('›', sh.typed, 'typed') : ''}${lines(sh.output)}${extras(p)}` : main;
     return `<div class="row shell sh-${st}${p.focused ? ' herdr-focused' : ''}${open ? ' open' : ''}" tabindex="0" data-nav data-act="attach"
         data-space="${esc(p.spaceId)}" data-pane="${esc(p.id)}" data-key="pane:${esc(p.id)}"
-        data-vscode-context="${ctx({ webviewSection: 'shell', spaceId: p.spaceId, paneId: p.id })}"
+        data-vscode-context="${ctx({ webviewSection: 'shell', spaceId: p.spaceId, paneId: p.id, spaceHere: spaceHere(p.spaceId) })}"
         title="${esc(`${p.name} · ${p.id}\n${hint(p)}`)}">
       <div class="avatar">${icon('terminal')}</div>
       <div class="main">
