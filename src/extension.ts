@@ -473,7 +473,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         activity: (id) => activity.get(id),
         usage,
         connection: { ...(conn as object), kind: conn.kind, expectedProtocol: HERDR_PROTOCOL } as ViewConnection,
-        order: cfg().get<'activity' | 'herdr'>('spaceOrder', 'activity'),
+        order: cfg().get<'activity' | 'herdr'>('spaceOrder', 'herdr'),
         lastActive: (sp) => spaceActivity.get(sp.label),
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: conn.kind === 'connected' ? (conn.version ?? undefined) : undefined },

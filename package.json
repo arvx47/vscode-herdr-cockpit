@@ -653,8 +653,8 @@
             "Spaces with an agent working or waiting on you first, then the most recently active (an agent changed state, or you switched to it).",
             "The order the spaces have in Herdr."
           ],
-          "default": "activity",
-          "description": "How the sidebar orders spaces."
+          "default": "herdr",
+          "description": "How the sidebar orders spaces. Herdr's own order by default."
         }
       }
     },
