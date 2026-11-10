@@ -27,6 +27,7 @@ import {
   removeWindowRecord,
   WindowRecord,
   windowWithSpace,
+  spacesWorkspaceFile,
   writeWindowRecord,
 } from '../hubFiles';
 import { findTool, toolDirs } from '../tools';
@@ -154,6 +155,20 @@ assert.ok(!fs.existsSync(path.join(home, '.herdr-cockpit', 'windows', 'vscode-4.
 removeWindowRecord('vscode', 2, home);
 assert.strictEqual(windowWithSpace({ cwd: '/repos/web', label: 'web' }, self, home, alive), undefined, 'removed on close');
 console.log('✓ windows: the one with a space, by folder or label, same editor and session, live only');
+
+// ---------- workspace files for windows with several spaces ----------
+const wsA = spacesWorkspaceFile([{ path: '/repos/api/' }, { path: '/repos/web', name: '⬢ web' }], { 'editor.tabSize': 2 }, home);
+assert.ok(wsA.startsWith(path.join(home, '.herdr-cockpit', 'workspaces', 'api+web-')) && wsA.endsWith('.code-workspace'), wsA);
+assert.deepStrictEqual(JSON.parse(fs.readFileSync(wsA, 'utf8')), {
+  folders: [{ path: '/repos/api' }, { path: '/repos/web', name: '⬢ web' }],
+  settings: { 'editor.tabSize': 2 },
+});
+fs.writeFileSync(wsA, '{"folders":[],"settings":{"mine":true}}');
+assert.strictEqual(spacesWorkspaceFile([{ path: '/repos/api' }, { path: '/repos/web' }], {}, home), wsA, 'same folders, same file');
+assert.strictEqual(fs.readFileSync(wsA, 'utf8'), '{"folders":[],"settings":{"mine":true}}', 'an existing file is reused untouched');
+assert.notStrictEqual(spacesWorkspaceFile([{ path: '/repos/api' }, { path: '/repos/db' }], {}, home), wsA, 'other folders, other file');
+assert.match(path.basename(spacesWorkspaceFile([{ path: '/a b/x;y' }], {}, home)), /^x_y-[0-9a-f]{8}\.code-workspace$/, 'safe file name');
+console.log('✓ workspace files: one per set of folders, reused, safe names');
 
 // ---------- pane claims ----------
 const sock = '/run/herdr/a.sock';

@@ -10,12 +10,12 @@ import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leade
 import { AgentNames, buildViewState, paneName, setAgentNames, ViewConnection } from './viewState';
 import { agentLogo } from './agentLogos';
 import { gitInfo } from './gitInfo';
-import { isMounted, mountSpace, unmountSpace } from './folders';
+import { isMounted, mountSpace, PREFIX, unmountSpace } from './folders';
 import { AttachTerminals, TerminalLocationSetting } from './terminals';
 import { TabAction } from './builtinTerminal';
 import { findFileRefs } from './termLinks';
 import { backoffDelay, binaryFound, diagnose, Diagnosis, DownReason, herdrEnv, resolveBinary, serverStatus, sessionOfSocket, startServer } from './connection';
-import { claimant, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, normPath, parseLink, removeHubStatus, removeWindowRecord, takePendingLink, WindowRecord, windowWithSpace, writeEditorRecord, writeHubStatus, writePendingLink, writeWindowRecord } from './hubFiles';
+import { claimant, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, normPath, parseLink, removeHubStatus, removeWindowRecord, spacesWorkspaceFile, takePendingLink, WindowRecord, windowWithSpace, writeEditorRecord, writeHubStatus, writePendingLink, writeWindowRecord } from './hubFiles';
 import { HERDR_PROTOCOL } from './herdrTypes';
 import { reviewChanges } from './review';
 import { showHelp } from './help';
@@ -761,6 +761,45 @@ export function activate(ctx: vscode.ExtensionContext) {
     await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: !here });
   }
 
+  /** This window was opened from a workspace file on disk (the Cockpit window, a saved or generated one). */
+  const hasWorkspaceFile = () => vscode.workspace.workspaceFile?.scheme === 'file';
+
+  /**
+   * Add a space to a window without a workspace file. Adding the folder in place would make it an untitled
+   * workspace, which other windows can't bring forward, so this window reopens on a workspace file with its
+   * folders plus the space's (~/.herdr-cockpit/workspaces) and opens the space's tabs once it's back, through a
+   * pending link aimed at the space's folder. Reopening reloads the window; the panes keep running in Herdr.
+   */
+  async function reopenWithSpace(space: Space, pane?: Pane) {
+    if (!space.cwd) {
+      vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
+      return;
+    }
+    const folders: { path: string; name?: string }[] = (vscode.workspace.workspaceFolders ?? []).map((f) => ({ path: f.uri.fsPath, name: f.name }));
+    folders.push({ path: space.cwd, name: PREFIX + space.label });
+    // An untitled workspace's own settings come along; a single folder's stay in its .vscode/settings.json.
+    let settings: Record<string, unknown> = {};
+    const untitled = vscode.workspace.workspaceFile;
+    if (untitled?.scheme === 'untitled') {
+      try {
+        settings = JSON.parse(fs.readFileSync(untitled.fsPath, 'utf8')).settings ?? {};
+      } catch {
+        // unreadable: start without settings
+      }
+    }
+    let file: string;
+    try {
+      file = spacesWorkspaceFile(folders, settings);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`Herdr: could not write a workspace file for this window: ${e?.message ?? e}`);
+      return;
+    }
+    const q = new URLSearchParams({ v: String(LINK_VERSION), space: space.id, label: space.label, ...(pane && { pane: pane.id }) });
+    writePendingLink(vscode.env.uriScheme, '/open', q.toString(), undefined, space.cwd);
+    log.appendLine(`reopening this window on ${file} to add ${space.label}`);
+    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(file), { forceNewWindow: false });
+  }
+
   /** Record this window's folders and open spaces for the other windows (written only when they change). */
   let lastWindowRecord = '';
   function recordWindow() {
@@ -872,6 +911,10 @@ export function activate(ctx: vscode.ExtensionContext) {
         return true;
       }
       if (where === 'add') opts = { ...opts, pin: true };
+      if (where === 'add' && !isMounted(space) && !hasWorkspaceFile()) {
+        await reopenWithSpace(space, opts.pane);
+        return false;
+      }
     }
     switching = true;
     try {

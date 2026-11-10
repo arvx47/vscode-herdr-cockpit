@@ -306,6 +306,30 @@ export function windowWithSpace(
   return others.find((w) => !!cwd && w.folders.includes(cwd)) ?? others.find((w) => w.spaces.includes(space.label));
 }
 
+// ---------- workspaces for windows with several spaces ----------
+// Adding a folder to a window without a workspace file makes it an untitled workspace, which no other window can
+// open or bring forward. So a window that takes a second space is reopened on a workspace file of its own instead.
+
+/**
+ * The workspace file for these folders: ~/.herdr-cockpit/workspaces/<folder names>-<id>.code-workspace, the id
+ * from the folder paths, so the same folders always get the same file. An existing file is reused untouched (you
+ * may have changed its settings); a new one gets the folders and `settings`.
+ */
+export function spacesWorkspaceFile(folders: { path: string; name?: string }[], settings: Record<string, unknown> = {}, home?: string): string {
+  const paths = folders.map((f) => normPath(f.path));
+  const id = crypto.createHash('sha256').update(paths.join('\n')).digest('hex').slice(0, 8);
+  const names = paths
+    .map((p) => path.basename(p) || 'root')
+    .join('+')
+    .replace(/[^A-Za-z0-9._+-]/g, '_')
+    .slice(0, 80);
+  const file = path.join(hubDir(home), 'workspaces', `${names}-${id}.code-workspace`);
+  if (!fs.existsSync(file)) {
+    writeJson(file, { folders: folders.map((f, i) => ({ path: paths[i], ...(f.name && { name: f.name }) })), settings });
+  }
+  return file;
+}
+
 // ---------- links ----------
 
 export type LinkRequest =
