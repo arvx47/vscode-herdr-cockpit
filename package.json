@@ -690,7 +690,7 @@
             "Every space in Herdr."
           ],
           "default": "window",
-          "description": "Which spaces the sidebar lists. The filter button at the top of the sidebar switches it for the window you're in. The counters and Needs you always cover every space."
+          "description": "Which spaces the sidebar lists. The filter button next to the Spaces heading hides or shows the others, for the window you're in. The counters and Needs you always cover every space."
         },
         "herdr.spaceOrder": {
           "type": "string",

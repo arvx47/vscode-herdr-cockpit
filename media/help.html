@@ -56,7 +56,6 @@
       <span class="stat st-idle"><span class="codicon codicon-circle-filled"></span><span class="n">3</span> idle</span>
     </div>
     <div class="tools">
-      <span class="icon-btn" aria-pressed="true"><span class="codicon codicon-filter"></span></span>
       <span class="icon-btn" aria-pressed="true"><span class="codicon codicon-terminal"></span></span>
     </div>
   </div>
@@ -64,13 +63,13 @@
     <tr><th>Toolbar</th><th>What it does</th></tr>
     <tr><td>Counters</td><td>Your agents by status across all spaces. Click <b>blocked</b> or <b>done</b> to jump straight to the agent that
       needs you (blocked first). With no agents running it reads "<i>N</i> spaces · <i>N</i> agents".</td></tr>
-    <tr><td><span class="codicon codicon-filter"></span> Filter</td><td>Highlighted: <b>Spaces</b> lists only the spaces open in this window (its own
-      space, or the spaces whose folders it has), with a "Show all spaces" link for the rest. Click to list every space; the choice is kept per
-      window, and <code>herdr.spaceFilter</code> sets it for windows where you haven't clicked it. The counters and <b>Needs you</b> always cover every space.</td></tr>
     <tr><td><span class="codicon codicon-terminal"></span> Shells</td><td>Shows or hides plain shell panes in every space (highlighted = shown).</td></tr>
   </table>
   <p>Further down, <b>Usage</b> and <b>Spaces</b> are section headings: click <b>Usage</b> to fold it, and use the
-    <span class="codicon codicon-add"></span> next to <b>Spaces</b> to create a space. Every action is also in the Command
+    <span class="codicon codicon-add"></span> next to <b>Spaces</b> to create a space. The <span class="codicon codicon-filter"></span>
+    filter next to it hides or shows the spaces that aren't open in this window. Highlighted (the default, from <code>herdr.spaceFilter</code>),
+    the list has only this window's own space or the spaces whose folders it has, plus a "Show all spaces" link; the choice is kept per
+    window. The counters and <b>Needs you</b> always cover every space. Every action is also in the Command
     Palette (<!--PALETTE-->) under <b>Herdr Cockpit:</b>, for example <b>Herdr Cockpit: New Space…</b></p>
 </section>
 

@@ -74,14 +74,9 @@
       })
       .join('');
     const quiet = `<span class="stat quiet">${state.spaces.length + (state.hiddenSpaces || 0)} spaces · ${t.agents} agents</span>`;
-    let filterTitle = "Showing all spaces: show only this window's";
-    if (state.onlyHere) {
-      filterTitle = "Showing this window's spaces: show all";
-    }
     return `<div class="top">
       <div class="stats">${stats || quiet}</div>
       <div class="tools">
-        ${btn('toggleSpaceFilter', 'filter', filterTitle, `aria-pressed="${state.onlyHere}"`)}
         ${btn('toggleShellPanes', 'terminal', state.showShells ? 'Hide shell panes' : 'Show shell panes', `aria-pressed="${state.showShells}"`)}
       </div>
     </div>`;
@@ -421,7 +416,13 @@
       }
       spaces = `<div class="splash"><div class="big">${icon('filter')}</div><h2>No spaces in this window</h2><p>${others} open elsewhere or not open yet.</p><div class="btns"><button class="btn" data-act="toggleSpaceFilter">Show all spaces</button></div></div>`;
     }
-    const spacesLabel = `<div class="section-label">Spaces<button class="icon-btn label-btn" data-act="newSpace" title="New space: a folder or a new git worktree" aria-label="New space">${icon('add')}</button></div>`;
+    // Pressed: only this window's spaces are listed. Click to show or hide the others.
+    let filterTitle = 'Showing all spaces: hide the ones not open in this window';
+    if (state.onlyHere) {
+      filterTitle = 'Showing only the spaces open in this window: show all';
+    }
+    const filterBtn = `<button class="icon-btn label-btn" data-act="toggleSpaceFilter" aria-pressed="${!!state.onlyHere}" title="${esc(filterTitle)}" aria-label="${esc(filterTitle)}">${icon('filter')}</button>`;
+    const spacesLabel = `<div class="section-label">Spaces${filterBtn}<button class="icon-btn label-btn" data-act="newSpace" title="New space: a folder or a new git worktree" aria-label="New space">${icon('add')}</button></div>`;
     const stale = state.connection && state.connection.kind === 'reconnecting';
     app.innerHTML = `${header()}${banner()}<div class="${stale ? 'stale' : ''}">${usageSection()}${attention}${spacesLabel}<div class="spaces">${spaces}</div></div>${versions()}`;
     for (const n of /** @type {NodeListOf<HTMLElement>} */ (app.querySelectorAll('.fill[data-pct]'))) n.style.width = `${n.dataset.pct}%`;
