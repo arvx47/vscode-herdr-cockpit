@@ -816,12 +816,6 @@
     ],
     "keybindings": [
       {
-        "key": "ctrl+t",
-        "mac": "cmd+t",
-        "command": "herdr.newTab",
-        "when": "herdr.connected"
-      },
-      {
         "key": "ctrl+f",
         "mac": "cmd+f",
         "command": "workbench.action.terminal.sendSequence",
