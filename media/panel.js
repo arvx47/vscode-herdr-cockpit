@@ -73,10 +73,15 @@
         return `<${tag} class="stat st-${s}"${act}>${icon(STATUS[s].icon, s === 'working' ? 'spin' : '')}<span class="n">${t[s]}</span> ${s}</${tag}>`;
       })
       .join('');
-    const quiet = `<span class="stat quiet">${state.spaces.length} spaces · ${t.agents} agents</span>`;
+    const quiet = `<span class="stat quiet">${state.spaces.length + (state.hiddenSpaces || 0)} spaces · ${t.agents} agents</span>`;
+    let filterTitle = "Showing all spaces: show only this window's";
+    if (state.onlyHere) {
+      filterTitle = "Showing this window's spaces: show all";
+    }
     return `<div class="top">
       <div class="stats">${stats || quiet}</div>
       <div class="tools">
+        ${btn('toggleSpaceFilter', 'filter', filterTitle, `aria-pressed="${state.onlyHere}"`)}
         ${btn('toggleShellPanes', 'terminal', state.showShells ? 'Hide shell panes' : 'Show shell panes', `aria-pressed="${state.showShells}"`)}
       </div>
     </div>`;
@@ -397,14 +402,25 @@
       app.innerHTML = disconnected() + versions();
       return;
     }
-    const where = (/** @type {any} */ a) => state.spaces.find((/** @type {any} */ s) => s.id === a.spaceId)?.label;
+    const where = (/** @type {any} */ a) => state.spaceLabels?.[a.spaceId];
     const attention = state.attention.length
       ? `<div class="section-label">Needs you <span class="count">${state.attention.length}</span></div>
          <div class="attention">${state.attention.map((/** @type {any} */ a) => agentRow(a, { attention: where(a) })).join('')}</div>`
       : '';
-    const spaces = state.spaces.length
-      ? state.spaces.map(spaceCard).join('')
-      : `<div class="splash"><div class="big">${icon('layers')}</div><h2>No spaces yet</h2><p>A space is a folder with its agents and shells.</p><div class="btns"><button class="btn" data-act="newSpace">New space</button></div></div>`;
+    const showAll = `<button class="link-btn" data-act="toggleSpaceFilter">Show all spaces</button>`;
+    let spaces = `<div class="splash"><div class="big">${icon('layers')}</div><h2>No spaces yet</h2><p>A space is a folder with its agents and shells.</p><div class="btns"><button class="btn" data-act="newSpace">New space</button></div></div>`;
+    if (state.spaces.length) {
+      spaces = state.spaces.map(spaceCard).join('');
+      if (state.hiddenSpaces) {
+        spaces += `<div class="empty-note">${state.hiddenSpaces} more not open in this window · ${showAll}</div>`;
+      }
+    } else if (state.hiddenSpaces) {
+      let others = `${state.hiddenSpaces} spaces are`;
+      if (state.hiddenSpaces === 1) {
+        others = '1 space is';
+      }
+      spaces = `<div class="splash"><div class="big">${icon('filter')}</div><h2>No spaces in this window</h2><p>${others} open elsewhere or not open yet.</p><div class="btns"><button class="btn" data-act="toggleSpaceFilter">Show all spaces</button></div></div>`;
+    }
     const spacesLabel = `<div class="section-label">Spaces<button class="icon-btn label-btn" data-act="newSpace" title="New space: a folder or a new git worktree" aria-label="New space">${icon('add')}</button></div>`;
     const stale = state.connection && state.connection.kind === 'reconnecting';
     app.innerHTML = `${header()}${banner()}<div class="${stale ? 'stale' : ''}">${usageSection()}${attention}${spacesLabel}<div class="spaces">${spaces}</div></div>${versions()}`;

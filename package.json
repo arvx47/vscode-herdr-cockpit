@@ -161,6 +161,12 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "herdr.toggleSpaceFilter",
+        "title": "Toggle Spaces Shown (This Window / All)",
+        "category": "Herdr Cockpit",
+        "icon": "$(filter)"
+      },
+      {
         "command": "herdr.openSettings",
         "title": "Settings",
         "category": "Herdr Cockpit",
@@ -672,6 +678,19 @@
           "type": "boolean",
           "default": false,
           "description": "Marks this window as the Herdr Cockpit window (set automatically by 'Set Up Cockpit Window')."
+        },
+        "herdr.spaceFilter": {
+          "type": "string",
+          "enum": [
+            "window",
+            "all"
+          ],
+          "enumDescriptions": [
+            "Only the spaces open in this window: its own space, or the spaces whose folders it has.",
+            "Every space in Herdr."
+          ],
+          "default": "window",
+          "description": "Which spaces the sidebar lists. The filter button at the top of the sidebar switches it for the window you're in. The counters and Needs you always cover every space."
         },
         "herdr.spaceOrder": {
           "type": "string",

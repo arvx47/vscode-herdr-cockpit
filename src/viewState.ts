@@ -88,7 +88,14 @@ export interface ViewState {
   totals: Record<AgentStatus, number> & { agents: number; shells: number };
   /** Blocked agents first, then done; oldest first within each. */
   attention: PaneView[];
+  /** The spaces listed: all of them, or only this window's (onlyHere). */
   spaces: SpaceView[];
+  /** The list shows only the spaces open in this window. */
+  onlyHere: boolean;
+  /** Spaces left out of the list by onlyHere. */
+  hiddenSpaces: number;
+  /** Every space's label by id, listed or not (the "Needs you" rows name their space). */
+  spaceLabels: Record<string, string>;
   /** Plan usage of the coding agents with local data (Claude Code, Codex, Kiro). */
   usage: ProviderUsage[];
   /** Shown at the bottom of the sidebar. */
@@ -110,6 +117,9 @@ export interface ViewInputs {
   /** When a space was last active (an agent changed state, it was focused), if known. */
   lastActive?(space: Space): number | undefined;
   versions?: { cockpit: string; herdr?: string };
+  /** List only the spaces open in this window (herdr.spaceFilter); `here` says which those are. */
+  onlyHere?: boolean;
+  here?(space: Space): boolean;
 }
 
 /**
@@ -274,5 +284,24 @@ export function buildViewState(i: ViewInputs): ViewState {
     .sort((a, b) => rank[a.status!]! - rank[b.status!]! || (a.since ?? 0) - (b.since ?? 0));
   // Usage only for the agents running in Herdr right now.
   const running = new Set(spaces.flatMap((s) => s.agents.map((a) => (a.agentKind ?? '').toLowerCase())));
-  return { connected: !!i.model, connection: i.connection, showShells: i.showShells, totals, attention, spaces, usage: i.usage.filter((u) => running.has(u.id)), versions: i.versions };
+  // Counters, "Needs you" and usage cover every space; the list can show only this window's.
+  const onlyHere = !!i.onlyHere && !!i.here;
+  let listed = spaces;
+  if (onlyHere) {
+    const here = new Set(ordered.filter((sp) => i.here!(sp)).map((sp) => sp.id));
+    listed = spaces.filter((sp) => here.has(sp.id));
+  }
+  return {
+    connected: !!i.model,
+    connection: i.connection,
+    showShells: i.showShells,
+    totals,
+    attention,
+    spaces: listed,
+    onlyHere,
+    hiddenSpaces: spaces.length - listed.length,
+    spaceLabels: Object.fromEntries(spaces.map((sp) => [sp.id, sp.label])),
+    usage: i.usage.filter((u) => running.has(u.id)),
+    versions: i.versions,
+  };
 }

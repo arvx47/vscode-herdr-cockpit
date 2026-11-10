@@ -96,6 +96,27 @@ const hidden = buildViewState({ model, showShells: false, since: () => undefined
 assert.ok(hidden.spaces.every((x) => x.shells.length === 0));
 console.log('✓ view state from real snapshot');
 
+// ---- space filter: only this window's spaces are listed; counters, Needs you and labels still cover all
+const inputs = {
+  model, showShells: true,
+  since: () => undefined, git: () => undefined, mounted: () => false, attached: () => false,
+  activity: (id: string) => acts[id],
+  usage: [],
+  connection: { kind: 'connected' as const, expectedProtocol: 22 },
+};
+const all = buildViewState(inputs);
+const mine = buildViewState({ ...inputs, onlyHere: true, here: (s) => s.id === 'w2' || s.id === 'w6' });
+assert.deepStrictEqual(mine.spaces.map((x) => x.id).sort(), ['w2', 'w6']);
+assert.strictEqual(mine.onlyHere, true);
+assert.strictEqual(mine.hiddenSpaces, all.spaces.length - 2);
+assert.deepStrictEqual(mine.totals, all.totals, 'counters cover every space');
+assert.deepStrictEqual(mine.attention.map((a) => a.id), all.attention.map((a) => a.id), 'Needs you covers every space');
+assert.deepStrictEqual(Object.keys(mine.spaceLabels).sort(), all.spaces.map((x) => x.id).sort(), 'every label, listed or not');
+const none = buildViewState({ ...inputs, onlyHere: true, here: () => false });
+assert.deepStrictEqual([none.spaces.length, none.hiddenSpaces], [0, all.spaces.length], 'nothing here: an empty list that says how many are elsewhere');
+assert.deepStrictEqual([all.onlyHere, all.hiddenSpaces, all.spaces.length], [false, 0, model.spaces.length], 'filter off: every space');
+console.log("✓ space filter: this window's spaces, counters and Needs you still global");
+
 // ---- switching to a space opens every pane: agents by urgency, then shells in tab order
 const ka = model.spaces.find((x) => x.id === 'w2')!;
 assert.deepStrictEqual(attachOrder(ka, true).map((p) => p.id), ['w2:p1', 'w2:p5', 'w2:p7', 'w2:p8', 'w2:p9', 'w2:pA', 'w2:pC']);
