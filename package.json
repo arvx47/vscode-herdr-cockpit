@@ -584,6 +584,11 @@
           "default": true,
           "description": "Close attach terminals of other spaces when switching. Agents keep running in Herdr."
         },
+        "herdr.restoreTabs": {
+          "type": "boolean",
+          "default": true,
+          "description": "When a window opens again, reopen the Herdr tabs it had when it was closed (panes that still exist in Herdr). A pane another window has stays there and shows read-only here."
+        },
         "herdr.closeTabInHerdr": {
           "type": "string",
           "enum": [

@@ -38,6 +38,8 @@ export class AttachTerminals implements vscode.Disposable {
   /** The editor group Herdr tabs were last opened in, to keep them together across switches. */
   private lastColumn?: vscode.ViewColumn;
   private namePoll: NodeJS.Timeout;
+  /** The window is closing: its tabs are going away with it, not because you closed them. */
+  shuttingDown = false;
 
   constructor(
     private location: () => TerminalLocationSetting,
@@ -58,6 +60,9 @@ export class AttachTerminals implements vscode.Disposable {
     this.sub = vscode.window.onDidCloseTerminal((t) => {
       for (const [k, e] of this.byPane)
         if (e.term === t) {
+          if (t.exitStatus?.reason === vscode.TerminalExitReason.Shutdown) {
+            this.shuttingDown = true;
+          }
           const wasLive = !e.pty?.ended;
           this.byPane.delete(k);
           this.onChange();
@@ -121,6 +126,11 @@ export class AttachTerminals implements vscode.Disposable {
   /** Spaces that have tabs open (live or not), e.g. to reopen them after Herdr restarts. */
   spaces(): string[] {
     return [...new Set([...this.byPane.values()].map((e) => e.spaceId))];
+  }
+
+  /** Panes with a tab open (live or not), in the order the tabs were opened, e.g. to reopen them with the window. */
+  panes(): { paneId: string; spaceId: string }[] {
+    return [...this.byPane].map(([paneId, e]) => ({ paneId, spaceId: e.spaceId }));
   }
 
   /** Some tab lost its pane (Herdr stopped under it). */

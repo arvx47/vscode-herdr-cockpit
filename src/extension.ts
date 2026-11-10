@@ -31,6 +31,8 @@ const REVEALED_KEY = 'herdr.hubViewRevealed';
 const THIS_WINDOW_KEY = 'herdr.useThisWindow';
 /** herdr.windowMode = folder: where this window opens a space it doesn't have, when you chose "always". */
 const PLACE_KEY = 'herdr.placeSpaces';
+/** The panes this window had tabs for, to reopen them when the window opens again (herdr.restoreTabs). */
+const OPEN_TABS_KEY = 'herdr.openTabs';
 
 /** Where a space this window doesn't have goes: its own window, or added to this workspace. */
 type Placement = 'window' | 'workspace';
@@ -120,7 +122,10 @@ export function activate(ctx: vscode.ExtensionContext) {
         iconPath: agentIcon(kind) ?? new vscode.ThemeIcon(pane.isAgent ? 'hubot' : 'terminal'),
       };
     },
-    () => scheduleRender(),
+    () => {
+      scheduleRender();
+      saveOpenTabs();
+    },
     {
       binary: () => resolveBinary(cfg().get<string>('binaryPath')),
       env: () => herdrEnvNow(),
@@ -135,6 +140,42 @@ export function activate(ctx: vscode.ExtensionContext) {
     (paneId) => void closedTabByUser(paneId).catch((e) => log.appendLine(`close in Herdr: ${e?.message ?? e}`)),
     (paneId, name) => void renamedTabByUser(paneId, name).catch((e) => log.appendLine(`rename in Herdr: ${e?.message ?? e}`)),
   );
+  /** Restored (or nothing to restore): until then, the saved list is the one from the last session. */
+  let tabsRestored = false;
+  /** Remember this window's tabs. Not while it closes: those tabs go with the window and should come back. */
+  function saveOpenTabs() {
+    if (!tabsRestored || terms.shuttingDown) {
+      return;
+    }
+    void ctx.workspaceState.update(OPEN_TABS_KEY, terms.panes());
+  }
+  /**
+   * Reopen the tabs this window had when it was closed, once Herdr answers. Panes that are gone (closed, or
+   * Herdr restarted with new ids) are skipped. A pane another window has stays there, shown read-only here.
+   */
+  function restoreOpenTabs() {
+    if (tabsRestored) {
+      return;
+    }
+    tabsRestored = true;
+    if (!cfg().get<boolean>('restoreTabs', true)) {
+      return;
+    }
+    const saved = ctx.workspaceState.get<{ paneId: string; spaceId: string }[]>(OPEN_TABS_KEY, []);
+    const panes = new Map((model?.spaces ?? []).flatMap((s) => s.tabs.flatMap((t) => t.panes.map((p) => [p.id, p] as const))));
+    let reopened = 0;
+    for (const { paneId } of saved) {
+      const pane = panes.get(paneId);
+      if (pane && !terms.has(paneId)) {
+        terms.attach(pane, { preserveFocus: true, polite: true });
+        reopened++;
+      }
+    }
+    if (saved.length) {
+      log.appendLine(`reopened ${reopened} of ${saved.length} tabs from the last session`);
+    }
+    saveOpenTabs();
+  }
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = 'herdr.focusAttention';
   status.show();
@@ -210,6 +251,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     log.appendLine(`connected to herdr ${conn.kind === 'connected' ? (conn.version ?? '') : ''}`.trim());
     stopWatchingSocket();
     lostNotified = false;
+    restoreOpenTabs();
     const lost = lostSpace;
     lostSpace = undefined;
     if (lost) offerReopen(lost);

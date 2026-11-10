@@ -3,6 +3,10 @@
 Herdr Cockpit (the editor extension) and its Herdr plugin (`plugin/`) are released together from this repository.
 Versions up to 0.1.2 were published as **Herdr Hub** (`sriharirao.herdr-hub`).
 
+## Unreleased
+
+- **Tabs come back with the window**: close a window (or quit the editor) and open it again, and it reopens the Herdr tabs it had, in the same order, for the panes that still exist in Herdr. Turn it off with `herdr.restoreTabs`.
+
 ## 0.2.6 (2026-10-19)
 
 - **A tab whose pane is taken over stays live.** Herdr lets one client control a pane. When another one takes it (a Cockpit window in another editor, `herdr attach`), the tab used to end with "the stream ended (terminal attach taken over)". Now it keeps showing the pane, read-only, with a note on its bottom row saying who has it ("Kiro is using this pane · type here to take it back"). The first key you press takes control back, without sending that key. Selecting and copying still work.
