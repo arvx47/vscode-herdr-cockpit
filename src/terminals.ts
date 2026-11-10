@@ -208,6 +208,11 @@ export class AttachTerminals implements vscode.Disposable {
     this.closeWhere((e) => e.spaceId !== keepSpaceId);
   }
 
+  /** Detach (close) this space's tabs, e.g. when the space moves to a window of its own. */
+  closeSpace(spaceId: string) {
+    this.closeWhere((e) => e.spaceId === spaceId);
+  }
+
   /** Drop terminals whose pane no longer exists in Herdr. */
   prune(livePaneIds: Set<string>) {
     this.closeWhere((_, paneId) => !livePaneIds.has(paneId));

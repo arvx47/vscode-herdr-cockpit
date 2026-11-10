@@ -721,6 +721,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
       return;
     }
+    // The space lives in that window from now on: close its tabs here (only detaches; the panes keep running in
+    // Herdr), so the same pane isn't open twice and this copy doesn't turn read-only when that window takes it.
+    terms.closeSpace(space.id);
     const cwd = normPath(space.cwd);
     // Aimed at a folder that window has: the space's, or (matched by label after its folder moved) its first.
     let target = cwd;
