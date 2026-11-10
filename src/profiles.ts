@@ -32,8 +32,6 @@ export interface ProfileDeps extends ManageDeps {
   /** The pane a tab shows, if it's a Herdr tab. */
   paneOf(term: vscode.Terminal | undefined): { paneId: string; spaceId: string } | undefined;
   startHerdr(): Promise<boolean>;
-  /** The icon of every Herdr tab (the Herdr logo). */
-  herdrIcon: vscode.TerminalOptions['iconPath'];
 }
 
 /** How long to wait, once the tab opens, for VS Code to place it (a split gets a new editor group). */
@@ -104,7 +102,7 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
     });
     // No shell process in the tab, so extensions that type into new terminals (Python Environments'
     // `source .venv/bin/activate`) leave it alone. It opens where "+" (or Split) put it.
-    return new vscode.TerminalProfile({ name: title, pty, iconPath: deps.herdrIcon, isTransient: true });
+    return new vscode.TerminalProfile({ name: title, pty, iconPath: deps.agentIcon(kind) ?? new vscode.ThemeIcon('terminal'), isTransient: true });
   };
 
   return vscode.Disposable.from(

@@ -698,10 +698,7 @@
         {
           "id": "herdr.shell",
           "title": "Herdr Shell",
-          "icon": {
-            "light": "media/herdr-light.svg",
-            "dark": "media/herdr-dark.svg"
-          }
+          "icon": "terminal"
         },
         {
           "id": "herdr.agent.claude",
