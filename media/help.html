@@ -23,7 +23,7 @@
       <b>Working with agents?</b>: click <b>Open Herdr Cockpit</b>. Or use <span class="codicon codicon-ellipsis"></span> → <b>Set Up Cockpit Window</b>.
       The Cockpit window is made for Herdr: its first folder never changes, so switching spaces never restarts your extensions (see <a href="#follow">the Cockpit window</a>).</li>
     <li><b>Make sure Herdr runs.</b> If it doesn't, the sidebar offers <b>Start Herdr</b> (see <a href="#offline">When Herdr isn't running</a>).</li>
-    <li><b>Click a space.</b> Its folder opens in the window and every agent and shell opens as a terminal tab.</li>
+    <li><b>Click an agent or shell in a space.</b> Its space's folder opens in the window and that pane opens as a terminal tab (right-click the space and pick <b>Switch to Space</b> to open all of them).</li>
     <li><b>Optional:</b> the <a href="#plugin">Herdr plugin</a> jumps here from Herdr in your terminal, and <b>Show plan limits…</b> in <a href="#usage">Usage</a> adds Claude Code's limits.</li>
   </ol>
   <p>The same steps are in the <b>Get started with Herdr Cockpit</b> walkthrough (Command Palette: <b>Welcome: Open Walkthrough…</b>).</p>
@@ -165,7 +165,8 @@
   <p><b>Order:</b> spaces keep Herdr's own order. Set <code>herdr.spaceOrder</code> to <code>activity</code> to put spaces with an agent working or waiting on you first, then the most recently active ones (an agent started, finished or asked something, or you switched to the space here or in Herdr); that order is remembered across reloads.</p>
   <dl>
     <dt>Click the space name</dt>
-    <dd>Expands it and collapses the other cards, then switches to it. If another window already has the space, that window comes forward
+    <dd>Expands or collapses the card, like the chevron. It doesn't open anything: click an agent or shell to open it as a tab.
+      To switch to the whole space, right-click it and pick <b>Switch to Space</b>. If another window already has the space, that window comes forward
       and opens it. Otherwise (with <code>herdr.windowMode</code> = <code>folder</code>, the default) you pick <b>Open in its own window</b> or
       <b>Add to this window</b> (for a pane: <b>Attach in its space's window</b> or <b>Attach in this window</b>), once or always for this window;
       right-click a space, or a pane whose space isn't in this window, for either one any time. A pane whose space is here offers <b>Attach Terminal</b>. Switching mounts its folder (Explorer, Search and Source Control follow), focuses it in

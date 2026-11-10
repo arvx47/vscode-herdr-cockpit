@@ -28,7 +28,7 @@ Works in **VS Code, Cursor, Kiro and Positron** on **macOS and Linux**. A commun
 ## Features
 
 - **Spaces & Agents sidebar**, live from Herdr: each space is a card with its branch and changes; agents show a colored status (working, blocked, done, idle), time in state and a one-line summary of what they last said. **Needs you** lists blocked and done agents with a preview of their screen. **Shells** show what is running, or the last command and its output.
-- **Switch spaces**: click one to open it with its folder (Explorer, Search and Source Control follow) and its agents and shells as tabs, most urgent first. By default each space gets a window of its own: a space another window has opens there, and for a new one you pick its own window or this workspace (right-click a space or pane for either). `herdr.windowMode` = `workspace` keeps all spaces as folders of one window. Put agents and shells side by side with `herdr.terminalLocation` = `editorSplit`.
+- **Open panes and spaces**: click an agent or shell to open it as a tab, or right-click a space and pick **Switch to Space** to open it with its folder (Explorer, Search and Source Control follow) and its agents and shells as tabs, most urgent first. By default each space gets a window of its own: a space another window has opens there, and for a new one you pick its own window or this workspace (right-click a space or pane for either). `herdr.windowMode` = `workspace` keeps all spaces as folders of one window. Put agents and shells side by side with `herdr.terminalLocation` = `editorSplit`.
 - **Create from the editor**: new spaces (a folder or a new git worktree), new tabs with a shell or an agent; the terminal **+** creates Herdr tabs in the Cockpit window. Rename and close in Herdr.
 - **Usage**: Claude Code, Codex and Kiro plan limits (5-hour and weekly windows, reset times, Kiro credits) while their agents run.
 - **Review changes**: an agent's diffs, offered when it finishes.
@@ -45,7 +45,7 @@ Works in **VS Code, Cursor, Kiro and Positron** on **macOS and Linux**. A commun
 1. Install **Herdr Cockpit** from the Extensions view (VS Code Marketplace; Open VSX for Cursor, Kiro and Positron), or download the `.vsix` from [Releases](https://github.com/sriharirao92/vscode-herdr-cockpit/releases) and run `code --install-extension herdr-cockpit.vsix` (or `cursor`, `kiro`, `positron`).
 2. Run Herdr as usual, or click **Start Herdr** in the sidebar.
 3. Run **Herdr Cockpit: Set Up Cockpit Window**. The Cockpit window's first folder (`~/.herdr-cockpit`) never changes, so switching spaces never restarts your extensions.
-4. Click a space.
+4. Click an agent or shell in a space (or right-click the space and pick **Switch to Space** to open all of its panes).
 
 The **Get started with Herdr Cockpit** walkthrough covers the same steps (Command Palette: **Welcome: Open Walkthrough…**).
 

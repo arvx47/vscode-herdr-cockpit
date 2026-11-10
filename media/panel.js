@@ -223,9 +223,9 @@
       : `<div class="empty-note">No agents${state.showShells ? ' or shells' : ''} in this space</div>`;
     const add = `<button class="add-row" data-act="newTab" data-nav data-key="new:${esc(sp.id)}" title="New tab in ${esc(sp.label)}: a shell or an agent">${icon('add')}New tab</button>`;
     return `<section class="space st-${st}${open ? ' open' : ''}${sp.focused ? ' herdr-focused' : ''}" data-space="${esc(sp.id)}">
-      <div class="space-head" tabindex="0" data-nav data-act="switch" data-space="${esc(sp.id)}" data-key="space:${esc(sp.id)}"
+      <div class="space-head" tabindex="0" data-nav data-act="toggleSpace" data-space="${esc(sp.id)}" data-key="space:${esc(sp.id)}"
           data-vscode-context="${ctx({ webviewSection: sp.mounted ? 'space-mounted' : 'space', spaceId: sp.id })}"
-          aria-expanded="${open}" title="${esc(`${sp.label}${sp.path ? `\n${sp.path}` : ''}\nClick to switch to this space`)}">
+          aria-expanded="${open}" title="${esc(`${sp.label}${sp.path ? `\n${sp.path}` : ''}\nClick to expand or collapse. Click a pane to open it; right-click to switch to the whole space`)}">
         <span class="chev" data-act="toggleSpace" title="${open ? 'Collapse' : 'Expand'}">${icon('chevron-down')}</span>
         <span class="space-name">${esc(sp.label)}</span>
         <span class="dots">${dots}</span>
