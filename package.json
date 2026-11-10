@@ -87,6 +87,23 @@
         "icon": "$(close)"
       },
       {
+        "command": "herdr.openInOwnWindow",
+        "title": "Open in Its Own Window",
+        "category": "Herdr Cockpit",
+        "icon": "$(window)"
+      },
+      {
+        "command": "herdr.addToWorkspace",
+        "title": "Add to This Workspace",
+        "category": "Herdr Cockpit",
+        "icon": "$(folder-library)"
+      },
+      {
+        "command": "herdr.askWhereToOpenSpaces",
+        "title": "Ask Where to Open Spaces Again (This Window)",
+        "category": "Herdr Cockpit"
+      },
+      {
         "command": "herdr.attach",
         "title": "Attach Terminal",
         "category": "Herdr Cockpit",
@@ -303,6 +320,14 @@
           "when": "false"
         },
         {
+          "command": "herdr.openInOwnWindow",
+          "when": "false"
+        },
+        {
+          "command": "herdr.addToWorkspace",
+          "when": "false"
+        },
+        {
           "command": "herdr.attach",
           "when": "false"
         },
@@ -374,6 +399,16 @@
           "command": "herdr.unmountSpace",
           "when": "webviewId == herdr.spaces && webviewSection == space-mounted",
           "group": "1_space@2"
+        },
+        {
+          "command": "herdr.openInOwnWindow",
+          "when": "webviewId == herdr.spaces && webviewSection =~ /^(space|space-mounted|agent|shell)$/",
+          "group": "1_window@1"
+        },
+        {
+          "command": "herdr.addToWorkspace",
+          "when": "webviewId == herdr.spaces && webviewSection =~ /^(space|space-mounted|agent|shell)$/",
+          "group": "1_window@2"
         },
         {
           "command": "herdr.attach",
@@ -500,6 +535,19 @@
           "type": "boolean",
           "default": true,
           "description": "When switching to a space (also by opening one of its panes), reveal its folder in the Explorer, which shows the Explorer view. Turn off to keep the side bar where it is."
+        },
+        "herdr.windowMode": {
+          "type": "string",
+          "enum": [
+            "folder",
+            "workspace"
+          ],
+          "enumDescriptions": [
+            "Each space gets a window of its own, opened on its folder. Clicking a space or pane this window doesn't have brings forward the window that has it, or asks whether to open it in its own window or add it to this workspace.",
+            "Spaces are mounted as folders of one workspace, normally the Cockpit window (the behavior before this setting). A space another window already has still opens there."
+          ],
+          "default": "folder",
+          "markdownDescription": "How spaces map to windows. Right-click a space or pane for **Open in Its Own Window** or **Add to This Workspace** in either mode."
         },
         "herdr.closeTerminalsOnSwitch": {
           "type": "boolean",

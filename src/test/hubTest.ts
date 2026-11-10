@@ -24,6 +24,10 @@ import {
   writeEditorRecord,
   writeHubStatus,
   writePendingLink,
+  removeWindowRecord,
+  WindowRecord,
+  windowWithSpace,
+  writeWindowRecord,
 } from '../hubFiles';
 import { findTool, toolDirs } from '../tools';
 
@@ -126,6 +130,30 @@ assert.strictEqual(takePendingLink('cursor', 60_000, home), undefined, 'taken on
 writePendingLink('cursor', '/open', 'space=w1', home);
 assert.strictEqual(takePendingLink('cursor', -1, home), undefined, 'stale links are dropped');
 console.log('✓ link hand-off: per editor, taken once, stale dropped');
+writePendingLink('vscode', '/open', 'space=w2', home, '/repos/api/');
+assert.strictEqual(takePendingLink('vscode', 60_000, home), undefined, "the Cockpit window leaves a link aimed at a space's window");
+assert.strictEqual(takePendingLink('vscode', 60_000, home, (f) => f === '/repos/web'), undefined, 'a window with other folders leaves it too');
+assert.deepStrictEqual(takePendingLink('vscode', 60_000, home, (f) => f === '/repos/api'), { path: '/open', query: 'space=w2' }, 'the window with that folder takes it (trailing slash ignored)');
+console.log("✓ link hand-off: aimed at a space's own window by folder");
+
+// ---------- windows ----------
+const win = (pid: number, extra: Partial<WindowRecord> = {}): WindowRecord => ({ scheme: 'vscode', pid, socket: '/s', folders: [], spaces: [], updated: 1, ...extra });
+writeWindowRecord(win(1, { folders: ['/repos/api'], spaces: ['api'], focus: '/repos/api' }), home);
+writeWindowRecord(win(2, { folders: ['/home/.herdr-cockpit', '/repos/web/'], spaces: ['web', 'notes'], focus: '/home/.herdr-cockpit/herdr-cockpit.code-workspace' }), home);
+writeWindowRecord(win(3, { folders: ['/repos/db'], spaces: ['db'], socket: '/other' }), home);
+writeWindowRecord(win(4, { folders: ['/repos/old'], spaces: ['old'] }), home);
+const alive = (pid: number) => pid !== 4;
+const self = { scheme: 'vscode', pid: 1, socket: '/s' };
+assert.strictEqual(windowWithSpace({ cwd: '/repos/web', label: 'x' }, self, home, alive)?.pid, 2, 'by folder');
+assert.strictEqual(windowWithSpace({ cwd: '/repos/moved', label: 'notes' }, self, home, alive)?.pid, 2, 'by label when the folder moved');
+assert.strictEqual(windowWithSpace({ cwd: '/repos/api', label: 'api' }, self, home, alive), undefined, 'not this window itself');
+assert.strictEqual(windowWithSpace({ cwd: '/repos/db', label: 'db' }, self, home, alive), undefined, "another Herdr session's window");
+assert.strictEqual(windowWithSpace({ cwd: '/repos/api', label: 'api' }, { ...self, scheme: 'cursor' }, home, alive), undefined, "another editor's window");
+assert.strictEqual(windowWithSpace({ cwd: '/repos/old', label: 'old' }, self, home, alive), undefined, 'a window that quit');
+assert.ok(!fs.existsSync(path.join(home, '.herdr-cockpit', 'windows', 'vscode-4.json')), "a window that quit loses its record");
+removeWindowRecord('vscode', 2, home);
+assert.strictEqual(windowWithSpace({ cwd: '/repos/web', label: 'web' }, self, home, alive), undefined, 'removed on close');
+console.log('✓ windows: the one with a space, by folder or label, same editor and session, live only');
 
 // ---------- pane claims ----------
 const sock = '/run/herdr/a.sock';

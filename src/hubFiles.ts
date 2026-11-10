@@ -7,6 +7,7 @@
 //   status/<scheme>.json       the Cockpit window's live state, for the plugin's status pane
 //   pending-link.json          a link that reached another window, handed to the Cockpit window
 //   claims/<hash>.json         which editor window last took control of a pane (Herdr doesn't say who has it)
+//   windows/<scheme>-<pid>.json   each window's folders and the spaces it has open, so a click elsewhere goes there
 //
 // Links: <scheme>://<publisher>.herdr-cockpit/<action>?<query>, where <scheme> is the editor's (vscode, cursor,
 // kiro, positron, ...). Every field is validated here: a link can come from any web page, so it may only
@@ -232,6 +233,79 @@ export function claimant(c: PaneClaim | undefined, me: { scheme: string; pid: nu
   return c.scheme === me.scheme ? `another ${c.editor} window` : c.editor;
 }
 
+// ---------- windows ----------
+// Each window records its folders and the spaces it has open. A click on a space that another window already
+// has goes to that window instead of swapping this window's folders.
+
+export interface WindowRecord {
+  scheme: string;
+  /** Extension host process: one per window. */
+  pid: number;
+  /** The Herdr socket it talks to: another session's spaces don't count. */
+  socket: string;
+  /** Its folders, absolute. */
+  folders: string[];
+  /** Labels of the spaces it has open (a space's folder can move with its shell's cwd; the label doesn't). */
+  spaces: string[];
+  /** What to open to bring the window forward: its workspace file, or its only folder. None for an untitled workspace. */
+  focus?: string;
+  updated: number;
+}
+
+export const normPath = (p: string) => path.resolve(p).replace(/(.)\/+$/, '$1');
+const windowFile = (scheme: string, pid: number, home?: string) => path.join(hubDir(home), 'windows', `${scheme}-${pid}.json`);
+
+export function writeWindowRecord(w: WindowRecord, home?: string) {
+  writeJson(windowFile(w.scheme, w.pid, home), w);
+}
+
+export function removeWindowRecord(scheme: string, pid: number, home?: string) {
+  fs.rmSync(windowFile(scheme, pid, home), { force: true });
+}
+
+/** Live windows' records; those of windows that quit are removed. */
+export function readWindowRecords(home?: string, isAlive = alive): WindowRecord[] {
+  const dir = path.join(hubDir(home), 'windows');
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(dir).filter((n) => n.endsWith('.json'));
+  } catch {
+    return [];
+  }
+  const out: WindowRecord[] = [];
+  for (const n of names) {
+    const w = readJson(path.join(dir, n));
+    const valid =
+      typeof w?.scheme === 'string' && typeof w?.pid === 'number' && typeof w?.socket === 'string' && Array.isArray(w?.folders) && Array.isArray(w?.spaces);
+    if (!valid || !isAlive(w.pid)) {
+      fs.rmSync(path.join(dir, n), { force: true });
+      continue;
+    }
+    out.push({
+      scheme: w.scheme,
+      pid: w.pid,
+      socket: w.socket,
+      folders: w.folders.filter((f: unknown): f is string => typeof f === 'string').map(normPath),
+      spaces: w.spaces.filter((s: unknown): s is string => typeof s === 'string'),
+      focus: typeof w.focus === 'string' ? w.focus : undefined,
+      updated: typeof w.updated === 'number' ? w.updated : 0,
+    });
+  }
+  return out;
+}
+
+/** Another live window of this editor and Herdr session that has the space open: by its folder, else by its label. */
+export function windowWithSpace(
+  space: { cwd?: string; label: string },
+  me: { scheme: string; pid: number; socket: string },
+  home?: string,
+  isAlive = alive,
+): WindowRecord | undefined {
+  const others = readWindowRecords(home, isAlive).filter((w) => w.scheme === me.scheme && w.pid !== me.pid && w.socket === me.socket);
+  const cwd = space.cwd ? normPath(space.cwd) : undefined;
+  return others.find((w) => !!cwd && w.folders.includes(cwd)) ?? others.find((w) => w.spaces.includes(space.label));
+}
+
 // ---------- links ----------
 
 export type LinkRequest =
@@ -307,25 +381,33 @@ export function isInsideRoots(file: string, roots: readonly string[]): boolean {
 
 const pendingFile = (home?: string) => path.join(hubDir(home), 'pending-link.json');
 
-export function writePendingLink(scheme: string, linkPath: string, query: string, home?: string) {
-  writeJson(pendingFile(home), { scheme, path: linkPath, query, created: Date.now() });
+/** `folder`: only the window that has this folder takes it (a space's own window); none = the Cockpit window. */
+export function writePendingLink(scheme: string, linkPath: string, query: string, home?: string, folder?: string) {
+  writeJson(pendingFile(home), { scheme, path: linkPath, query, created: Date.now(), ...(folder && { folder: normPath(folder) }) });
 }
 
 /**
- * Take the pending link for this editor, if fresh. Taking renames the file first, so two windows can't
- * both act on it.
+ * Take the pending link for this editor, if fresh and meant for this window (`mine` gets the link's target
+ * folder, undefined for the Cockpit window). Taking renames the file first, so two windows can't both act on it.
  */
-export function takePendingLink(scheme: string, maxAgeMs = 60_000, home?: string): { path: string; query: string } | undefined {
+export function takePendingLink(
+  scheme: string,
+  maxAgeMs = 60_000,
+  home?: string,
+  mine: (folder: string | undefined) => boolean = (folder) => !folder,
+): { path: string; query: string } | undefined {
   const f = pendingFile(home);
-  if (readJson(f)?.scheme !== scheme) return undefined; // another editor's: leave it
-  const mine = `${f}.${process.pid}.taken`;
+  const peek = readJson(f);
+  if (peek?.scheme !== scheme) return undefined; // another editor's: leave it
+  if (!mine(typeof peek.folder === 'string' ? peek.folder : undefined)) return undefined; // another window's
+  const taken = `${f}.${process.pid}.taken`;
   try {
-    fs.renameSync(f, mine);
+    fs.renameSync(f, taken);
   } catch {
     return undefined;
   }
-  const p = readJson(mine);
-  fs.rmSync(mine, { force: true });
+  const p = readJson(taken);
+  fs.rmSync(taken, { force: true });
   if (!p || p.scheme !== scheme || typeof p.path !== 'string' || typeof p.query !== 'string') return undefined;
   if (!(Date.now() - p.created < maxAgeMs)) return undefined;
   return { path: p.path, query: p.query };

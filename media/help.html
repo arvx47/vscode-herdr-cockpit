@@ -162,7 +162,9 @@
   <p><b>Order:</b> spaces with an agent working or waiting on you come first, then the most recently active ones (an agent started, finished or asked something, or you switched to the space here or in Herdr). The order is remembered across reloads. To keep Herdr's own order, set <code>herdr.spaceOrder</code> to <code>herdr</code>.</p>
   <dl>
     <dt>Click the space name</dt>
-    <dd>Expands it and collapses the other cards, then switches to it: mounts its folder in this window (Explorer, Search and Source Control follow), focuses it in
+    <dd>Expands it and collapses the other cards, then switches to it. If another window already has the space, that window comes forward
+      and opens it. Otherwise (with <code>herdr.windowMode</code> = <code>folder</code>, the default) you pick <b>Open in its own window</b> or
+      <b>Add to this workspace</b>, once or always for this window; right-click a space or pane for either one any time. Switching mounts its folder (Explorer, Search and Source Control follow), focuses it in
       Herdr, closes the previous space's terminal tabs and opens <b>every pane of the space as its own tab</b>: agents
       first (most urgent first), then shells. Turn off <code>herdr.autoAttachShells</code> to open agents only.</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Chevron</dt>

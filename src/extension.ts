@@ -15,7 +15,7 @@ import { AttachTerminals, TerminalLocationSetting } from './terminals';
 import { TabAction } from './builtinTerminal';
 import { findFileRefs } from './termLinks';
 import { backoffDelay, binaryFound, diagnose, Diagnosis, DownReason, herdrEnv, resolveBinary, serverStatus, sessionOfSocket, startServer } from './connection';
-import { claimant, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, parseLink, removeHubStatus, takePendingLink, writeEditorRecord, writeHubStatus, writePendingLink } from './hubFiles';
+import { claimant, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, normPath, parseLink, removeHubStatus, removeWindowRecord, takePendingLink, WindowRecord, windowWithSpace, writeEditorRecord, writeHubStatus, writePendingLink, writeWindowRecord } from './hubFiles';
 import { HERDR_PROTOCOL } from './herdrTypes';
 import { reviewChanges } from './review';
 import { showHelp } from './help';
@@ -29,6 +29,11 @@ const MANAGED_KEY = 'herdr.managedWindow';
 const REVEALED_KEY = 'herdr.hubViewRevealed';
 /** The user chose to switch spaces in this (non-hub) window rather than the Cockpit window. */
 const THIS_WINDOW_KEY = 'herdr.useThisWindow';
+/** herdr.windowMode = folder: where this window opens a space it doesn't have, when you chose "always". */
+const PLACE_KEY = 'herdr.placeSpaces';
+
+/** Where a space this window doesn't have goes: its own window, or added to this workspace. */
+type Placement = 'window' | 'workspace';
 
 /** The extension's view of the Herdr server. */
 export type Conn =
@@ -691,6 +696,122 @@ export function activate(ctx: vscode.ExtensionContext) {
     return true;
   }
 
+  const windowMode = () => cfg().get<'folder' | 'workspace'>('windowMode', 'folder');
+  const myFolders = () => (vscode.workspace.workspaceFolders ?? []).map((f) => normPath(f.uri.fsPath));
+  /** This window is the space's own window: its only folder is the space's. */
+  const isOwnWindow = (space: Space) => {
+    const folders = myFolders();
+    return !!space.cwd && folders.length === 1 && folders[0] === normPath(space.cwd);
+  };
+  const otherWindow = (space: Space) => {
+    try {
+      return windowWithSpace(space, { scheme: vscode.env.uriScheme, pid: process.pid, socket: socketPath() });
+    } catch {
+      return undefined;
+    }
+  };
+
+  /**
+   * Open the space in a window of its own: the one that already has it (brought forward), else a new window on
+   * its folder (this one, when this window has no folder). The window that opens it attaches the pane through a
+   * pending link aimed at that folder.
+   */
+  async function openInWindow(space: Space, pane?: Pane, win = otherWindow(space)) {
+    if (!space.cwd) {
+      vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
+      return;
+    }
+    const cwd = normPath(space.cwd);
+    // Aimed at a folder that window has: the space's, or (matched by label after its folder moved) its first.
+    let target = cwd;
+    if (win && !win.folders.includes(cwd)) {
+      target = win.folders[0];
+    }
+    const q = new URLSearchParams({ v: String(LINK_VERSION), space: space.id, label: space.label, ...(pane && { pane: pane.id }) });
+    writePendingLink(vscode.env.uriScheme, '/open', q.toString(), undefined, target);
+    if (win && !win.focus) {
+      vscode.window.showInformationMessage(`Herdr: "${space.label}" is open in another window (an untitled workspace). Switch to it from the Window menu.`);
+      return;
+    }
+    const uri = vscode.Uri.file(win?.focus ?? cwd);
+    const here = !win && !vscode.workspace.workspaceFolders?.length;
+    // An editor brings forward the window that already has this folder or workspace instead of opening another.
+    await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: !here });
+  }
+
+  /** Record this window's folders and open spaces for the other windows (written only when they change). */
+  let lastWindowRecord = '';
+  function recordWindow() {
+    const me = { scheme: vscode.env.uriScheme, pid: process.pid };
+    try {
+      const folders = myFolders();
+      if (!folders.length) {
+        if (lastWindowRecord) removeWindowRecord(me.scheme, me.pid);
+        lastWindowRecord = '';
+        return;
+      }
+      const wsf = vscode.workspace.workspaceFile;
+      const focus = wsf?.scheme === 'file' ? wsf.fsPath : folders.length === 1 && !wsf ? folders[0] : undefined;
+      const spaces = (model?.spaces ?? []).filter(isMounted).map((s) => s.label);
+      const rec: WindowRecord = { ...me, socket: socketPath(), folders, spaces, ...(focus && { focus }), updated: 0 };
+      const key = JSON.stringify(rec);
+      if (key === lastWindowRecord) return;
+      lastWindowRecord = key;
+      writeWindowRecord({ ...rec, updated: Date.now() });
+    } catch (e: any) {
+      log.appendLine(`could not record this window: ${e?.message ?? e}`);
+    }
+  }
+
+  /** Ask where a space this window doesn't have goes; "Always…" is remembered for this window. */
+  async function askPlacement(space: Space): Promise<Placement | undefined> {
+    type Item = vscode.QuickPickItem & { place?: Placement; remember?: boolean };
+    const own: Item = { label: '$(window) Open in its own window', description: space.cwd, place: 'window' };
+    const add: Item = { label: '$(folder-library) Add to this workspace', description: 'next to the folders this window has', place: 'workspace' };
+    const items: Item[] = [
+      own,
+      add,
+      { label: 'Remember for this window', kind: vscode.QuickPickItemKind.Separator },
+      { label: 'Always open spaces in their own window', place: 'window', remember: true },
+      { label: 'Always add spaces to this workspace', place: 'workspace', remember: true },
+    ];
+    const pick = await vscode.window.showQuickPick(items, {
+      title: `"${space.label}" isn't open in this window`,
+      placeHolder: 'Right-click a space or pane to pick either one later',
+    });
+    if (pick?.remember) await ctx.workspaceState.update(PLACE_KEY, pick.place);
+    return pick?.place;
+  }
+
+  /**
+   * Before switching to a space: 'here' = switch this window, 'add' = mount it next to this window's folders,
+   * 'elsewhere' = another window has it or gets it (or you cancelled). `how` is an explicit choice (right-click).
+   */
+  async function placeSpace(space: Space, pane?: Pane, how?: Placement): Promise<'here' | 'add' | 'elsewhere'> {
+    if (how === 'window') {
+      if (isOwnWindow(space)) return 'here';
+      await openInWindow(space, pane);
+      return 'elsewhere';
+    }
+    if (how === 'workspace') return 'add';
+    if (isMounted(space)) return windowMode() === 'folder' ? 'add' : 'here';
+    const win = otherWindow(space);
+    if (win) {
+      await openInWindow(space, pane, win);
+      return 'elsewhere';
+    }
+    if (windowMode() === 'workspace') return (await useThisWindow(space, pane)) ? 'here' : 'elsewhere';
+    // Folder mode. A window without a folder becomes the space's window.
+    if (!vscode.workspace.workspaceFolders?.length) {
+      await openInWindow(space, pane, undefined);
+      return 'elsewhere';
+    }
+    const choice = ctx.workspaceState.get<Placement>(PLACE_KEY) ?? (await askPlacement(space));
+    if (choice === 'workspace') return 'add';
+    if (choice === 'window') await openInWindow(space, pane, undefined);
+    return 'elsewhere';
+  }
+
   /** False when the switch didn't happen in this window (handed to the Cockpit window, or cancelled). */
   /**
    * The editor's Welcome / walkthrough page is in the way once a space is open: close it. The tab API shows
@@ -701,8 +822,17 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (welcome.length) vscode.window.tabGroups.close(welcome).then(undefined, () => undefined);
   }
 
-  async function switchTo(space: Space, opts: { fromHerdr?: boolean; pin?: boolean; autoAttach?: boolean; pane?: Pane } = {}): Promise<boolean> {
-    if (!opts.fromHerdr && !(await useThisWindow(space, opts.pane))) return false;
+  async function switchTo(space: Space, opts: { fromHerdr?: boolean; pin?: boolean; autoAttach?: boolean; pane?: Pane; place?: Placement } = {}): Promise<boolean> {
+    if (opts.fromHerdr) {
+      // Following Herdr: leave a space another window has to that window, and in folder mode a window of its
+      // own only follows into its own space (the Cockpit window still follows everywhere).
+      if (otherWindow(space)) return false;
+      if (windowMode() === 'folder' && !isHubWindow() && !isMounted(space)) return false;
+    } else {
+      const where = await placeSpace(space, opts.pane, opts.place);
+      if (where === 'elsewhere') return false;
+      if (where === 'add') opts = { ...opts, pin: true };
+    }
     switching = true;
     try {
       if (!(await ensureMounted(space, !!opts.pin))) return true;
@@ -907,6 +1037,18 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.commands.registerCommand('herdr.pinSpace', async (t?: Target) => {
       const sp = await spaceFrom(t);
       if (sp) await switchTo(sp, { pin: true });
+    }),
+    vscode.commands.registerCommand('herdr.openInOwnWindow', async (t?: Target) => {
+      const it = itemOf(t);
+      if (it && (await switchTo(it.space, { pane: it.pane, place: 'window', autoAttach: !it.pane })) && it.pane) await attachPane(it.space, it.pane);
+    }),
+    vscode.commands.registerCommand('herdr.addToWorkspace', async (t?: Target) => {
+      const it = itemOf(t);
+      if (it && (await switchTo(it.space, { pane: it.pane, place: 'workspace', autoAttach: !it.pane })) && it.pane) await attachPane(it.space, it.pane);
+    }),
+    vscode.commands.registerCommand('herdr.askWhereToOpenSpaces', async () => {
+      await ctx.workspaceState.update(PLACE_KEY, undefined);
+      vscode.window.setStatusBarMessage('Herdr: this window will ask where to open spaces again', 2500);
     }),
     vscode.commands.registerCommand('herdr.unmountSpace', async (t?: Target) => {
       const sp = await spaceFrom(t);
@@ -1160,10 +1302,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.window.registerUriHandler({ handleUri: (uri) => void handleLink(uri).catch((e) => log.appendLine(`link failed: ${e?.message ?? e}`)) }),
   );
 
-  /** A link handed over by another window of this editor. */
+  /** A link handed over by another window of this editor: to the Cockpit window, or to the window with its folder. */
   function takeHandoff() {
-    if (!isHubWindow()) return;
-    const p = takePendingLink(scheme);
+    const p = takePendingLink(scheme, undefined, undefined, (folder) => (folder ? myFolders().includes(folder) : isHubWindow()));
     if (!p) return;
     try {
       runLink(parseLink(p.path, p.query)).catch((e) => log.appendLine(`link failed: ${e?.message ?? e}`));
@@ -1172,7 +1313,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
   }
   let handoffWatch: fs.FSWatcher | undefined;
-  if (isHubWindow())
+  if (isHubWindow() || vscode.workspace.workspaceFolders?.length)
     try {
       fs.mkdirSync(hubDir(), { recursive: true }); // a pre-rename Cockpit window may not have it yet
       handoffWatch = fs.watch(hubDir(), (_e, name) => {
@@ -1213,6 +1354,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   let lastHubStatus = '';
   let hubStatusAt = 0;
   function writeStatusNow() {
+    recordWindow();
     if (!isHubWindow()) return;
     const counts = { working: 0, blocked: 0, done: 0, idle: 0 };
     for (const sp of model?.spaces ?? [])
@@ -1253,6 +1395,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       clearTimeout(hubStatusTimer);
       handoffWatch?.close();
       if (isHubWindow()) removeHubStatus(scheme, process.pid);
+      removeWindowRecord(scheme, process.pid);
     },
   });
 

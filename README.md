@@ -28,7 +28,7 @@ Works in **VS Code, Cursor, Kiro and Positron** on **macOS and Linux**. A commun
 ## Features
 
 - **Spaces & Agents sidebar**, live from Herdr: each space is a card with its branch and changes; agents show a colored status (working, blocked, done, idle), time in state and a one-line summary of what they last said. **Needs you** lists blocked and done agents with a preview of their screen. **Shells** show what is running, or the last command and its output.
-- **Switch spaces**: click one to swap its folder into the window (Explorer, Search and Source Control follow) and open its agents and shells as tabs, most urgent first. Put agents and shells side by side with `herdr.terminalLocation` = `editorSplit`.
+- **Switch spaces**: click one to open it with its folder (Explorer, Search and Source Control follow) and its agents and shells as tabs, most urgent first. By default each space gets a window of its own: a space another window has opens there, and for a new one you pick its own window or this workspace (right-click a space or pane for either). `herdr.windowMode` = `workspace` keeps all spaces as folders of one window. Put agents and shells side by side with `herdr.terminalLocation` = `editorSplit`.
 - **Create from the editor**: new spaces (a folder or a new git worktree), new tabs with a shell or an agent; the terminal **+** creates Herdr tabs in the Cockpit window. Rename and close in Herdr.
 - **Usage**: Claude Code, Codex and Kiro plan limits (5-hour and weekly windows, reset times, Kiro credits) while their agents run.
 - **Review changes**: an agent's diffs, offered when it finishes.
