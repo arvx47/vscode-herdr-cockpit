@@ -533,8 +533,8 @@
         },
         "herdr.revealInExplorer": {
           "type": "boolean",
-          "default": true,
-          "description": "When switching to a space (also by opening one of its panes), reveal its folder in the Explorer, which shows the Explorer view. Turn off to keep the side bar where it is."
+          "default": false,
+          "description": "When switching to a space (also by opening one of its panes), reveal its folder in the Explorer, which opens and focuses the Explorer view. Off by default, so the side bar stays where it is."
         },
         "herdr.windowMode": {
           "type": "string",

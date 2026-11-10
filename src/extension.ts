@@ -855,7 +855,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     try {
       if (!(await ensureMounted(space, !!opts.pin))) return true;
       closeWelcome();
-      if (space.cwd && cfg().get<boolean>('revealInExplorer', true)) {
+      if (space.cwd && cfg().get<boolean>('revealInExplorer', false)) {
         vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(space.cwd)).then(undefined, () => {});
       }
       if (!opts.fromHerdr) {
