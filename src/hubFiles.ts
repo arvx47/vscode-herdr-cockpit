@@ -174,7 +174,15 @@ export interface PaneClaim {
   pid: number;
   /** ms since epoch. */
   at: number;
+  /**
+   * The window, kept across reloads (windowKey()). A reload starts a new extension host while the old one is still
+   * exiting, so its pid looks alive for a few seconds: this says the claim is ours from before the reload.
+   */
+  window?: string;
 }
+
+/** A short stable id for a window, from something that survives reloads (its workspace storage folder). */
+export const windowKey = (id: string) => crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
 
 /** One file per pane of a Herdr session (its socket): pane ids repeat across sessions. */
 const claimFile = (socket: string, pane: string, home?: string) =>
@@ -200,7 +208,11 @@ export function writeClaim(socket: string, pane: string, claim: PaneClaim, home?
 export function readClaim(socket: string, pane: string, home?: string): PaneClaim | undefined {
   const c = readJson(claimFile(socket, pane, home));
   if (typeof c?.editor !== 'string' || typeof c?.scheme !== 'string' || typeof c?.pid !== 'number' || typeof c?.at !== 'number') return undefined;
-  return { editor: c.editor.slice(0, 80), scheme: c.scheme, pid: c.pid, at: c.at };
+  const claim: PaneClaim = { editor: c.editor.slice(0, 80), scheme: c.scheme, pid: c.pid, at: c.at };
+  if (typeof c.window === 'string') {
+    claim.window = c.window.slice(0, 64);
+  }
+  return claim;
 }
 
 /** Drop this window's claim (it released the pane, or lost it); another window's newer claim stays. */
@@ -228,8 +240,11 @@ export function pruneClaims(home?: string, isAlive = alive) {
  * Who has the pane, from this window's point of view: another live window's claim. `since` = when this window
  * took the pane: a claim older than that is from before (that window lost the pane to us since).
  */
-export function claimant(c: PaneClaim | undefined, me: { scheme: string; pid: number }, since = 0, isAlive = alive): string | undefined {
+export function claimant(c: PaneClaim | undefined, me: { scheme: string; pid: number; window?: string }, since = 0, isAlive = alive): string | undefined {
   if (!c || c.pid === me.pid || c.at < since || !isAlive(c.pid)) return undefined;
+  if (c.window && c.window === me.window) {
+    return undefined; // this window, before it reloaded
+  }
   return c.scheme === me.scheme ? `another ${c.editor} window` : c.editor;
 }
 

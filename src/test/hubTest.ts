@@ -20,6 +20,7 @@ import {
   hubOpen,
   shouldOfferHub,
   takePendingLink,
+  windowKey,
   writeClaim,
   writeEditorRecord,
   writeHubStatus,
@@ -183,6 +184,13 @@ assert.strictEqual(claimant(readClaim(sock, 'w1:p1', home), me, 0, () => false),
 assert.strictEqual(claimant({ editor: 'Visual Studio Code', scheme: 'vscode', pid: 300, at: 1 }, me, 0, live), 'another Visual Studio Code window');
 assert.strictEqual(claimant({ editor: 'Visual Studio Code', scheme: 'vscode', pid: 100, at: 1 }, me, 0, live), undefined, 'our own claim');
 assert.strictEqual(claimant(undefined, me, 0, live), undefined);
+const winKey = windowKey('vscode\nfile:///storage/ws1');
+assert.match(winKey, /^[0-9a-f]{16}$/);
+writeClaim(sock, 'w1:p2', { editor: 'Visual Studio Code', scheme: 'vscode', pid: 300, at: 1, window: winKey }, home);
+assert.strictEqual(readClaim(sock, 'w1:p2', home)?.window, winKey);
+assert.strictEqual(claimant(readClaim(sock, 'w1:p2', home), { ...me, window: winKey }, 0, live), undefined, 'this window before a reload (old extension host still exiting)');
+assert.strictEqual(claimant(readClaim(sock, 'w1:p2', home), { ...me, window: windowKey('vscode\nfile:///storage/ws2') }, 0, live), 'another Visual Studio Code window');
+removeClaim(sock, 'w1:p2', 300, home);
 removeClaim(sock, 'w1:p1', 100, home);
 assert.ok(readClaim(sock, 'w1:p1', home), "another window's claim is kept");
 removeClaim(sock, 'w1:p1', 200, home);

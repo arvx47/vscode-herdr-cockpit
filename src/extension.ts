@@ -15,7 +15,7 @@ import { AttachTerminals, TerminalLocationSetting } from './terminals';
 import { TabAction } from './builtinTerminal';
 import { findFileRefs } from './termLinks';
 import { backoffDelay, binaryFound, diagnose, Diagnosis, DownReason, herdrEnv, resolveBinary, serverStatus, sessionOfSocket, startServer } from './connection';
-import { claimant, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, normPath, parseLink, removeHubStatus, removeWindowRecord, spacesWorkspaceFile, takePendingLink, WindowRecord, windowWithSpace, writeEditorRecord, writeHubStatus, writePendingLink, writeWindowRecord } from './hubFiles';
+import { claimant, editorCli, ensureHubWorkspace, hubDir, hubOpen, hubWorkspaceFile, HubStatus, isInsideRoots, legacyHubWorkspaceFile, OfferHubSetting, pruneClaims, readClaim, removeClaim, windowKey, writeClaim, shouldOfferHub, LINK_VERSION, LinkRequest, normPath, parseLink, removeHubStatus, removeWindowRecord, spacesWorkspaceFile, takePendingLink, WindowRecord, windowWithSpace, writeEditorRecord, writeHubStatus, writePendingLink, writeWindowRecord } from './hubFiles';
 import { HERDR_PROTOCOL } from './herdrTypes';
 import { reviewChanges } from './review';
 import { showHelp } from './help';
@@ -116,6 +116,11 @@ export function activate(ctx: vscode.ExtensionContext) {
     const logo = agentLogo(kind);
     return !logo ? undefined : logo.mono ? { light: logoUri(`${logo.file}-light`), dark: logoUri(`${logo.file}-dark`) } : logoUri(logo.file);
   };
+  /** This window across reloads, for pane claims. Windows without a workspace have no storage, so no key. */
+  let thisWindow: string | undefined;
+  if (ctx.storageUri) {
+    thisWindow = windowKey(`${vscode.env.uriScheme}\n${ctx.storageUri.toString()}`);
+  }
   const terms = new AttachTerminals(
     () => cfg().get<TerminalLocationSetting>('terminalLocation', 'editor'),
     (pane, startingAs) => {
@@ -135,9 +140,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       env: () => herdrEnvNow(),
       log: (line) => log.appendLine(line),
       // Herdr doesn't say who took a pane over: windows record the panes they take (hubFiles.ts, claims).
-      claim: (paneId) => writeClaim(socketPath(), paneId, { editor: vscode.env.appName, scheme: vscode.env.uriScheme, pid: process.pid, at: Date.now() }),
+      claim: (paneId) => writeClaim(socketPath(), paneId, { editor: vscode.env.appName, scheme: vscode.env.uriScheme, pid: process.pid, at: Date.now(), window: thisWindow }),
       unclaim: (paneId) => removeClaim(socketPath(), paneId, process.pid),
-      holder: (paneId, since) => claimant(readClaim(socketPath(), paneId), { scheme: vscode.env.uriScheme, pid: process.pid }, since),
+      holder: (paneId, since) => claimant(readClaim(socketPath(), paneId), { scheme: vscode.env.uriScheme, pid: process.pid, window: thisWindow }, since),
       onTakenOver: (paneId, who, expected) => !expected && tookOver(paneId, who),
       request: (method, params, timeoutMs) => client.request(method, params, timeoutMs),
     },
