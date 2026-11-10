@@ -139,6 +139,8 @@ export function activate(ctx: vscode.ExtensionContext) {
   status.show();
 
   let model: Model | undefined;
+  /** The folder each space had while it was open in this window: removing that folder means the space left. */
+  const spaceFolders = new Map<string, string>();
   /** Each pane's name at the last snapshot, to notice renames made in Herdr. */
   const paneNames = new Map<string, string>();
   setAgentNames(cfg().get<AgentNames>('agentNames', 'title'));
@@ -461,6 +463,11 @@ export function activate(ctx: vscode.ExtensionContext) {
   }
 
   function render() {
+    for (const sp of model?.spaces ?? []) {
+      if (sp.cwd && isMounted(sp)) {
+        spaceFolders.set(sp.id, normPath(sp.cwd));
+      }
+    }
     scheduleHubStatus();
     panel.update(
       buildViewState({
@@ -703,8 +710,18 @@ export function activate(ctx: vscode.ExtensionContext) {
     const folders = myFolders();
     return !!space.cwd && folders.length === 1 && folders[0] === normPath(space.cwd);
   };
-  /** The space is open in this window: its folder is one of ours, or we have tabs of it (its shell may have moved). */
-  const isOpenHere = (space: Space) => isMounted(space) || terms.spaces().includes(space.id);
+  /**
+   * The space is open in this window: its folder is one of ours, or we have tabs of it and the folder it had here
+   * is still ours (its shell may have moved). Once you remove that folder, the space isn't here anymore, even with
+   * its tabs still open, so the next pane you open from it asks again.
+   */
+  const isOpenHere = (space: Space) => {
+    if (isMounted(space)) {
+      return true;
+    }
+    const folder = spaceFolders.get(space.id);
+    return terms.spaces().includes(space.id) && !!folder && myFolders().includes(folder);
+  };
   const otherWindow = (space: Space) => {
     try {
       return windowWithSpace(space, { scheme: vscode.env.uriScheme, pid: process.pid, socket: socketPath() });
