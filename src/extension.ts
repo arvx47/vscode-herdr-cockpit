@@ -7,7 +7,7 @@ import { AgentStatus, attachOrder, Model, normalize, Pane, Space } from './model
 import type { PaneProcessInfoResult, SessionSnapshotResult } from './herdrTypes';
 import { HerdrPanel, PanelAction } from './panel';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './activity';
-import { buildViewState, paneName, ViewConnection } from './viewState';
+import { AgentNames, buildViewState, paneName, setAgentNames, ViewConnection } from './viewState';
 import { agentLogo } from './agentLogos';
 import { gitInfo } from './gitInfo';
 import { isMounted, mountSpace, unmountSpace } from './folders';
@@ -136,6 +136,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   let model: Model | undefined;
   /** Each pane's name at the last snapshot, to notice renames made in Herdr. */
   const paneNames = new Map<string, string>();
+  setAgentNames(cfg().get<AgentNames>('agentNames', 'title'));
   /** Set further down: write the Cockpit window's status file for the Herdr plugin (debounced). */
   let scheduleHubStatus = () => {};
   let eventsLive = false;
@@ -523,11 +524,9 @@ export function activate(ctx: vscode.ExtensionContext) {
   const redrawTimer = setInterval(() => model && render(), 15000);
 
   // ---------- applying a new snapshot ----------
-  function apply(next: Model) {
-    const prev = model;
-    model = next;
-    // Renamed in Herdr (TUI, CLI, sidebar): rename its tab here too, without focusing it.
-    for (const sp of next.spaces)
+  /** Renamed in Herdr (TUI, CLI, sidebar), a new terminal title or herdr.agentNames: rename its tab here too, without focusing it. */
+  function syncNames(m: Model) {
+    for (const sp of m.spaces)
       for (const tab of sp.tabs)
         for (const p of tab.panes) {
           const n = paneName(tab, p);
@@ -535,6 +534,12 @@ export function activate(ctx: vscode.ExtensionContext) {
           if (was !== undefined && was !== n && terms.has(p.id)) terms.rename(p.id, n);
           paneNames.set(p.id, n);
         }
+  }
+
+  function apply(next: Model) {
+    const prev = model;
+    model = next;
+    syncNames(next);
     renderStatus();
 
     // Notifications on agent transitions.
@@ -848,6 +853,12 @@ export function activate(ctx: vscode.ExtensionContext) {
     { dispose: () => { clearTimeout(pollTimer); clearInterval(redrawTimer); clearInterval(activityTimer); clearInterval(usageTimer); clearTimeout(renderTimer); stopWatchingSocket(); sub?.dispose(); } },
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration('herdr')) return;
+      if (e.affectsConfiguration('herdr.agentNames')) {
+        setAgentNames(cfg().get<AgentNames>('agentNames', 'title'));
+        if (model) {
+          syncNames(model);
+        }
+      }
       render();
       if (e.affectsConfiguration('herdr.showShellPanes')) pollActivity();
     }),

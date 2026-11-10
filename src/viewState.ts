@@ -153,10 +153,17 @@ const STATUS_LINE = /^[^\w\s]\s+\w+ for \d+[smh]\b/;
 
 /**
  * The pane's name in the sidebar and on its VS Code terminal tab (they must match).
- * Agents: Herdr's display name, else the agent kind ("Claude"). Shells: the pane label, else the
- * tab label, else "Tab N" for Herdr's numbered tabs. Only snapshot fields, so it doesn't change
- * under a terminal tab that VS Code can't rename.
+ * Agents: Herdr's display name or a name you chose, else the agent's terminal title (Claude Code's
+ * session name), else the agent kind ("Claude"). Shells: the pane label, else the tab label, else
+ * "Tab N" for Herdr's numbered tabs. Open tabs follow changes through `AttachTerminals.rename`.
  */
+export type AgentNames = 'title' | 'herdr';
+/** The `herdr.agentNames` setting: `title` lets an unnamed agent show its terminal title, `herdr` doesn't. */
+let agentNames: AgentNames = 'title';
+export function setAgentNames(mode: AgentNames): void {
+  agentNames = mode;
+}
+
 export function paneName(tab: Tab | undefined, p: Pane): string {
   if (p.isAgent) {
     const a = p.raw.agent;
@@ -166,6 +173,14 @@ export function paneName(tab: Tab | undefined, p: Pane): string {
     const generated = a?.name && kind ? new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-(\\d+))?$`).exec(a.name) : null;
     if (a?.name && !generated) return a.name;
     const title = kind ? agentTitle(kind) : p.label;
+    // Claude Code titles its terminal with the session name. Skip default titles ("Claude Code")
+    // and "kiro: ~/path"-style ones, which say nothing the space doesn't.
+    const session = p.terminalTitle?.trim();
+    const useless = !session || session === title || session === 'Claude Code' || /^[~/]/.test(session) ||
+      (!!kind && session.toLowerCase().startsWith(kind.toLowerCase() + ':'));
+    if (agentNames === 'title' && !useless) {
+      return session;
+    }
     return generated?.[1] ? `${title} ${generated[1]}` : title;
   }
   if (p.raw.pane?.label) return p.raw.pane.label;

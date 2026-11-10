@@ -526,6 +526,19 @@
           "default": true,
           "description": "Also open the space's plain shell panes when switching to it (needs herdr.autoAttachOnSwitch)."
         },
+        "herdr.agentNames": {
+          "type": "string",
+          "enum": [
+            "title",
+            "herdr"
+          ],
+          "enumDescriptions": [
+            "An agent you haven't named shows its terminal title, e.g. Claude Code's session name. Default titles (\"Claude Code\") and folder paths are skipped.",
+            "Only Herdr's names: \"Claude\", \"Claude 2\", or a name you chose."
+          ],
+          "default": "title",
+          "description": "How agent tabs and sidebar rows are named."
+        },
         "herdr.notifyOn": {
           "type": "array",
           "items": {

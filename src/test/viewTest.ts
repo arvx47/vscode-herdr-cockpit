@@ -6,7 +6,7 @@ import * as assert from 'assert';
 import { describeProcess, isShellProcess, summarizeAgent, summarizeShell } from '../activity';
 import * as vm from 'vm';
 import { attachOrder, normalize } from '../model';
-import { buildViewState, headline, orderByActivity, paneName } from '../viewState';
+import { buildViewState, headline, orderByActivity, paneName, setAgentNames } from '../viewState';
 import type { PaneActivity } from '../activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
 
@@ -87,7 +87,7 @@ assert.strictEqual(sp('w2').shells.find((x) => x.id === 'w2:p8')!.tab, 'Git Revi
 assert.strictEqual(sp('w5').shells.find((x) => x.id === 'w5:p3')!.name, 'Tab 3', 'numbered tab, even while running (tab names must stay stable)');
 const kiro = sp('w4').agents[0];
 assert.deepStrictEqual([kiro.name, kiro.detail, kiro.headline], ['Kiro', undefined, 'What would you like to do next?'], 'kiro: ~/path title is dropped');
-assert.strictEqual(sp('w2').agents[0].detail, 'Add pagination to the orders API');
+assert.deepStrictEqual([sp('w2').agents[0].name, sp('w2').agents[0].detail], ['Add pagination to the orders API', undefined], 'session title is the name, not repeated as detail');
 assert.strictEqual(sp('w6').mounted, true);
 assert.strictEqual(sp('w8').agents.length, 0);
 assert.deepStrictEqual(vs.attention, []);
@@ -105,12 +105,21 @@ assert.deepStrictEqual(attachOrder(mixed, false).map((p) => p.status), ['blocked
 console.log('✓ attach order');
 
 // ---- agent display names: generated names read as titles, chosen names as-is
-const named = (name: string | null, kind = 'claude', display: string | null = null) =>
-  paneName(undefined, { ...ka.agents[0], agentKind: kind, raw: { agent: { ...ka.agents[0].raw.agent!, agent: kind, name, display_agent: display } } });
+const named = (name: string | null, kind = 'claude', display: string | null = null, terminalTitle?: string) =>
+  paneName(undefined, { ...ka.agents[0], agentKind: kind, terminalTitle, raw: { agent: { ...ka.agents[0].raw.agent!, agent: kind, name, display_agent: display } } });
 assert.deepStrictEqual(
   [named(null), named('claude'), named('claude-2'), named('reviewer'), named(null, 'agy'), named('claude', 'claude', 'Claude (auth)')],
   ['Claude', 'Claude', 'Claude 2', 'reviewer', 'Antigravity', 'Claude (auth)'],
 );
+// The session name from the terminal title beats a generated name, not a chosen one; default and path titles don't count.
+assert.deepStrictEqual(
+  [named('claude-2', 'claude', null, 'Fix date formatting'), named('reviewer', 'claude', null, 'Fix date formatting'), named('claude-3', 'claude', null, 'Claude Code'), named('kiro', 'kiro', null, 'kiro: ~/code/dashboard'), named('claude', 'claude', null, '~/code/api')],
+  ['Fix date formatting', 'reviewer', 'Claude 3', 'Kiro', 'Claude'],
+);
+// herdr.agentNames = herdr: only Herdr's names.
+setAgentNames('herdr');
+assert.deepStrictEqual([named('claude-2', 'claude', null, 'Fix date formatting'), named('reviewer', 'claude', null, 'Fix date formatting')], ['Claude 2', 'reviewer']);
+setAgentNames('title');
 console.log('✓ agent display names');
 
 // ---- generated agent logos cover the agents in use
