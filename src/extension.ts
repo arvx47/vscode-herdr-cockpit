@@ -703,6 +703,8 @@ export function activate(ctx: vscode.ExtensionContext) {
     const folders = myFolders();
     return !!space.cwd && folders.length === 1 && folders[0] === normPath(space.cwd);
   };
+  /** The space is open in this window: its folder is one of ours, or we have tabs of it (its shell may have moved). */
+  const isOpenHere = (space: Space) => isMounted(space) || terms.spaces().includes(space.id);
   const otherWindow = (space: Space) => {
     try {
       return windowWithSpace(space, { scheme: vscode.env.uriScheme, pid: process.pid, socket: socketPath() });
@@ -755,7 +757,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
       const wsf = vscode.workspace.workspaceFile;
       const focus = wsf?.scheme === 'file' ? wsf.fsPath : folders.length === 1 && !wsf ? folders[0] : undefined;
-      const spaces = (model?.spaces ?? []).filter(isMounted).map((s) => s.label);
+      const spaces = (model?.spaces ?? []).filter(isOpenHere).map((s) => s.label);
       const rec: WindowRecord = { ...me, socket: socketPath(), folders, spaces, ...(focus && { focus }), updated: 0 };
       const key = JSON.stringify(rec);
       if (key === lastWindowRecord) return;
@@ -790,14 +792,24 @@ export function activate(ctx: vscode.ExtensionContext) {
    * Before switching to a space: 'here' = switch this window, 'add' = mount it next to this window's folders,
    * 'elsewhere' = another window has it or gets it (or you cancelled). `how` is an explicit choice (right-click).
    */
-  async function placeSpace(space: Space, pane?: Pane, how?: Placement): Promise<'here' | 'add' | 'elsewhere'> {
+  async function placeSpace(space: Space, pane?: Pane, how?: Placement): Promise<'here' | 'add' | 'stay' | 'elsewhere'> {
     if (how === 'window') {
       if (isOwnWindow(space)) return 'here';
       await openInWindow(space, pane);
       return 'elsewhere';
     }
     if (how === 'workspace') return 'add';
-    if (isMounted(space)) return windowMode() === 'folder' ? 'add' : 'here';
+    // 1. The space is open in this window: a pane opens here, next to the other spaces (nothing is swapped out).
+    if (isOpenHere(space)) {
+      if (pane && !isMounted(space)) {
+        return 'stay'; // its tabs are here but its shell moved to another folder: don't mount that one
+      }
+      if (pane || windowMode() === 'folder') {
+        return 'add';
+      }
+      return 'here'; // workspace mode, the space itself clicked: switch to it as before
+    }
+    // 2. Another window has it: open the pane there. 3. Otherwise ask (folder mode).
     const win = otherWindow(space);
     if (win) {
       await openInWindow(space, pane, win);
@@ -834,6 +846,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     } else {
       const where = await placeSpace(space, opts.pane, opts.place);
       if (where === 'elsewhere') return false;
+      if (where === 'stay') {
+        return true;
+      }
       if (where === 'add') opts = { ...opts, pin: true };
     }
     switching = true;
