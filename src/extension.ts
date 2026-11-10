@@ -1224,7 +1224,13 @@ export function activate(ctx: vscode.ExtensionContext) {
     }),
     vscode.commands.registerCommand('herdr.newSpace', () => newSpace(manage)),
     vscode.commands.registerCommand('herdr.newTab', async (t?: Target) => {
-      const sp = await spaceFrom(t);
+      // From the keyboard there's no target: use the space you're working in, like a "+" terminal.
+      let sp: Space | undefined;
+      if (t) {
+        sp = await spaceFrom(t);
+      } else {
+        sp = await targetSpace();
+      }
       if (sp) await newTab(manage, sp);
     }),
     vscode.commands.registerCommand('herdr.rename', async (t?: Target) => {

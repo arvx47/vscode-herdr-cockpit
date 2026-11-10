@@ -6,6 +6,7 @@ Versions up to 0.1.2 were published as **Herdr Hub** (`sriharirao.herdr-hub`).
 ## Unreleased
 
 - **Tabs come back with the window**: close a window (or quit the editor) and open it again, and it reopens the Herdr tabs it had, in the same order, for the panes that still exist in Herdr. Turn it off with `herdr.restoreTabs`.
+- **⌘T / Ctrl+T opens New Tab**: pick a shell or an agent for a new tab in the space you're working in (the space of the Herdr tab you're in, the one mounted space, or Herdr's focused space; it asks only when none applies). Works while connected to Herdr, and takes over VS Code's Go to Symbol in Workspace there.
 
 ## 0.2.6 (2026-10-19)
 
