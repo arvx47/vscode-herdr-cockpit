@@ -402,13 +402,9 @@
       ? `<div class="section-label">Needs you <span class="count">${state.attention.length}</span></div>
          <div class="attention">${state.attention.map((/** @type {any} */ a) => agentRow(a, { attention: where(a) })).join('')}</div>`
       : '';
-    const showAll = `<button class="link-btn" data-act="toggleSpaceFilter">Show all spaces</button>`;
     let spaces = `<div class="splash"><div class="big">${icon('layers')}</div><h2>No spaces yet</h2><p>A space is a folder with its agents and shells.</p><div class="btns"><button class="btn" data-act="newSpace">New space</button></div></div>`;
     if (state.spaces.length) {
       spaces = state.spaces.map(spaceCard).join('');
-      if (state.hiddenSpaces) {
-        spaces += `<div class="empty-note">${state.hiddenSpaces} more not open in this window · ${showAll}</div>`;
-      }
     } else if (state.hiddenSpaces) {
       let others = `${state.hiddenSpaces} spaces are`;
       if (state.hiddenSpaces === 1) {
@@ -416,12 +412,13 @@
       }
       spaces = `<div class="splash"><div class="big">${icon('filter')}</div><h2>No spaces in this window</h2><p>${others} open elsewhere or not open yet.</p><div class="btns"><button class="btn" data-act="toggleSpaceFilter">Show all spaces</button></div></div>`;
     }
-    // Pressed: only this window's spaces are listed. Click to show or hide the others.
-    let filterTitle = 'Showing all spaces: hide the ones not open in this window';
-    if (state.onlyHere) {
-      filterTitle = 'Showing only the spaces open in this window: show all';
+    // The list shows only this window's spaces by default; the link says what clicking does. Nothing hidden: no link.
+    let filterBtn = '';
+    if (state.onlyHere && state.hiddenSpaces) {
+      filterBtn = `<button class="link-btn label-link" data-act="toggleSpaceFilter" title="Also list the spaces that aren't open in this window">${icon('eye')}Show all (${state.hiddenSpaces} more)</button>`;
+    } else if (!state.onlyHere) {
+      filterBtn = `<button class="link-btn label-link" data-act="toggleSpaceFilter" title="List only the spaces open in this window">${icon('filter')}This window only</button>`;
     }
-    const filterBtn = `<button class="icon-btn label-btn" data-act="toggleSpaceFilter" aria-pressed="${!!state.onlyHere}" title="${esc(filterTitle)}" aria-label="${esc(filterTitle)}">${icon('filter')}</button>`;
     const spacesLabel = `<div class="section-label">Spaces${filterBtn}<button class="icon-btn label-btn" data-act="newSpace" title="New space: a folder or a new git worktree" aria-label="New space">${icon('add')}</button></div>`;
     const stale = state.connection && state.connection.kind === 'reconnecting';
     app.innerHTML = `${header()}${banner()}<div class="${stale ? 'stale' : ''}">${usageSection()}${attention}${spacesLabel}<div class="spaces">${spaces}</div></div>${versions()}`;

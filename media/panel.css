@@ -80,7 +80,8 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   color: var(--muted);
 }
 .section-label .label-btn { margin-left: auto; width: 20px; height: 20px; }
-.section-label .label-btn + .label-btn { margin-left: 2px; }
+.section-label .label-link { margin: 0 0 0 auto; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.section-label .label-link + .label-btn { margin-left: 2px; }
 .section-label .count {
   font-weight: 600; letter-spacing: 0;
   padding: 0 6px; border-radius: 999px;
