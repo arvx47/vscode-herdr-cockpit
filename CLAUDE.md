@@ -18,7 +18,7 @@ npm install
 npm run compile        # tsc -> out/
 npm test               # mock Herdr socket server tests + git info test (no VS Code needed)
 npm run package        # -> herdr-cockpit-<version>.vsix
-npm run install-local  # package + code --install-extension --force
+npm run install-local  # package + install in the default VS Code profile and every profile that has it
 ```
 Debug: open this folder in VS Code, press F5 (`.vscode/launch.json`) to get an Extension Development Host.
 After installing a new vsix: Command Palette → "Developer: Reload Window".

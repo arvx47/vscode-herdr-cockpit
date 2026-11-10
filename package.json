@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "Herdr Cockpit",
   "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.2.6",
+  "version": "0.2.9",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -887,7 +887,7 @@
     "pretest": "tsc -p .",
     "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/connectionTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/gitTest.js",
     "package": "npm run codicons && tsc -p . && vsce package",
-    "install-local": "npm run package && code --install-extension herdr-cockpit-$npm_package_version.vsix --force",
+    "install-local": "npm run package && node scripts/install-local.mjs",
     "lint": "eslint --no-warn-ignored src media/*.js scripts",
     "test:vscode": "npm run compile && node out/test/vscode/run.js"
   },
