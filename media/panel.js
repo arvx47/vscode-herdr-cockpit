@@ -6,8 +6,8 @@
   // @ts-ignore provided by VS Code
   const vscode = acquireVsCodeApi();
   const saved = vscode.getState() || {};
-  /** @type {{ open: Record<string, boolean>, shellsOpen: Record<string, boolean>, expanded: Record<string, boolean>, usageOpen?: boolean }} */
-  const ui = { open: saved.open || {}, shellsOpen: saved.shellsOpen || {}, expanded: saved.expanded || {}, usageOpen: saved.usageOpen };
+  /** @type {{ open: Record<string, boolean>, shellsOpen: Record<string, boolean>, expanded: Record<string, boolean>, usageOpen?: boolean, othersOpen?: boolean }} */
+  const ui = { open: saved.open || {}, shellsOpen: saved.shellsOpen || {}, expanded: saved.expanded || {}, usageOpen: saved.usageOpen, othersOpen: saved.othersOpen };
   const app = /** @type {HTMLElement} */ (document.getElementById('app'));
   /** @type {any} */
   let state;
@@ -73,7 +73,7 @@
         return `<${tag} class="stat st-${s}"${act}>${icon(STATUS[s].icon, s === 'working' ? 'spin' : '')}<span class="n">${t[s]}</span> ${s}</${tag}>`;
       })
       .join('');
-    const quiet = `<span class="stat quiet">${state.spaces.length + (state.hiddenSpaces || 0)} spaces · ${t.agents} agents</span>`;
+    const quiet = `<span class="stat quiet">${state.spaces.length} spaces · ${t.agents} agents</span>`;
     return `<div class="top">
       <div class="stats">${stats || quiet}</div>
       <div class="tools">
@@ -397,29 +397,28 @@
       app.innerHTML = disconnected() + versions();
       return;
     }
-    const where = (/** @type {any} */ a) => state.spaceLabels?.[a.spaceId];
+    const where = (/** @type {any} */ a) => state.spaces.find((/** @type {any} */ sp) => sp.id === a.spaceId)?.label;
     const attention = state.attention.length
       ? `<div class="section-label">Needs you <span class="count">${state.attention.length}</span></div>
          <div class="attention">${state.attention.map((/** @type {any} */ a) => agentRow(a, { attention: where(a) })).join('')}</div>`
       : '';
     let spaces = `<div class="splash"><div class="big">${icon('layers')}</div><h2>No spaces yet</h2><p>A space is a folder with its agents and shells.</p><div class="btns"><button class="btn" data-act="newSpace">New space</button></div></div>`;
-    if (state.spaces.length) {
-      spaces = state.spaces.map(spaceCard).join('');
-    } else if (state.hiddenSpaces) {
-      let others = `${state.hiddenSpaces} spaces are`;
-      if (state.hiddenSpaces === 1) {
-        others = '1 space is';
+    const here = state.spaces.filter((/** @type {any} */ sp) => sp.here);
+    const others = state.spaces.filter((/** @type {any} */ sp) => !sp.here);
+    if (here.length && others.length) {
+      // This window's spaces on top; the rest in a group that folds (folded until opened).
+      const open = ui.othersOpen ?? false;
+      spaces = `<div class="sub-label">This window</div>${here.map(spaceCard).join('')}
+        <div class="sub-label others-label" data-act="toggleOthers" tabindex="0" data-nav data-key="others" aria-expanded="${open}" title="Spaces open in another window or not open yet">
+          <span class="chev${open ? '' : ' closed'}">${icon('chevron-down')}</span>Other spaces <span class="count">${others.length}</span>
+        </div>`;
+      if (open) {
+        spaces += others.map(spaceCard).join('');
       }
-      spaces = `<div class="splash"><div class="big">${icon('filter')}</div><h2>No spaces in this window</h2><p>${others} open elsewhere or not open yet.</p><div class="btns"><button class="btn" data-act="toggleSpaceFilter">Show all spaces</button></div></div>`;
+    } else if (state.spaces.length) {
+      spaces = state.spaces.map(spaceCard).join('');
     }
-    // The list shows only this window's spaces by default; the link says what clicking does. Nothing hidden: no link.
-    let filterBtn = '';
-    if (state.onlyHere && state.hiddenSpaces) {
-      filterBtn = `<button class="link-btn label-link" data-act="toggleSpaceFilter" title="Also list the spaces that aren't open in this window">${icon('eye')}Show all (${state.hiddenSpaces} more)</button>`;
-    } else if (!state.onlyHere) {
-      filterBtn = `<button class="link-btn label-link" data-act="toggleSpaceFilter" title="List only the spaces open in this window">${icon('filter')}This window only</button>`;
-    }
-    const spacesLabel = `<div class="section-label">Spaces${filterBtn}<button class="icon-btn label-btn" data-act="newSpace" title="New space: a folder or a new git worktree" aria-label="New space">${icon('add')}</button></div>`;
+    const spacesLabel = `<div class="section-label">Spaces<button class="icon-btn label-btn" data-act="newSpace" title="New space: a folder or a new git worktree" aria-label="New space">${icon('add')}</button></div>`;
     const stale = state.connection && state.connection.kind === 'reconnecting';
     app.innerHTML = `${header()}${banner()}<div class="${stale ? 'stale' : ''}">${usageSection()}${attention}${spacesLabel}<div class="spaces">${spaces}</div></div>${versions()}`;
     for (const n of /** @type {NodeListOf<HTMLElement>} */ (app.querySelectorAll('.fill[data-pct]'))) n.style.width = `${n.dataset.pct}%`;
@@ -447,6 +446,11 @@
       persist();
       return render();
     }
+    if (act === 'toggleOthers') {
+      ui.othersOpen = !(ui.othersOpen ?? false);
+      persist();
+      return render();
+    }
     if (act === 'toggleUsage') {
       ui.usageOpen = !(ui.usageOpen ?? true);
       persist();
@@ -465,6 +469,9 @@
     if (act === 'switch' && spaceId) {
       // Focus on the chosen space: expand it, collapse the rest, bring it into view.
       for (const sp of state.spaces) ui.open[sp.id] = sp.id === spaceId;
+      if (!state.spaces.find((/** @type {any} */ sp) => sp.id === spaceId)?.here) {
+        ui.othersOpen = true;
+      }
       persist();
       render();
       app.querySelector(`.space[data-space="${CSS.escape(spaceId)}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });

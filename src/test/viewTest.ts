@@ -105,17 +105,11 @@ const inputs = {
   connection: { kind: 'connected' as const, expectedProtocol: 22 },
 };
 const all = buildViewState(inputs);
-const mine = buildViewState({ ...inputs, onlyHere: true, here: (s) => s.id === 'w2' || s.id === 'w6' });
-assert.deepStrictEqual(mine.spaces.map((x) => x.id).sort(), ['w2', 'w6']);
-assert.strictEqual(mine.onlyHere, true);
-assert.strictEqual(mine.hiddenSpaces, all.spaces.length - 2);
-assert.deepStrictEqual(mine.totals, all.totals, 'counters cover every space');
-assert.deepStrictEqual(mine.attention.map((a) => a.id), all.attention.map((a) => a.id), 'Needs you covers every space');
-assert.deepStrictEqual(Object.keys(mine.spaceLabels).sort(), all.spaces.map((x) => x.id).sort(), 'every label, listed or not');
-const none = buildViewState({ ...inputs, onlyHere: true, here: () => false });
-assert.deepStrictEqual([none.spaces.length, none.hiddenSpaces], [0, all.spaces.length], 'nothing here: an empty list that says how many are elsewhere');
-assert.deepStrictEqual([all.onlyHere, all.hiddenSpaces, all.spaces.length], [false, 0, model.spaces.length], 'filter off: every space');
-console.log("✓ space filter: this window's spaces, counters and Needs you still global");
+const mine = buildViewState({ ...inputs, here: (s) => s.id === 'w2' || s.id === 'w6' });
+assert.deepStrictEqual(mine.spaces.filter((x) => x.here).map((x) => x.id).sort(), ['w2', 'w6'], "this window's spaces are marked");
+assert.deepStrictEqual(mine.spaces.map((x) => x.id), all.spaces.map((x) => x.id), 'every space is still listed, in the same order');
+assert.ok(all.spaces.every((x) => !x.here), 'without here(), no space is marked');
+console.log("✓ spaces open in this window are marked for the This window group");
 
 // ---- switching to a space opens every pane: agents by urgency, then shells in tab order
 const ka = model.spaces.find((x) => x.id === 'w2')!;

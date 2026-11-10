@@ -80,8 +80,6 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   color: var(--muted);
 }
 .section-label .label-btn { margin-left: auto; width: 20px; height: 20px; }
-.section-label .label-link { margin: 0 0 0 auto; font-weight: 400; letter-spacing: 0; text-transform: none; }
-.section-label .label-link + .label-btn { margin-left: 2px; }
 .section-label .count {
   font-weight: 600; letter-spacing: 0;
   padding: 0 6px; border-radius: 999px;
@@ -323,6 +321,21 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .group.closed + .shells { display: none; }
 
 /* ---------- usage ---------- */
+/* "This window" / "Other spaces" inside the Spaces list */
+.sub-label {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px 2px;
+  font-size: 11px; color: var(--muted);
+}
+.sub-label .count {
+  font-weight: 600;
+  padding: 0 6px; border-radius: 999px;
+  background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
+}
+.others-label { cursor: pointer; margin-top: 4px; }
+.others-label:hover { color: var(--fg); }
+.others-label .chev { width: 16px; height: 16px; margin-left: -3px; }
+.others-label .chev.closed { transform: rotate(-90deg); }
 .usage-label { cursor: pointer; }
 .usage-label:hover { color: var(--fg); }
 .usage-label .chev { width: 16px; height: 16px; margin-left: -3px; }

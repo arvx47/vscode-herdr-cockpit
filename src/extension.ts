@@ -31,8 +31,6 @@ const REVEALED_KEY = 'herdr.hubViewRevealed';
 const THIS_WINDOW_KEY = 'herdr.useThisWindow';
 /** herdr.windowMode = folder: where this window opens a space it doesn't have, when you chose "always". */
 const PLACE_KEY = 'herdr.placeSpaces';
-/** The sidebar's space filter in this window ('window' or 'all'), once toggled here; else herdr.spaceFilter. */
-const SPACE_FILTER_KEY = 'herdr.spaceFilter';
 
 /** Where a space this window doesn't have goes: its own window, or added to this workspace. */
 type Placement = 'window' | 'workspace';
@@ -74,7 +72,6 @@ const PANEL_COMMANDS: Record<string, string> = {
   review: 'herdr.reviewChanges',
   attention: 'herdr.focusAttention',
   toggleShellPanes: 'herdr.toggleShellPanes',
-  toggleSpaceFilter: 'herdr.toggleSpaceFilter',
   openSettings: 'herdr.openSettings',
   openHelp: 'herdr.openHelp',
   setupClaudeUsage: 'herdr.setupClaudeUsage',
@@ -102,7 +99,6 @@ export function activate(ctx: vscode.ExtensionContext) {
   const stateSince = new Map<string, { status?: AgentStatus; at: number }>();
   const showShells = () => cfg().get<boolean>('showShellPanes', true);
   /** The sidebar lists only the spaces open in this window. */
-  const onlyHere = () => (ctx.workspaceState.get<string>(SPACE_FILTER_KEY) ?? cfg().get<string>('spaceFilter', 'window')) === 'window';
   const panel = new HerdrPanel(ctx.extensionUri, (a: PanelAction) => {
     const id = PANEL_COMMANDS[a.command];
     if (id) vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId } satisfies Target);
@@ -489,7 +485,6 @@ export function activate(ctx: vscode.ExtensionContext) {
         lastActive: (sp) => spaceActivity.get(sp.label),
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: conn.kind === 'connected' ? (conn.version ?? undefined) : undefined },
-        onlyHere: onlyHere(),
         here: (sp) => isOpenHere(sp),
       }),
     );
@@ -1165,14 +1160,6 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (hit) return reviewChanges(hit.pane.cwd ?? hit.space.cwd, hit.pane.label);
       const sp = await spaceFrom(t);
       if (sp) await reviewChanges(sp.cwd, sp.label);
-    }),
-    vscode.commands.registerCommand('herdr.toggleSpaceFilter', async () => {
-      let next = 'window';
-      if (onlyHere()) {
-        next = 'all';
-      }
-      await ctx.workspaceState.update(SPACE_FILTER_KEY, next);
-      render();
     }),
     vscode.commands.registerCommand('herdr.toggleShellPanes', () =>
       cfg().update('showShellPanes', !showShells(), vscode.ConfigurationTarget.Global),
