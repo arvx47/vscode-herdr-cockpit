@@ -496,6 +496,11 @@
           ],
           "description": "Where attached agent and shell terminals open."
         },
+        "herdr.revealInExplorer": {
+          "type": "boolean",
+          "default": true,
+          "description": "When switching to a space (also by opening one of its panes), reveal its folder in the Explorer, which shows the Explorer view. Turn off to keep the side bar where it is."
+        },
         "herdr.closeTerminalsOnSwitch": {
           "type": "boolean",
           "default": true,

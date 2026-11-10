@@ -707,7 +707,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     try {
       if (!(await ensureMounted(space, !!opts.pin))) return true;
       closeWelcome();
-      if (space.cwd) vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(space.cwd)).then(undefined, () => {});
+      if (space.cwd && cfg().get<boolean>('revealInExplorer', true)) {
+        vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(space.cwd)).then(undefined, () => {});
+      }
       if (!opts.fromHerdr) {
         await client.request('workspace.focus', { workspace_id: space.id }).catch((e) => log.appendLine(`workspace.focus: ${e.message}`));
         lastFocusedSpace = space.id; // don't let follow-mode bounce us
