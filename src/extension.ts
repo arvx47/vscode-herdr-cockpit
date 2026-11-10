@@ -786,16 +786,21 @@ export function activate(ctx: vscode.ExtensionContext) {
   }
 
   /** Ask where a space this window doesn't have goes; "Always…" is remembered for this window. */
-  async function askPlacement(space: Space): Promise<Placement | undefined> {
+  async function askPlacement(space: Space, pane?: Pane): Promise<Placement | undefined> {
     type Item = vscode.QuickPickItem & { place?: Placement; remember?: boolean };
-    const own: Item = { label: '$(window) Open in its own window', description: space.cwd, place: 'window' };
-    const add: Item = { label: '$(folder-library) Add to this workspace', description: 'next to the folders this window has', place: 'workspace' };
+    // Same words as the right-click menu: a pane is attached, a space is opened or added.
+    let own: Item = { label: "$(window) Attach in its space's window", description: space.cwd, place: 'window' };
+    let add: Item = { label: '$(terminal) Attach in this window', description: "adds the space's folder to this window", place: 'workspace' };
+    if (!pane) {
+      own = { label: '$(window) Open in its own window', description: space.cwd, place: 'window' };
+      add = { label: '$(folder-library) Add to this window', description: 'next to the folders this window has', place: 'workspace' };
+    }
     const items: Item[] = [
       own,
       add,
       { label: 'Remember for this window', kind: vscode.QuickPickItemKind.Separator },
-      { label: 'Always open spaces in their own window', place: 'window', remember: true },
-      { label: 'Always add spaces to this workspace', place: 'workspace', remember: true },
+      { label: "Always use the space's own window", place: 'window', remember: true },
+      { label: 'Always add spaces to this window', place: 'workspace', remember: true },
     ];
     const pick = await vscode.window.showQuickPick(items, {
       title: `"${space.label}" isn't open in this window`,
@@ -838,7 +843,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       await openInWindow(space, pane, undefined);
       return 'elsewhere';
     }
-    const choice = ctx.workspaceState.get<Placement>(PLACE_KEY) ?? (await askPlacement(space));
+    const choice = ctx.workspaceState.get<Placement>(PLACE_KEY) ?? (await askPlacement(space, pane));
     if (choice === 'workspace') return 'add';
     if (choice === 'window') await openInWindow(space, pane, undefined);
     return 'elsewhere';
@@ -986,6 +991,18 @@ export function activate(ctx: vscode.ExtensionContext) {
     return paneOf(t) ?? (space && { space });
   };
 
+  /** Right-click "Open/Attach in its own window" or "Add/Attach in this window": a space opens all its panes, a pane just itself. */
+  async function placeIn(t: Target | undefined, place: Placement) {
+    const it = itemOf(t);
+    if (!it) {
+      return;
+    }
+    const placed = await switchTo(it.space, { pane: it.pane, place, autoAttach: !it.pane });
+    if (placed && it.pane) {
+      await attachPane(it.space, it.pane);
+    }
+  }
+
   /** Where a "+" terminal goes: the space of the Herdr terminal you're in, the one mounted space, Herdr's focused space, or ask. */
   async function targetSpace(): Promise<Space | undefined> {
     if (!model) await refresh();
@@ -1073,14 +1090,11 @@ export function activate(ctx: vscode.ExtensionContext) {
       const sp = await spaceFrom(t);
       if (sp) await switchTo(sp, { pin: true });
     }),
-    vscode.commands.registerCommand('herdr.openInOwnWindow', async (t?: Target) => {
-      const it = itemOf(t);
-      if (it && (await switchTo(it.space, { pane: it.pane, place: 'window', autoAttach: !it.pane })) && it.pane) await attachPane(it.space, it.pane);
-    }),
-    vscode.commands.registerCommand('herdr.addToWorkspace', async (t?: Target) => {
-      const it = itemOf(t);
-      if (it && (await switchTo(it.space, { pane: it.pane, place: 'workspace', autoAttach: !it.pane })) && it.pane) await attachPane(it.space, it.pane);
-    }),
+    // Space cards say Open / Add, pane rows say Attach (a menu label is per command); both run placeIn.
+    vscode.commands.registerCommand('herdr.openInOwnWindow', (t?: Target) => placeIn(t, 'window')),
+    vscode.commands.registerCommand('herdr.addToWorkspace', (t?: Target) => placeIn(t, 'workspace')),
+    vscode.commands.registerCommand('herdr.attachInSpaceWindow', (t?: Target) => placeIn(t, 'window')),
+    vscode.commands.registerCommand('herdr.attachInThisWindow', (t?: Target) => placeIn(t, 'workspace')),
     vscode.commands.registerCommand('herdr.askWhereToOpenSpaces', async () => {
       await ctx.workspaceState.update(PLACE_KEY, undefined);
       vscode.window.setStatusBarMessage('Herdr: this window will ask where to open spaces again', 2500);
