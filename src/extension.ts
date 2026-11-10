@@ -33,6 +33,10 @@ const THIS_WINDOW_KEY = 'herdr.useThisWindow';
 const PLACE_KEY = 'herdr.placeSpaces';
 /** The panes this window had tabs for, to reopen them when the window opens again (herdr.restoreTabs). */
 const OPEN_TABS_KEY = 'herdr.openTabs';
+/** How long after reopening them to look for tabs VS Code failed to draw. */
+const UNDRAWN_CHECK_MS = 3000;
+/** How many times to look (and replace) before giving up. */
+const UNDRAWN_ATTEMPTS = 3;
 
 /** Where a space this window doesn't have goes: its own window, or added to this workspace. */
 type Placement = 'window' | 'workspace';
@@ -163,18 +167,57 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
     const saved = ctx.workspaceState.get<{ paneId: string; spaceId: string }[]>(OPEN_TABS_KEY, []);
     const panes = new Map((model?.spaces ?? []).flatMap((s) => s.tabs.flatMap((t) => t.panes.map((p) => [p.id, p] as const))));
-    let reopened = 0;
+    const reopened: Pane[] = [];
     for (const { paneId } of saved) {
       const pane = panes.get(paneId);
       if (pane && !terms.has(paneId)) {
         terms.attach(pane, { preserveFocus: true, polite: true });
-        reopened++;
+        reopened.push(pane);
       }
     }
     if (saved.length) {
-      log.appendLine(`reopened ${reopened} of ${saved.length} tabs from the last session`);
+      log.appendLine(`reopened ${reopened.length} of ${saved.length} tabs from the last session`);
     }
     saveOpenTabs();
+    if (reopened.length) {
+      setTimeout(() => redrawUndrawn(reopened, 1), UNDRAWN_CHECK_MS);
+    }
+  }
+  /**
+   * Tabs created while the window is still starting can come out broken, empty and named after their internal id
+   * ("e7ab…bf1"), in two ways:
+   * - VS Code can't show terminals in the editor area yet, so it opens the tab as a text file of the terminal's
+   *   `vscode-terminal:` address ("Unable to resolve resource vscode-terminal:/…" in its log). The terminal works,
+   *   but no tab shows it, and the API can't tell which terminal a broken tab was for: replace them all.
+   * - VS Code fails to draw the terminal ("A container element needs to be set with `attachToElement`…") and
+   *   never opens it.
+   * Look again after replacing, a few times, in case the window still wasn't ready.
+   */
+  function redrawUndrawn(panes: Pane[], attempt: number) {
+    const textTabs = vscode.window.tabGroups.all
+      .flatMap((g) => g.tabs)
+      .filter((t) => t.input instanceof vscode.TabInputText && t.input.uri.scheme === 'vscode-terminal');
+    let broken: Pane[];
+    if (textTabs.length) {
+      broken = panes.filter((p) => terms.has(p.id) || terms.undrawn(p.id));
+    } else {
+      broken = panes.filter((p) => terms.undrawn(p.id));
+    }
+    if (!broken.length && !textTabs.length) {
+      return;
+    }
+    log.appendLine(`replacing ${broken.length} tab(s) VS Code didn't draw (${textTabs.length} opened as text), attempt ${attempt}`);
+    void vscode.window.tabGroups.close(textTabs, true).then(
+      () => {
+        for (const p of broken) {
+          terms.replace(p, { preserveFocus: true, polite: true });
+        }
+        if (attempt < UNDRAWN_ATTEMPTS) {
+          setTimeout(() => redrawUndrawn(broken, attempt + 1), UNDRAWN_CHECK_MS);
+        }
+      },
+      (e) => log.appendLine(`closing broken tabs: ${e?.message ?? e}`),
+    );
   }
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = 'herdr.focusAttention';

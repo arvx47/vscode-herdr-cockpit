@@ -146,6 +146,11 @@ export class HerdrPty implements vscode.Pseudoterminal {
     this.namer.fire(name);
   }
 
+  /** VS Code opened the tab. One it failed to draw never is: it stays empty, named after its internal id. */
+  get opened(): boolean {
+    return !!this.screen;
+  }
+
   open(dims: vscode.TerminalDimensions | undefined): void {
     this.screen = new Screen(dims?.columns ?? 80, dims?.rows ?? 24);
     this.writer.fire(PRELUDE);

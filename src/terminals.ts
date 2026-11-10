@@ -133,6 +133,22 @@ export class AttachTerminals implements vscode.Disposable {
     return [...this.byPane].map(([paneId, e]) => ({ paneId, spaceId: e.spaceId }));
   }
 
+  /** The pane has a tab VS Code never opened (it failed to draw it). */
+  undrawn(paneId: string): boolean {
+    const pty = this.byPane.get(paneId)?.pty;
+    return !!pty && !pty.opened;
+  }
+
+  /** Close the pane's tab and open a new one. */
+  replace(pane: Pane, opts: { preserveFocus?: boolean; polite?: boolean } = {}): vscode.Terminal | undefined {
+    const e = this.byPane.get(pane.id);
+    if (e) {
+      this.byPane.delete(pane.id);
+      e.term.dispose();
+    }
+    return this.attach(pane, opts);
+  }
+
   /** Some tab lost its pane (Herdr stopped under it). */
   hasExited(): boolean {
     return [...this.byPane.values()].some((e) => !live(e));

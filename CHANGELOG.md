@@ -5,7 +5,7 @@ Versions up to 0.1.2 were published as **Herdr Hub** (`sriharirao.herdr-hub`).
 
 ## Unreleased
 
-- **Tabs come back with the window**: close a window (or quit the editor) and open it again, and it reopens the Herdr tabs it had, in the same order, for the panes that still exist in Herdr. Turn it off with `herdr.restoreTabs`.
+- **Tabs come back with the window**: close a window (or quit the editor) and open it again, and it reopens the Herdr tabs it had, in the same order, for the panes that still exist in Herdr. Turn it off with `herdr.restoreTabs`. A tab the editor breaks while the window is still starting (empty, named after a long id like `e7ab…bf1`) is closed and opened again a few seconds later.
 - **New Tab… from a keybinding**: run `herdr.newTab` from a shortcut or the Command Palette and it opens the shell/agent picker for the space you're working in (the space of the Herdr tab you're in, the one mounted space, or Herdr's focused space; it asks only when none applies). It has no default key; bind one in Keyboard Shortcuts, e.g. `{ "key": "cmd+t", "command": "herdr.newTab", "when": "herdr.connected" }`.
 
 ## 0.2.6 (2026-10-19)
