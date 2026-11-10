@@ -7,7 +7,7 @@ import { AgentStatus, attachOrder, Model, normalize, Pane, Space } from './model
 import type { PaneProcessInfoResult, SessionSnapshotResult } from './herdrTypes';
 import { HerdrPanel, PanelAction } from './panel';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './activity';
-import { AgentNames, buildViewState, paneName, setAgentNames, ViewConnection } from './viewState';
+import { AgentNames, agentPrefix, buildViewState, paneName, setAgentNames, tabName, ViewConnection } from './viewState';
 import { agentLogo } from './agentLogos';
 import { gitInfo } from './gitInfo';
 import { isMounted, mountSpace, PREFIX, unmountSpace } from './folders';
@@ -112,15 +112,16 @@ export function activate(ctx: vscode.ExtensionContext) {
     const logo = agentLogo(kind);
     return !logo ? undefined : logo.mono ? { light: logoUri(`${logo.file}-light`), dark: logoUri(`${logo.file}-dark`) } : logoUri(logo.file);
   };
+  /** Every Herdr tab shows the Herdr logo, so they don't look like the editor's own terminals. */
+  const herdrIcon = {
+    light: vscode.Uri.joinPath(ctx.extensionUri, 'media', 'herdr-light.svg'),
+    dark: vscode.Uri.joinPath(ctx.extensionUri, 'media', 'herdr-dark.svg'),
+  };
   const terms = new AttachTerminals(
     () => cfg().get<TerminalLocationSetting>('terminalLocation', 'editor'),
-    (pane, startingAs) => {
+    (pane) => {
       const tab = model?.spaces.flatMap((s) => s.tabs).find((t) => t.id === pane.tabId);
-      const kind = pane.isAgent ? pane.agentKind : startingAs;
-      return {
-        name: paneName(tab, pane),
-        iconPath: agentIcon(kind) ?? new vscode.ThemeIcon(pane.isAgent ? 'hubot' : 'terminal'),
-      };
+      return { name: tabName(tab, pane), iconPath: herdrIcon };
     },
     () => {
       scheduleRender();
@@ -338,7 +339,12 @@ export function activate(ctx: vscode.ExtensionContext) {
   /** You renamed a Herdr tab: rename the shell's pane, or the agent, in Herdr to match. */
   async function renamedTabByUser(paneId: string, name: string) {
     const hit = paneOf({ paneId });
-    const label = name.trim();
+    let label = name.trim();
+    // The tab shows "Claude: <name>"; Herdr gets only the name.
+    const prefix = hit ? agentPrefix(hit.pane) : undefined;
+    if (prefix && label.toLowerCase().startsWith(`${prefix.toLowerCase()}:`)) {
+      label = label.slice(prefix.length + 1).trim();
+    }
     if (!hit || !label || !isConnected()) return;
     if (hit.pane.isAgent) {
       // Herdr agent names are identifiers (they're also CLI targets).
@@ -585,7 +591,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     for (const sp of m.spaces)
       for (const tab of sp.tabs)
         for (const p of tab.panes) {
-          const n = paneName(tab, p);
+          const n = tabName(tab, p);
           const was = paneNames.get(p.id);
           if (was !== undefined && was !== n && terms.has(p.id)) terms.rename(p.id, n);
           paneNames.set(p.id, n);
@@ -1102,6 +1108,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(
     registerProfiles({
       ...manage,
+      herdrIcon,
       targetSpace,
       newPty: (target) => terms.newPty(target),
       adopt: (paneId, spaceId, term, pty, name) => terms.adopt(paneId, spaceId, term, pty, name),

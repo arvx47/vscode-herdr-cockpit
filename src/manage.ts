@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { AGENT_KINDS, AGENT_NAME, agentName, agentTitle, HerdrActions } from './herdrActions';
 import type { Pane, Space } from './model';
-import { paneName } from './viewState';
+import { paneName, tabName } from './viewState';
 
 /** What a new tab runs: a plain shell, or an agent kind ("claude", "codex", ...). */
 export interface What {
@@ -210,7 +210,7 @@ export async function rename(deps: ManageDeps, target: { space: Space; pane?: Pa
     else await deps.actions.renamePane(pane.id, name);
     // The VS Code tab carries the same name.
     const updated = await deps.findPane(pane.id);
-    if (updated) await deps.renameTerminal(pane.id, paneName(updated.space.tabs.find((t) => t.id === pane.tabId), updated.pane));
+    if (updated) await deps.renameTerminal(pane.id, tabName(updated.space.tabs.find((t) => t.id === pane.tabId), updated.pane));
   } catch (e) {
     vscode.window.showErrorMessage(`Herdr: ${err(e)}`);
   }

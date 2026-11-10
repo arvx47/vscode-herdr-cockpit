@@ -192,6 +192,27 @@ export function paneName(tab: Tab | undefined, p: Pane): string {
   return /^\d+$/.test(tab.label) ? `Tab ${tab.label}` : tab.label;
 }
 
+/**
+ * The VS Code tab's name: paneName(), with the agent in front ("Claude: Fix login") since every tab has the
+ * Herdr icon. Names that already start with it ("Claude", "Claude 2") stay as they are.
+ */
+export function tabName(tab: Tab | undefined, p: Pane): string {
+  const name = paneName(tab, p);
+  const prefix = agentPrefix(p);
+  if (!prefix || name.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return name;
+  }
+  return `${prefix}: ${name}`;
+}
+
+/** The agent's title for tabName() ("Claude"), undefined for shells and unknown agents. */
+export function agentPrefix(p: Pane): string | undefined {
+  if (!p.isAgent || !p.agentKind) {
+    return undefined;
+  }
+  return agentTitle(p.agentKind);
+}
+
 function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): PaneView {
   const kind = p.agentKind;
   const name = paneName(tab, p);
