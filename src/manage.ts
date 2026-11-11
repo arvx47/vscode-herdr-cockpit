@@ -137,6 +137,24 @@ export async function newTab(deps: ManageDeps, space: Space, what?: What) {
   }
 }
 
+/** Split a pane: a new pane next to it in the same Herdr tab, running a shell or an agent you pick. */
+export async function splitPane(deps: ManageDeps, space: Space, pane: Pane) {
+  if (!(await deps.ensureConnected())) return;
+  const name = paneName(space.tabs.find((t) => t.id === pane.tabId), pane);
+  const what = await pickWhat(deps, `Split ${name} (${space.label})`);
+  if (!what) return;
+  try {
+    const created = await deps.actions.splitPane({ target_pane_id: pane.id, direction: 'right', cwd: pane.cwd ?? space.cwd });
+    // "Shell with a name…" names the new pane (its Herdr tab keeps its name).
+    if (what.label) {
+      await deps.actions.renamePane(created.pane_id, what.label).catch(() => undefined);
+    }
+    await openCreated(deps, created.pane_id, what, space.label);
+  } catch (e) {
+    vscode.window.showErrorMessage(`Herdr: couldn't split ${name}: ${err(e)}`);
+  }
+}
+
 /** A Herdr tab you closed in this window, kept so herdr.reopenClosedTab can open it again. */
 export interface ClosedTab {
   paneId: string;

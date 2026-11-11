@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "Herdr Cockpit",
   "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.3.1",
+  "version": "0.3.4",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -253,6 +253,18 @@
         "category": "Herdr Cockpit"
       },
       {
+        "command": "herdr.terminal.newTab",
+        "title": "New Herdr Tab…",
+        "category": "Herdr Cockpit",
+        "icon": "$(add)"
+      },
+      {
+        "command": "herdr.terminal.splitPane",
+        "title": "Split Herdr Pane…",
+        "category": "Herdr Cockpit",
+        "icon": "$(split-horizontal)"
+      },
+      {
         "command": "herdr.terminal.find",
         "title": "Find in Terminal (Whole History)",
         "category": "Herdr Cockpit",
@@ -417,6 +429,14 @@
         {
           "command": "herdr.goToPane",
           "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.terminal.newTab",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.terminal.splitPane",
+          "when": "herdr.connected && herdr.terminalActive"
         }
       ],
       "webview/context": [
@@ -673,6 +693,11 @@
           ],
           "description": "Agent states that trigger a VS Code notification."
         },
+        "herdr.copyOnSelect": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "In a Herdr tab, copy text to the clipboard as soon as you select it (drag, double-click a word, triple-click a line), like the Herdr TUI. Off: the selection stays highlighted and **⌘C** (Ctrl+Shift+C on Windows and Linux) copies it."
+        },
         "herdr.notifyOnTakeover": {
           "type": "boolean",
           "default": false,
@@ -844,6 +869,15 @@
       }
     ],
     "keybindings": [
+      {
+        "key": "ctrl+shift+c",
+        "mac": "cmd+c",
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b]777;herdr-cockpit;copy\u0007"
+        },
+        "when": "terminalFocus && herdr.terminalActive && !terminalTextSelected"
+      },
       {
         "key": "ctrl+f",
         "mac": "cmd+f",

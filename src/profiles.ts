@@ -12,6 +12,7 @@ import { agentTitle } from './herdrActions';
 import { ManageDeps, pickAgent, startAgent } from './manage';
 import type { Space } from './model';
 import type { HerdrPty } from './builtinTerminal';
+import { herdrTabName } from './viewState';
 
 /** Must match package.json contributes.terminal.profiles. */
 export const SHELL_PROFILE_TITLE = 'Herdr Shell';
@@ -96,7 +97,7 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
         term = opened.get(pty);
       }
       opened.delete(pty);
-      if (term) deps.adopt(paneId, space.id, term, pty, name);
+      if (term) deps.adopt(paneId, space.id, term, pty, herdrTabName(name));
       if (kind) startAgent(deps, paneId, kind, space.label);
       return paneId;
     });

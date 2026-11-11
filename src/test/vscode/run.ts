@@ -74,6 +74,7 @@ async function main() {
         'herdr.socketPath': socket,
         'herdr.startServer': 'never',
         'herdr.closeTabInHerdr': 'ask',
+        'herdr.copyOnSelect': true, // the test's double-click copies
         'workbench.startupEditor': 'none',
         'security.workspace.trust.enabled': false,
         'extensions.autoUpdate': false,

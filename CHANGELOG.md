@@ -5,6 +5,10 @@ Versions up to 0.1.2 were published as **Herdr Hub** (`sriharirao.herdr-hub`).
 
 ## Unreleased
 
+- **A done agent stops being "done" when you open its tab yourself** (tab bar, keyboard), not only when you click it in the sidebar: Herdr is told you've seen it, so its green highlight goes away.
+- **New Herdr Tab…** and **Split Herdr Pane…** in the Command Palette: a new tab in the space of the Herdr tab you're in, or a new pane next to it in the same Herdr tab, running a shell or an agent.
+- **Selecting no longer copies by default**: in a Herdr tab the selection stays highlighted and **⌘C** (Ctrl+Shift+C) copies it. Turn on `herdr.copyOnSelect` to copy as soon as you select, like the Herdr TUI.
+- **Every Herdr tab's name starts with `Herdr:`**, shells too (`Herdr: Tab 2`), not only agents, so they stand apart from the editor's own terminals. Renaming a tab still sends Herdr only the part after `Herdr:`.
 - **New defaults**: closing a tab only detaches it (`herdr.closeTabInHerdr` = `never`), follow mode is off (`herdr.followMode`), the **Needs you** section is off (`herdr.showNeedsYou`), and there's no notification when another client takes a pane (`herdr.notifyOnTakeover`). Set them back in Settings if you want them on.
 
 ## 0.3.0 (2026-11-10)

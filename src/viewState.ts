@@ -199,16 +199,17 @@ export function paneName(tab: Tab | undefined, p: Pane): string {
   return /^\d+$/.test(tab.label) ? `Tab ${tab.label}` : tab.label;
 }
 
-/** What agent tabs' names start with, so they stand apart from the editor's own terminals. */
-export const AGENT_TAB_PREFIX = 'Herdr:';
+/** What every Herdr tab's name starts with, so they stand apart from the editor's own terminals. */
+export const TAB_PREFIX = 'Herdr:';
 
-/** The VS Code tab's name: paneName(), with "Herdr: " in front for agents ("Herdr: Fix login"). */
+/** A Herdr tab's name from a pane's name: "Herdr: Fix login", "Herdr: Tab 2". */
+export function herdrTabName(name: string): string {
+  return `${TAB_PREFIX} ${name}`;
+}
+
+/** The VS Code tab's name: paneName() with "Herdr: " in front. */
 export function tabName(tab: Tab | undefined, p: Pane): string {
-  const name = paneName(tab, p);
-  if (!p.isAgent) {
-    return name;
-  }
-  return `${AGENT_TAB_PREFIX} ${name}`;
+  return herdrTabName(paneName(tab, p));
 }
 
 function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): PaneView {

@@ -9,7 +9,7 @@ import { HerdrPanel, PanelAction } from './panel';
 import { HerdrSync } from './herdrSync';
 import { decidePlacement, followsInto, Placement, WindowMode } from './placement';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './activity';
-import { AGENT_TAB_PREFIX, AgentNames, buildViewState, paneName, setAgentNames, tabName, ViewConnection } from './viewState';
+import { AgentNames, buildViewState, paneName, setAgentNames, TAB_PREFIX, tabName, ViewConnection } from './viewState';
 import { agentLogo } from './agentLogos';
 import { gitInfo } from './gitInfo';
 import { isMounted, mountSpace, PREFIX, unmountSpace } from './folders';
@@ -22,7 +22,7 @@ import { HERDR_PROTOCOL } from './herdrTypes';
 import { reviewChanges } from './review';
 import { showHelp } from './help';
 import { agentSlug, HerdrActions } from './herdrActions';
-import { ClosedTab, closedTab, closeInHerdr, ManageDeps, newSpace, newTab, rename, reopenTab } from './manage';
+import { ClosedTab, closedTab, closeInHerdr, ManageDeps, newSpace, newTab, rename, reopenTab, splitPane } from './manage';
 import { registerProfiles, SHELL_PROFILE_TITLE } from './profiles';
 import { codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './usage';
 import { setUpClaudeUsage } from './usageSetup';
@@ -143,6 +143,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       holder: (paneId, since) => claimant(readClaim(socketPath(), paneId), { scheme: vscode.env.uriScheme, pid: process.pid, window: thisWindow }, since),
       onTakenOver: (paneId, who, expected) => !expected && tookOver(paneId, who),
       request: (method, params, timeoutMs) => client.request(method, params, timeoutMs),
+      copyOnSelect: () => cfg().get<boolean>('copyOnSelect', false),
     },
     (paneId) => void closedTabByUser(paneId).catch(logError('close in Herdr')),
     (paneId, name) => void renamedTabByUser(paneId, name).catch(logError('rename in Herdr')),
@@ -391,9 +392,9 @@ export function activate(ctx: vscode.ExtensionContext) {
   async function renamedTabByUser(paneId: string, name: string) {
     const hit = paneOf({ paneId });
     let label = name.trim();
-    // An agent's tab shows "Herdr: <name>"; Herdr gets only the name.
-    if (hit?.pane.isAgent && label.toLowerCase().startsWith(AGENT_TAB_PREFIX.toLowerCase())) {
-      label = label.slice(AGENT_TAB_PREFIX.length).trim();
+    // The tab shows "Herdr: <name>"; Herdr gets only the name.
+    if (label.toLowerCase().startsWith(TAB_PREFIX.toLowerCase())) {
+      label = label.slice(TAB_PREFIX.length).trim();
     }
     if (!hit || !label || !isConnected()) return;
     if (hit.pane.isAgent) {
@@ -1447,6 +1448,21 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
       if (sp) await newTab(manage, sp);
     }),
+    // From the Command Palette: they act on the Herdr tab you're in.
+    vscode.commands.registerCommand('herdr.terminal.newTab', async () => {
+      const sp = await targetSpace();
+      if (sp) {
+        await newTab(manage, sp);
+      }
+    }),
+    vscode.commands.registerCommand('herdr.terminal.splitPane', async () => {
+      const hit = paneOf({ paneId: terms.paneOf(vscode.window.activeTerminal)?.paneId });
+      if (!hit) {
+        vscode.window.showInformationMessage('Herdr: click into a Herdr terminal tab first, then split it.');
+        return;
+      }
+      await splitPane(manage, hit.space, hit.pane);
+    }),
     vscode.commands.registerCommand('herdr.reopenClosedTab', async () => {
       const last = closedHistory.pop();
       if (last === undefined || last === 'editor') {
@@ -1618,6 +1634,20 @@ export function activate(ctx: vscode.ExtensionContext) {
   // ---------- the built-in tabs' own commands: find, scrolling the history, output, file links ----------
 
   /** `herdr.terminalActive`: the focused terminal is a Herdr tab (its keybindings apply). */
+  /**
+   * "done" stays in Herdr until it sees you look at the agent: focusing it there (or clicking it in the sidebar,
+   * which sends agent.focus) makes it idle. Going to its tab yourself (tab bar, keyboard) does the same.
+   */
+  function markSeen(term: vscode.Terminal | undefined) {
+    const hit = paneOf({ paneId: terms.paneOf(term)?.paneId });
+    if (!hit?.pane.isAgent || hit.pane.status !== 'done' || !vscode.window.state.focused || !isConnected()) {
+      return;
+    }
+    client
+      .request('agent.focus', { target: hit.pane.id })
+      .then(() => kick())
+      .catch(logError('agent.focus'));
+  }
   const terminalContext = () => void vscode.commands.executeCommand('setContext', 'herdr.terminalActive', !!terms.ptyOf(vscode.window.activeTerminal));
   const tabAction = (a: TabAction) => () => {
     const pty = terms.ptyOf(vscode.window.activeTerminal);
@@ -1629,6 +1659,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   type FileLink = vscode.TerminalLink & { uri: vscode.Uri; line?: number; col?: number };
   ctx.subscriptions.push(
     vscode.window.onDidChangeActiveTerminal(terminalContext),
+    vscode.window.onDidChangeActiveTerminal((t) => markSeen(t)),
     vscode.window.onDidOpenTerminal(() => setTimeout(terminalContext, 200)), // adopted a moment after it opens
     vscode.commands.registerCommand('herdr.terminal.find', tabAction('find')),
     vscode.commands.registerCommand('herdr.terminal.findNext', tabAction('find-next')),

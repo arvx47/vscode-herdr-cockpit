@@ -34,6 +34,8 @@ export interface BuiltinDeps {
   onTakenOver?(paneId: string, who: string | undefined, expected: boolean): void;
   /** A Herdr socket request (find and Open Output read the pane's history). */
   request?<T = any>(method: string, params: object, timeoutMs?: number): Promise<T>;
+  /** Copy a selection as soon as it's made (herdr.copyOnSelect); off, ⌘C / Ctrl+Shift+C copies it. */
+  copyOnSelect?(): boolean;
 }
 
 /**
@@ -41,7 +43,7 @@ export interface BuiltinDeps {
  * `workbench.action.terminal.sendSequence`, the one way to get a key past xterm.js (which keeps Shift+PageUp for
  * itself) and to the tab. Programs never see it.
  */
-export const TAB_ACTIONS = ['find', 'find-next', 'find-previous', 'page-up', 'page-down', 'top', 'bottom', 'output'] as const;
+export const TAB_ACTIONS = ['find', 'find-next', 'find-previous', 'page-up', 'page-down', 'top', 'bottom', 'output', 'copy'] as const;
 export type TabAction = (typeof TAB_ACTIONS)[number];
 // eslint-disable-next-line no-control-regex -- the sequence is made of control characters
 const ACTION_SEQ = /\x1b\]777;herdr-cockpit;([a-z-]+)\x07/g;
@@ -255,7 +257,7 @@ export class HerdrPty implements vscode.Pseudoterminal {
         else if (t.motion && this.press) this.press.moved = true;
         const r = screen.mouse(t);
         if (r.repaint.length) this.writer.fire(screen.paint(r.repaint));
-        if (r.copy) this.copied(r.copy);
+        if (r.copy) this.selectionMade(r.copy);
         this.autoScroll(screen);
         // Option+click on the line being typed moves the cursor there.
         const move = t.release && t.alt && this.press && !this.press.moved && !r.copy ? screen.moveKeys(t.x, t.y) : undefined;
@@ -332,6 +334,16 @@ export class HerdrPty implements vscode.Pseudoterminal {
   /** Run one of the tab's actions (a keybinding or a command). */
   action(a: TabAction) {
     const screen = this.screen;
+    if (a === 'copy') {
+      // Works read-only and after the stream ended too: the selection is on our copy of the screen.
+      if (screen?.hasSelection()) {
+        const text = screen.selectionText();
+        if (text) {
+          this.copied(text);
+        }
+      }
+      return;
+    }
     if (!screen || !this.stream || this.ended) return;
     switch (a) {
       case 'find':
@@ -427,7 +439,7 @@ export class HerdrPty implements vscode.Pseudoterminal {
         } else if (t.button === 0) {
           const r = screen.mouse(t);
           if (r.repaint.length) this.writer.fire(screen.paint(r.repaint));
-          if (r.copy) this.copied(r.copy);
+          if (r.copy) this.selectionMade(r.copy);
           this.autoScroll(screen);
         }
         continue;
@@ -664,7 +676,14 @@ export class HerdrPty implements vscode.Pseudoterminal {
       if (t.button !== 0 || t.wheel) continue; // the wheel scrolls Herdr's scrollback: only a controller can
       const r = screen.mouse(t);
       if (r.repaint.length) this.writer.fire(screen.paint(r.repaint) + (r.repaint.includes(screen.rows - 1) ? this.note() : ''));
-      if (r.copy) this.copied(r.copy);
+      if (r.copy) this.selectionMade(r.copy);
+    }
+  }
+
+  /** A selection was finished (a drag, a double or triple click): copy it, unless herdr.copyOnSelect is off. */
+  private selectionMade(text: string) {
+    if (this.deps.copyOnSelect?.() ?? false) {
+      this.copied(text);
     }
   }
 
