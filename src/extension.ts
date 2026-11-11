@@ -150,9 +150,11 @@ export function activate(ctx: vscode.ExtensionContext) {
   );
   /** Restored (or nothing to restore): until then, the saved list is the one from the last session. */
   let tabsRestored = false;
+  /** Tabs are still being reopened, redrawn and put back in order: what the tab bar shows isn't their order yet. */
+  let arranging = false;
   /** Remember this window's tabs. Not while it closes: those tabs go with the window and should come back. */
   function saveOpenTabs() {
-    if (!tabsRestored || terms.shuttingDown) {
+    if (!tabsRestored || arranging || terms.shuttingDown) {
       return;
     }
     void ctx.workspaceState.update(OPEN_TABS_KEY, terms.panes());
@@ -184,7 +186,21 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
     saveOpenTabs();
     if (reopened.length) {
-      setTimeout(() => redrawUndrawn(reopened, 1), UNDRAWN_CHECK_MS);
+      arranging = true;
+      const order = saved.map((s) => s.paneId);
+      setTimeout(
+        () =>
+          redrawUndrawn(reopened, 1, () => {
+            void terms
+              .arrange(order)
+              .catch(logError('ordering reopened tabs'))
+              .finally(() => {
+                arranging = false;
+                saveOpenTabs();
+              });
+          }),
+        UNDRAWN_CHECK_MS,
+      );
     }
   }
   /**
@@ -195,9 +211,9 @@ export function activate(ctx: vscode.ExtensionContext) {
    *   but no tab shows it, and the API can't tell which terminal a broken tab was for: replace them all.
    * - VS Code fails to draw the terminal ("A container element needs to be set with `attachToElement`…") and
    *   never opens it.
-   * Look again after replacing, a few times, in case the window still wasn't ready.
+   * Look again after replacing, a few times, in case the window still wasn't ready. Then `done`.
    */
-  function redrawUndrawn(panes: Pane[], attempt: number) {
+  function redrawUndrawn(panes: Pane[], attempt: number, done: () => void) {
     const textTabs = vscode.window.tabGroups.all
       .flatMap((g) => g.tabs)
       .filter((t) => t.input instanceof vscode.TabInputText && t.input.uri.scheme === 'vscode-terminal');
@@ -208,6 +224,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       broken = panes.filter((p) => terms.undrawn(p.id));
     }
     if (!broken.length && !textTabs.length) {
+      done();
       return;
     }
     log.appendLine(`replacing ${broken.length} tab(s) VS Code didn't draw (${textTabs.length} opened as text), attempt ${attempt}`);
@@ -217,10 +234,15 @@ export function activate(ctx: vscode.ExtensionContext) {
           terms.replace(p, { preserveFocus: true, polite: true });
         }
         if (attempt < UNDRAWN_ATTEMPTS) {
-          setTimeout(() => redrawUndrawn(broken, attempt + 1), UNDRAWN_CHECK_MS);
+          setTimeout(() => redrawUndrawn(broken, attempt + 1, done), UNDRAWN_CHECK_MS);
+        } else {
+          done();
         }
       },
-      logError('closing broken tabs'),
+      (e) => {
+        logError('closing broken tabs')(e);
+        done();
+      },
     );
   }
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
@@ -384,6 +406,11 @@ export function activate(ctx: vscode.ExtensionContext) {
         if (reopenableEditor(tab, e.opened)) {
           rememberClosed('editor');
         }
+      }
+      // A tab dragged to another place (or opened) changes the order to reopen them in. Not on closes: while the
+      // window closes, its tabs leave the tab bar before their terminals are gone.
+      if (!e.closed.length && terms.count()) {
+        saveOpenTabs();
       }
     }),
   );

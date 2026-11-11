@@ -128,9 +128,72 @@ export class AttachTerminals implements vscode.Disposable {
     return [...new Set([...this.byPane.values()].map((e) => e.spaceId))];
   }
 
-  /** Panes with a tab open (live or not), in the order the tabs were opened, e.g. to reopen them with the window. */
+  /**
+   * Panes with a tab open (live or not), e.g. to reopen them with the window: editor-area tabs in the order they
+   * sit in the tab bar (so drags count), then the rest (panel tabs, tabs not drawn yet) in the order they opened.
+   */
   panes(): { paneId: string; spaceId: string }[] {
-    return [...this.byPane].map(([paneId, e]) => ({ paneId, spaceId: e.spaceId }));
+    const placed = this.placedTabs().map((t) => t.paneId);
+    const rest = [...this.byPane.keys()].filter((id) => !placed.includes(id));
+    return [...placed, ...rest].map((paneId) => ({ paneId, spaceId: this.byPane.get(paneId)!.spaceId }));
+  }
+
+  /**
+   * Our editor-area tabs as the tab bar shows them, group by group. The tab API doesn't say which terminal a tab
+   * is, so tabs are matched by name; tabs with the same name are matched in the order they opened.
+   */
+  private placedTabs(): { paneId: string; tab: vscode.Tab; column: vscode.ViewColumn; index: number }[] {
+    const unmatched = [...this.byPane].filter(([, e]) => live(e));
+    const placed: { paneId: string; tab: vscode.Tab; column: vscode.ViewColumn; index: number }[] = [];
+    for (const group of vscode.window.tabGroups.all) {
+      group.tabs.forEach((tab, index) => {
+        if (!(tab.input instanceof vscode.TabInputTerminal)) {
+          return;
+        }
+        const i = unmatched.findIndex(([, e]) => e.term.name === tab.label);
+        if (i >= 0) {
+          placed.push({ paneId: unmatched[i][0], tab, column: group.viewColumn, index });
+          unmatched.splice(i, 1);
+        }
+      });
+    }
+    return placed;
+  }
+
+  /**
+   * Put our tabs back in `order` (pane ids), within each editor group, in the slots they already take, e.g. after
+   * reopening them with the window: tabs VS Code failed to draw are opened again last. Moving a tab means
+   * activating it, so the tab that was active before is shown again at the end.
+   */
+  async arrange(order: readonly string[]) {
+    const rank = new Map(order.map((paneId, i) => [paneId, i] as const));
+    const rankOf = (paneId: string) => rank.get(paneId) ?? order.length;
+    const before = vscode.window.tabGroups.activeTabGroup.activeTab;
+    const beforePane = this.placedTabs().find((t) => t.tab === before)?.paneId;
+    let moved = false;
+    for (const column of new Set(this.placedTabs().map((t) => t.column))) {
+      // One move at a time, read again from the tab bar after each; never more moves than tabs.
+      for (let attempt = 0; attempt < this.byPane.size; attempt++) {
+        const here = this.placedTabs().filter((t) => t.column === column);
+        const slots = here.map((t) => t.index);
+        const wanted = [...here].sort((a, b) => rankOf(a.paneId) - rankOf(b.paneId));
+        const k = wanted.findIndex((t, i) => t.index !== slots[i]);
+        if (k < 0) {
+          break;
+        }
+        this.byPane.get(wanted[k].paneId)?.term.show(false);
+        await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: slots[k] + 1 });
+        moved = true;
+      }
+    }
+    if (!moved) {
+      return;
+    }
+    if (beforePane) {
+      this.byPane.get(beforePane)?.term.show(false);
+    } else if (before?.input instanceof vscode.TabInputText) {
+      await vscode.window.showTextDocument(before.input.uri, { viewColumn: before.group.viewColumn });
+    }
   }
 
   /** The pane has a tab VS Code never opened (it failed to draw it). */
@@ -139,14 +202,24 @@ export class AttachTerminals implements vscode.Disposable {
     return !!pty && !pty.opened;
   }
 
-  /** Close the pane's tab and open a new one. */
+  /** Close the pane's tab and open a new one, keeping its place in the opening order. */
   replace(pane: Pane, opts: { preserveFocus?: boolean; polite?: boolean } = {}): vscode.Terminal | undefined {
+    const order = [...this.byPane.keys()];
     const e = this.byPane.get(pane.id);
     if (e) {
       this.byPane.delete(pane.id);
       e.term.dispose();
     }
-    return this.attach(pane, opts);
+    const term = this.attach(pane, opts);
+    const at = (paneId: string) => {
+      const i = order.indexOf(paneId);
+      if (i < 0) {
+        return order.length;
+      }
+      return i;
+    };
+    this.byPane = new Map([...this.byPane].sort(([a], [b]) => at(a) - at(b)));
+    return term;
   }
 
   /** Some tab lost its pane (Herdr stopped under it). */

@@ -95,6 +95,16 @@ async function steps(): Promise<void> {
   await until('the "+" tab is tracked', () => hubStatus().tabs === 2);
   step('"+": Herdr tab created, built-in tab, tracked');
 
+  // 2b. Showing a Herdr tab and moving the active editor moves that tab: how reopened tabs are put back in order.
+  const tabLabels = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputTerminal).map((t) => t.label);
+  assert.notStrictEqual(first.name, plus.name, 'the two tabs have different names');
+  for (const term of [plus, first]) {
+    term.show(false);
+    await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: 1 });
+    await until(`"${term.name}" moved first`, () => tabLabels()[0] === term.name, 5000);
+  }
+  step('a Herdr tab moves to a given position');
+
   // 3. Selecting in it copies (double-click a word).
   const pty: any = (plus.creationOptions as vscode.ExtensionTerminalOptions).pty;
   pty.handleInput('echo SELECT-ME-42\r');
@@ -222,7 +232,7 @@ async function steps(): Promise<void> {
   // 3c. A pane renamed in Herdr renames its tab, without taking focus.
   const firstPane = panesOf(S1).find((id) => id !== plusPane)!;
   herdr('pane', 'rename', firstPane, 'from herdr');
-  await until('the tab renamed (Herdr sends no rename event: the 5s poll picks it up)', () => first.name === 'from herdr', 12_000);
+  await until('the tab renamed (Herdr sends no rename event: the 5s poll picks it up)', () => first.name === 'Herdr: from herdr', 12_000);
   assert.strictEqual(vscode.window.activeTerminal, plus, 'focus stayed on the active tab');
   step('a pane renamed in Herdr renamed its tab, focus unchanged');
 
@@ -239,7 +249,7 @@ async function steps(): Promise<void> {
   step('Split Terminal split the pane in Herdr');
 
   // 4. Closing the tab yourself (its X: close that exact tab) closes the idle shell in Herdr.
-  const plusTab = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((t) => t.input instanceof vscode.TabInputTerminal && t.label === 'logs here');
+  const plusTab = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((t) => t.input instanceof vscode.TabInputTerminal && t.label === 'Herdr: logs here');
   assert.ok(plusTab, 'the tab is in the editor area');
   await vscode.window.tabGroups.close(plusTab);
   await until('the tab closed', () => !ours().includes(plus));
