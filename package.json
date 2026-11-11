@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "Herdr Cockpit",
   "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -567,7 +567,7 @@
         },
         "herdr.followMode": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "When you switch spaces in Herdr (e.g. in your Mac terminal), this window follows. Only active in a Cockpit window or after you've switched a space from VS Code."
         },
         "herdr.terminalLocation": {
@@ -620,7 +620,7 @@
             "always",
             "never"
           ],
-          "default": "ask",
+          "default": "never",
           "enumDescriptions": [
             "Close idle shells in Herdr right away; ask first for an agent, a shell running something, or a space's last tab.",
             "Close in Herdr without asking (still asks for a space's last tab, which closes the space).",
@@ -675,7 +675,7 @@
         },
         "herdr.notifyOnTakeover": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Notify when another client (a Cockpit window in another editor, or `herdr attach`) takes over a pane this window shows. The tab keeps showing the pane read-only; type in it to take it back."
         },
         "herdr.agents": {
@@ -704,7 +704,7 @@
         },
         "herdr.showNeedsYou": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "markdownDescription": "Show the **Needs you** section at the top of the sidebar: blocked and done agents of the spaces open in this window (or with a tab open here). Off: no section; those agents are highlighted in their space instead."
         },
         "herdr.spaceOrder": {

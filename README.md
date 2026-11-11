@@ -27,13 +27,13 @@ Works in **VS Code, Cursor, Kiro and Positron** on **macOS and Linux**. A commun
 
 ## Features
 
-- **Spaces & Agents sidebar**, live from Herdr: each space is a card with its branch and changes, with this window's spaces on top and the rest under a folded **Other spaces**; agents show a colored status (working, blocked, done, idle), time in state and a one-line summary of what they last said. **Needs you** lists this window's blocked and done agents with a preview of their screen (or turn it off with `herdr.showNeedsYou` and they're highlighted in their space). **Shells** show what is running, or the last command and its output.
+- **Spaces & Agents sidebar**, live from Herdr: each space is a card with its branch and changes, with this window's spaces on top and the rest under a folded **Other spaces**; agents show a colored status (working, blocked, done, idle), time in state and a one-line summary of what they last said. **Needs you** lists this window's blocked and done agents with a preview of their screen (turn it on with `herdr.showNeedsYou`; off, the default, they're highlighted in their space). **Shells** show what is running, or the last command and its output.
 - **Open panes and spaces**: click an agent or shell to open it as a tab, or right-click a space and pick **Switch to Space** to open it with its folder (Explorer, Search and Source Control follow) and its agents and shells as tabs, most urgent first. By default each space gets a window of its own: a space another window has opens there, and for a new one you pick its own window or this workspace (right-click a space or pane for either). `herdr.windowMode` = `workspace` keeps all spaces as folders of one window. Put agents and shells side by side with `herdr.terminalLocation` = `editorSplit`.
 - **Create from the editor**: new spaces (a folder or a new git worktree), new tabs with a shell or an agent (bind `herdr.newTab` to a key, e.g. ⌘T); the terminal **+** creates Herdr tabs in the Cockpit window. Rename and close in Herdr.
 - **Usage**: Claude Code, Codex and Kiro plan limits (5-hour and weekly windows, reset times, Kiro credits) while their agents run.
 - **Talk to agents from the editor**: **Prompt Agent…** (right-click an agent) sends it a prompt; **Send to Agent…** (right-click in a file or the Explorer) sends a prompt about the file or the selected lines (`src/app.ts:12-30`). **Go to Agent or Shell…** jumps to any pane, and **Jump to Agent Needing Attention** (the status bar) goes through blocked and done agents one after the other.
 - **Review changes**: an agent's diffs, offered when it finishes. In a git worktree space, the whole branch since it left the main branch.
-- **Follow mode**: switch spaces in Herdr's terminal and the Cockpit window follows.
+- **Follow mode** (`herdr.followMode`, off by default): switch spaces in Herdr's terminal and the Cockpit window follows.
 - **When Herdr isn't running**: says why (not installed, not running, crashed, incompatible), starts it in the background on request, and reconnects when it's back.
 
 ## Requirements
@@ -74,7 +74,7 @@ All settings start with `herdr.`; the guide (`?` in the sidebar) lists them. Mos
 |---|---|
 | `herdr.terminalLocation` | `editor`, `editorSplit` (agents left, shells right) or `panel` |
 | `herdr.autoAttach` | Which panes open as tabs when switching spaces: `all`, `agents` or `none` |
-| `herdr.closeTabInHerdr` | Closing a tab's X closes it in Herdr: `ask` (idle shells close at once; agents and busy shells ask), `always`, `never` |
+| `herdr.closeTabInHerdr` | Closing a tab's X closes it in Herdr: `never` (default: only detaches), `ask` (idle shells close at once; agents and busy shells ask), `always` |
 | `herdr.offerHubOnStartup` | Offer to open Herdr Cockpit when a window opens: `emptyWindows` (default), `allWindows`, `never` |
 | `herdr.startServer` | Start Herdr when the Cockpit window opens: `ask`, `always`, `never` |
 | `herdr.binaryPath`, `herdr.socketPath` | A herdr binary or socket (named session) Herdr Cockpit doesn't find itself |

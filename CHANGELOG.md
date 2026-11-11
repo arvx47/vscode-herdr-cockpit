@@ -3,6 +3,10 @@
 Herdr Cockpit (the editor extension) and its Herdr plugin (`plugin/`) are released together from this repository.
 Versions up to 0.1.2 were published as **Herdr Hub** (`sriharirao.herdr-hub`).
 
+## Unreleased
+
+- **New defaults**: closing a tab only detaches it (`herdr.closeTabInHerdr` = `never`), follow mode is off (`herdr.followMode`), the **Needs you** section is off (`herdr.showNeedsYou`), and there's no notification when another client takes a pane (`herdr.notifyOnTakeover`). Set them back in Settings if you want them on.
+
 ## 0.3.0 (2026-11-10)
 
 - **Talk to agents from the editor.** **Prompt Agent…** (right-click an agent) sends it a prompt as if you typed it in its tab. **Send to Agent…** (right-click in a file or in the Explorer) asks what the agent should do and sends it with the file or the selected lines (`src/app.ts:12-30`).

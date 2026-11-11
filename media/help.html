@@ -127,7 +127,7 @@
     you to look). Each card says which space it's in and shows the end of the agent's screen: the question it's asking, or
     the wrap-up of what it did. Click the card to open that agent.</p>
   <p>It lists only <b>this window's</b> agents: those in the spaces open here, or whose tab is open here. Agents of other
-    windows' spaces show up in those windows. Turn the section off with <code>herdr.showNeedsYou</code>: a blocked or done
+    windows' spaces show up in those windows. The section is off by default (setting <code>herdr.showNeedsYou</code>): a blocked or done
     agent is then framed in its status color right in its space, like the card below.</p>
   <div class="demo attention">
     <div class="row agent st-blocked">
@@ -322,7 +322,7 @@
     <li>Right-click opens the editor's terminal menu (with Find and Open Output). Selected text is already copied when you let go; to make right-click paste, set <code>terminal.integrated.rightClickBehavior</code> to <code>paste</code>.</li>
     <li>A click without dragging goes to the program in the pane (Herdr 0.9.2 or newer), so buttons in mouse-aware programs such as Kiro still work.</li>
     <li>Herdr Cockpit draws these tabs from Herdr's live stream of the pane; there is no shell inside them, so every key goes straight to the agent or shell in Herdr.</li>
-    <li><b>Closing a tab with its X closes it in Herdr too</b> (setting <code>herdr.closeTabInHerdr</code>). An idle shell closes right away. For an agent, a shell that's running something, or a space's last tab (Herdr then closes the space), it asks first: <b>Keep Running</b> leaves it in Herdr. Switching spaces, and closing or reloading the window, never close anything in Herdr: those tabs only detach. To get a closed tab back, run <b>Herdr Cockpit: Reopen Closed Tab</b> (bind it to ⇧⌘T in place of Reopen Closed Editor: it still reopens files). A pane still running in Herdr is attached again; one that was closed comes back as a new shell or agent of the same kind in the same place, and Claude Code and Codex resume their conversation when Herdr knows its session.</li>
+    <li><b>Closing a tab with its X only detaches it</b> by default: the agent or shell keeps running in Herdr. Set <code>herdr.closeTabInHerdr</code> to <code>ask</code> to close it in Herdr too: an idle shell closes right away. For an agent, a shell that's running something, or a space's last tab (Herdr then closes the space), it asks first: <b>Keep Running</b> leaves it in Herdr. Switching spaces, and closing or reloading the window, never close anything in Herdr: those tabs only detach. To get a closed tab back, run <b>Herdr Cockpit: Reopen Closed Tab</b> (bind it to ⇧⌘T in place of Reopen Closed Editor: it still reopens files). A pane still running in Herdr is attached again; one that was closed comes back as a new shell or agent of the same kind in the same place, and Claude Code and Codex resume their conversation when Herdr knows its session.</li>
     <li>The terminal <b>+</b> creates a new tab in the current Herdr space, and <b>Split Terminal</b> on a Herdr tab splits that pane in Herdr (in the editor area; in the bottom panel a split makes a new Herdr tab). A pane you close in Herdr closes its tab here.</li>
     <li><b>Renaming</b> a tab (right-click → Rename) renames the shell's pane in Herdr, or the agent (agent names become lowercase, like <code>reviewer-bot</code>). A pane renamed in Herdr renames its tab here within a few seconds.</li>
     <li>In the Cockpit window, tabs show only their name. Elsewhere VS Code adds the folder name after it; to hide that in every window, set <code>terminal.integrated.tabs.description</code> to <code>${task}</code> in your user settings.</li>
@@ -353,7 +353,7 @@
 
 <section id="follow">
   <h2>Follow mode and the Cockpit window</h2>
-  <p><b>Follow mode</b> (<span class="codicon codicon-ellipsis"></span> menu → <b>Follow Herdr Focus</b>): when you switch spaces in Herdr itself, this window switches too.
+  <p><b>Follow mode</b> (<span class="codicon codicon-ellipsis"></span> menu → <b>Follow Herdr Focus</b>): when you switch spaces in Herdr itself, this window switches too. It's off by default (setting <code>herdr.followMode</code>).
     To avoid hijacking unrelated windows it only acts in the Cockpit window, or in a window where you've already switched a space from the sidebar.</p>
   <p>The <b>Cockpit window</b> (<span class="codicon codicon-ellipsis"></span> menu → <b>Set Up Cockpit Window</b>) is a dedicated VS Code window for Herdr. Its first folder never changes, so switching spaces never restarts your extensions. In the Cockpit window, terminal tabs show
     just their name, and VS Code's terminal <b>+</b> creates Herdr tabs (see <a href="#create">Create</a>). The first time a Cockpit window opens, it opens this sidebar for you. The Cockpit window opens without the editor's Welcome page, and opening a space closes it in any window.</p>

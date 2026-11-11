@@ -314,7 +314,7 @@ export function activate(ctx: vscode.ExtensionContext) {
    * agent, a shell running something, or the last tab of a space (Herdr then closes the whole space).
    */
   async function closedTabByUser(paneId: string) {
-    const mode = cfg().get<'ask' | 'always' | 'never'>('closeTabInHerdr', 'ask');
+    const mode = cfg().get<'ask' | 'always' | 'never'>('closeTabInHerdr', 'never');
     const hit = paneOf({ paneId });
     if (!hit) {
       return;
@@ -512,7 +512,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined },
         here: (sp) => isOpenHere(sp),
-        needsYou: cfg().get<boolean>('showNeedsYou', true),
+        needsYou: cfg().get<boolean>('showNeedsYou', false),
       }),
     );
   }
@@ -617,7 +617,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       focused &&
       focused !== lastFocusedSpace &&
       !switching &&
-      cfg().get<boolean>('followMode', true) &&
+      cfg().get<boolean>('followMode', false) &&
       isManagedWindow()
     ) {
       const sp = next.spaces.find((s) => s.id === focused);
@@ -1029,7 +1029,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   const takenOver = new Map<string, string | undefined>();
   let takenOverTimer: NodeJS.Timeout | undefined;
   function tookOver(paneId: string, who: string | undefined) {
-    if (!cfg().get<boolean>('notifyOnTakeover', true)) return;
+    if (!cfg().get<boolean>('notifyOnTakeover', false)) return;
     takenOver.set(paneId, who);
     clearTimeout(takenOverTimer);
     takenOverTimer = setTimeout(() => void showTakenOver(), 600);
@@ -1500,7 +1500,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       setTimeout(() => kick(), 1500);
     }),
     vscode.commands.registerCommand('herdr.toggleFollow', async () => {
-      const on = !cfg().get<boolean>('followMode', true);
+      const on = !cfg().get<boolean>('followMode', false);
       await cfg().update('followMode', on, vscode.ConfigurationTarget.Global);
       if (on) await ctx.workspaceState.update(MANAGED_KEY, true);
       vscode.window.setStatusBarMessage(`Herdr follow mode ${on ? 'on' : 'off'}`, 2500);
