@@ -5,6 +5,7 @@ Versions up to 0.1.2 were published as **Herdr Hub** (`sriharirao.herdr-hub`).
 
 ## Unreleased
 
+- **A window with no space says so.** A window with a folder open but no Herdr space for it used to list every space with nothing marking this window. Now the sidebar shows **This window** with a "No Herdr space for *my-repo*" card, **Create space here** (a new space in this window's folder; also **New Space in This Window's Folder…** in the Command Palette) and **Add a space…** (pick an existing space to open here), and **Other spaces** below it, unfolded. The Cockpit window and empty windows keep the plain list.
 - **Tabs come back in the order you left them.** Reloading a window reopened its Herdr tabs in the order they were first opened, not the order you'd dragged them into, and a tab the editor had to redraw while starting moved to the end (and stayed there on the next reload). The order is now taken from the tab bar, and reopened tabs are put back in it once they're all drawn.
 - **A done agent stops being "done" when you open its tab yourself** (tab bar, keyboard), not only when you click it in the sidebar: Herdr is told you've seen it, so its green highlight goes away.
 - **New Herdr Tab…** and **Split Herdr Pane…** in the Command Palette: a new tab in the space of the Herdr tab you're in, or a new pane next to it in the same Herdr tab, running a shell or an agent.

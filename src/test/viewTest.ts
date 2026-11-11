@@ -129,6 +129,10 @@ assert.deepStrictEqual([off.attention, off.needsYou, allNeedy.needsYou], [[], fa
 assert.ok(waitingSpaces.size > 1);
 console.log('✓ Needs you lists only this window\'s agents, and can be turned off');
 console.log("✓ spaces open in this window are marked for the This window group");
+const ownWindow = buildViewState({ ...inputs, here: () => false, thisWindow: { name: 'my-repo' } });
+assert.deepStrictEqual(ownWindow.thisWindow, { name: 'my-repo' }, "a window with folders of its own says so (the sidebar shows its 'no space' card)");
+assert.strictEqual(all.thisWindow, undefined, 'the Cockpit window or an empty one: no This window card');
+console.log('✓ a window with its own folders is marked for the "no space here" card');
 
 // ---- switching to a space opens every pane: agents by urgency, then shells in tab order
 const ka = model.spaces.find((x) => x.id === 'w2')!;

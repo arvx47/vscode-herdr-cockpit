@@ -13,6 +13,8 @@
   let state;
   /** When the earliest "live output" shell stops counting as live; re-render then. */
   let liveUntil = Infinity;
+  /** "Other spaces" starts unfolded when this window has no space of its own (until you fold it). */
+  let othersOpenByDefault = false;
 
   const STATUS = {
     blocked: { label: 'Blocked', icon: 'warning' },
@@ -407,15 +409,32 @@
     let spaces = `<div class="splash"><div class="big">${icon('layers')}</div><h2>No spaces yet</h2><p>A space is a folder with its agents and shells.</p><div class="btns"><button class="btn" data-act="newSpace">New space</button></div></div>`;
     const here = state.spaces.filter((/** @type {any} */ sp) => sp.here);
     const others = state.spaces.filter((/** @type {any} */ sp) => !sp.here);
-    if (here.length && others.length) {
-      // This window's spaces on top; the rest in a group that folds (folded until opened).
-      const open = ui.othersOpen ?? false;
-      spaces = `<div class="sub-label">This window</div>${here.map(spaceCard).join('')}
-        <div class="sub-label others-label" data-act="toggleOthers" tabindex="0" data-nav data-key="others" aria-expanded="${open}" title="Spaces open in another window or not open yet">
-          <span class="chev${open ? '' : ' closed'}">${icon('chevron-down')}</span>Other spaces <span class="count">${others.length}</span>
-        </div>`;
-      if (open) {
-        spaces += others.map(spaceCard).join('');
+    // A window with folders of its own and no space for them: say so, and show the other spaces unfolded.
+    const noSpaceHere = !!state.thisWindow && !here.length;
+    othersOpenByDefault = noSpaceHere;
+    if (noSpaceHere || (here.length && others.length)) {
+      // This window's spaces (or the card saying it has none) on top; the rest in a group that folds.
+      let mine = here.map(spaceCard).join('');
+      if (noSpaceHere) {
+        let add = '';
+        if (others.length) {
+          add = '<button class="btn secondary" data-act="addSpaceHere">Add a space…</button>';
+        }
+        mine = `<div class="no-space">
+            <div class="no-space-title">No Herdr space for <b>${esc(state.thisWindow.name)}</b></div>
+            <div class="no-space-sub">A space shows here when its folder is open in this window.</div>
+            <div class="no-space-btns"><button class="btn" data-act="newSpaceHere">Create space here</button>${add}</div>
+          </div>`;
+      }
+      spaces = `<div class="sub-label">This window</div>${mine}`;
+      if (others.length) {
+        const open = ui.othersOpen ?? othersOpenByDefault;
+        spaces += `<div class="sub-label others-label" data-act="toggleOthers" tabindex="0" data-nav data-key="others" aria-expanded="${open}" title="Spaces open in another window or not open yet">
+            <span class="chev${open ? '' : ' closed'}">${icon('chevron-down')}</span>Other spaces <span class="count">${others.length}</span>
+          </div>`;
+        if (open) {
+          spaces += others.map(spaceCard).join('');
+        }
       }
     } else if (state.spaces.length) {
       spaces = state.spaces.map(spaceCard).join('');
@@ -449,7 +468,7 @@
       return render();
     }
     if (act === 'toggleOthers') {
-      ui.othersOpen = !(ui.othersOpen ?? false);
+      ui.othersOpen = !(ui.othersOpen ?? othersOpenByDefault);
       persist();
       return render();
     }

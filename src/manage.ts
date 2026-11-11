@@ -257,55 +257,41 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
   }
 }
 
-/** New space: in a folder you pick, or on a new git worktree of an existing space's repo. */
-export async function newSpace(deps: ManageDeps) {
+/**
+ * New space: in a folder you pick, or on a new git worktree of an existing space's repo. With `folder` (e.g. this
+ * window's), the space goes there without asking where.
+ */
+export async function newSpace(deps: ManageDeps, folder?: string) {
   if (!(await deps.ensureConnected())) return;
   const title = 'New space';
-  type Item = vscode.QuickPickItem & { folder?: boolean; from?: Space };
-  const repos = deps.spaces().filter((s) => s.cwd && deps.branchOf(s.cwd));
-  const items: Item[] = [
-    { label: 'Choose a folder…', iconPath: new vscode.ThemeIcon('folder-opened'), detail: 'The space opens in that folder', folder: true },
-    ...(repos.length ? [{ label: 'New git worktree of', kind: vscode.QuickPickItemKind.Separator } as Item] : []),
-    ...repos.map((s): Item => ({
-      label: s.label,
-      iconPath: new vscode.ThemeIcon('repo-forked'),
-      description: `branch off ${deps.branchOf(s.cwd)}`,
-      detail: 'A separate checkout on a new branch, so agents can work without touching this one',
-      from: s,
-    })),
-  ];
-  const where = await vscode.window.showQuickPick(items, { title, placeHolder: 'Where should the new space live?' });
-  if (!where) return;
+  let dirPath = folder;
+  let from: Space | undefined;
+  if (!dirPath) {
+    const picked = await pickNewSpacePlace(deps, title);
+    if (!picked) return;
+    dirPath = picked.dir;
+    from = picked.from;
+  }
 
   let create: () => Promise<{ pane: { pane_id: string } }>;
   let label: string;
-  if (where.folder) {
-    const near = deps.spaces().find((s) => s.cwd)?.cwd;
-    const [dir] =
-      (await vscode.window.showOpenDialog({
-        title,
-        canSelectFolders: true,
-        canSelectFiles: false,
-        canSelectMany: false,
-        openLabel: 'Use this folder',
-        defaultUri: vscode.Uri.file(near ? path.dirname(near) : os.homedir()),
-      })) ?? [];
-    if (!dir) return;
-    const name = await vscode.window.showInputBox({ title, prompt: 'Space name', value: path.basename(dir.fsPath), validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
+  if (dirPath) {
+    const dir = dirPath;
+    const name = await vscode.window.showInputBox({ title, prompt: 'Space name', value: path.basename(dir), validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
     if (!name?.trim()) return;
     label = name.trim();
-    create = () => deps.actions.createSpace({ cwd: dir.fsPath, label });
+    create = () => deps.actions.createSpace({ cwd: dir, label });
   } else {
-    const from = where.from!;
+    const repo = from!;
     const branch = await vscode.window.showInputBox({
-      title: `New worktree of ${from.label}`,
-      prompt: `New branch name (created from ${deps.branchOf(from.cwd)})`,
+      title: `New worktree of ${repo.label}`,
+      prompt: `New branch name (created from ${deps.branchOf(repo.cwd)})`,
       placeHolder: 'e.g. feat/new-idea',
       validateInput: (v) => (!v.trim() ? 'Enter a branch name' : /\s|\.\.|[~^:?*[\\]|^[-/]|[/.]$|@\{/.test(v.trim()) ? 'Not a valid git branch name' : undefined),
     });
     if (!branch?.trim()) return;
     label = branch.trim();
-    create = () => deps.actions.createWorktreeSpace({ workspace_id: from.id, cwd: from.cwd, branch: label, label });
+    create = () => deps.actions.createWorktreeSpace({ workspace_id: repo.id, cwd: repo.cwd, branch: label, label });
   }
 
   const what = await pickWhat(deps, `Start in "${label}"`);
@@ -324,6 +310,38 @@ export async function newSpace(deps: ManageDeps) {
   } catch (e) {
     vscode.window.showErrorMessage(`Herdr: couldn't create the space: ${err(e)}`);
   }
+}
+
+/** Where a new space goes: a folder you pick (`dir`), or a new worktree of a space's repo (`from`). */
+async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir?: string; from?: Space } | undefined> {
+  type Item = vscode.QuickPickItem & { folder?: boolean; from?: Space };
+  const repos = deps.spaces().filter((s) => s.cwd && deps.branchOf(s.cwd));
+  const items: Item[] = [
+    { label: 'Choose a folder…', iconPath: new vscode.ThemeIcon('folder-opened'), detail: 'The space opens in that folder', folder: true },
+    ...(repos.length ? [{ label: 'New git worktree of', kind: vscode.QuickPickItemKind.Separator } as Item] : []),
+    ...repos.map((s): Item => ({
+      label: s.label,
+      iconPath: new vscode.ThemeIcon('repo-forked'),
+      description: `branch off ${deps.branchOf(s.cwd)}`,
+      detail: 'A separate checkout on a new branch, so agents can work without touching this one',
+      from: s,
+    })),
+  ];
+  const where = await vscode.window.showQuickPick(items, { title, placeHolder: 'Where should the new space live?' });
+  if (!where) return;
+  if (!where.folder) return { from: where.from };
+  const near = deps.spaces().find((s) => s.cwd)?.cwd;
+  const [dir] =
+    (await vscode.window.showOpenDialog({
+      title,
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: 'Use this folder',
+      defaultUri: vscode.Uri.file(near ? path.dirname(near) : os.homedir()),
+    })) ?? [];
+  if (!dir) return;
+  return { dir: dir.fsPath };
 }
 
 /** Rename a space, or a pane (shells: the pane label; agents: the agent's name). */

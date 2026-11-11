@@ -100,6 +100,11 @@ export interface ViewState {
   usage: ProviderUsage[];
   /** Shown at the bottom of the sidebar. */
   versions?: { cockpit: string; herdr?: string };
+  /**
+   * A window with folders of its own (not the Cockpit window, not an empty one): the sidebar always splits it into
+   * "This window" and "Other spaces", with a card offering to create or add a space when none is open here.
+   */
+  thisWindow?: { name: string };
 }
 
 export interface ViewInputs {
@@ -121,6 +126,8 @@ export interface ViewInputs {
   here?(space: Space): boolean;
   /** herdr.showNeedsYou: list blocked and done agents in a "Needs you" section (default true). */
   needsYou?: boolean;
+  /** See ViewState.thisWindow. */
+  thisWindow?: { name: string };
 }
 
 /**
@@ -313,5 +320,6 @@ export function buildViewState(i: ViewInputs): ViewState {
     spaces,
     usage: i.usage.filter((u) => running.has(u.id)),
     versions: i.versions,
+    thisWindow: i.thisWindow,
   };
 }

@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "Herdr Cockpit",
   "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -215,6 +215,11 @@
         "title": "New Space…",
         "category": "Herdr Cockpit",
         "icon": "$(add)"
+      },
+      {
+        "command": "herdr.newSpaceHere",
+        "title": "New Space in This Window's Folder…",
+        "category": "Herdr Cockpit"
       },
       {
         "command": "herdr.setupClaudeUsage",

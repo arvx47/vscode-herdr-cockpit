@@ -79,6 +79,8 @@ const PANEL_COMMANDS: Record<string, string> = {
   setKiroCredits: 'herdr.setKiroCredits',
   newTab: 'herdr.newTab',
   newSpace: 'herdr.newSpace',
+  newSpaceHere: 'herdr.newSpaceHere',
+  addSpaceHere: 'herdr.addToWorkspace',
   openTui: 'herdr.openTui',
   refresh: 'herdr.refresh',
   setupHub: 'herdr.setupHub',
@@ -541,8 +543,23 @@ export function activate(ctx: vscode.ExtensionContext) {
         versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined },
         here: (sp) => isOpenHere(sp),
         needsYou: cfg().get<boolean>('showNeedsYou', false),
+        thisWindow: thisWindowView(),
       }),
     );
+  }
+  /** This window's own folders: not the Cockpit's ~/.herdr-cockpit, nor the "⬢ <space>" folders we mount. */
+  const ownFolders = () =>
+    (vscode.workspace.workspaceFolders ?? []).filter((f) => !f.name.startsWith(PREFIX) && normPath(f.uri.fsPath) !== normPath(hubDir()));
+  /** For the sidebar's "This window": only a window with folders of its own (not the Cockpit window). */
+  function thisWindowView(): { name: string } | undefined {
+    const folders = ownFolders();
+    if (isHubWindow() || !folders.length) {
+      return undefined;
+    }
+    if (folders.length === 1) {
+      return { name: folders[0].name };
+    }
+    return { name: `this window's ${folders.length} folders` };
   }
   let renderTimer: NodeJS.Timeout | undefined;
   function scheduleRender() {
@@ -1361,7 +1378,42 @@ export function activate(ctx: vscode.ExtensionContext) {
     }),
     // Space cards say Open / Add, pane rows say Attach (a menu label is per command); both run placeIn.
     vscode.commands.registerCommand('herdr.openInOwnWindow', (t?: Target) => placeIn(t, 'window')),
-    vscode.commands.registerCommand('herdr.addToWorkspace', (t?: Target) => placeIn(t, 'workspace')),
+    vscode.commands.registerCommand('herdr.addToWorkspace', async (t?: Target) => {
+      if (itemOf(t)) {
+        return placeIn(t, 'workspace');
+      }
+      // From the "This window" card or the Command Palette: pick one of the spaces not open here.
+      const others = (model?.spaces ?? []).filter((s) => !isOpenHere(s));
+      if (!others.length) {
+        vscode.window.showInformationMessage('Herdr: every space is already open in this window.');
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(
+        others.map((s) => ({ label: s.label, description: [s.status, s.cwd].filter(Boolean).join(' · '), s })),
+        { title: 'Add a Herdr space to this window' },
+      );
+      if (pick) {
+        await placeIn({ spaceId: pick.s.id }, 'workspace');
+      }
+    }),
+    vscode.commands.registerCommand('herdr.newSpaceHere', async () => {
+      // A new space in this window's folder (asking which one when there are several).
+      const folders = ownFolders();
+      if (!folders.length) {
+        return newSpace(manage);
+      }
+      let folder: string | undefined = folders[0].uri.fsPath;
+      if (folders.length > 1) {
+        const pick = await vscode.window.showQuickPick(
+          folders.map((f) => ({ label: f.name, description: f.uri.fsPath, path: f.uri.fsPath })),
+          { title: 'New space', placeHolder: 'Which folder should the new space live in?' },
+        );
+        folder = pick?.path;
+      }
+      if (folder) {
+        await newSpace(manage, folder);
+      }
+    }),
     vscode.commands.registerCommand('herdr.attachInSpaceWindow', (t?: Target) => placeIn(t, 'window')),
     vscode.commands.registerCommand('herdr.attachInThisWindow', (t?: Target) => placeIn(t, 'workspace')),
     vscode.commands.registerCommand('herdr.askWhereToOpenSpaces', async () => {
