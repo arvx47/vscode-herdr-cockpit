@@ -1,5 +1,5 @@
 // The "Spaces & Agents" sidebar: a webview view that renders a ViewState (src/viewState.ts)
-// with media/panel.js + media/panel.css. User actions come back as Herdr commands.
+// with media/sidebar.js (React, built from webview/sidebar) + media/panel.css. User actions come back as Herdr commands.
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import type { ViewState } from './viewState';
@@ -86,7 +86,7 @@ export class HerdrPanel implements vscode.WebviewViewProvider, vscode.Disposable
 <body>
 <main id="app" aria-label="Herdr spaces and agents"></main>
 <script nonce="${nonce}" src="${uri('agent-icons.js')}"></script>
-<script nonce="${nonce}" src="${uri('panel.js')}"></script>
+<script nonce="${nonce}" src="${uri('sidebar.js')}"></script>
 </body>
 </html>`;
   }

@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { errorText } from './herdrClient';
-import { claudeCaptureFile, claudeStatusLineScript } from './usage';
+import { claudeCaptureFile, claudeStatusLineScript, shQuote } from './usage';
 
 /**
  * Claude Code's settings as an object ({} when the file doesn't exist). Undefined, after saying why, when it
@@ -15,8 +15,8 @@ async function readSettings(settingsFile: string): Promise<Record<string, unknow
   let parsed: unknown;
   try {
     parsed = JSON.parse(await fs.promises.readFile(settingsFile, 'utf8'));
-  } catch (e: any) {
-    if (e?.code === 'ENOENT') {
+  } catch (e) {
+    if ((e as { code?: unknown } | undefined)?.code === 'ENOENT') {
       return {};
     }
     vscode.window.showErrorMessage(`Herdr: couldn't read ${settingsFile}: ${errorText(e)}`);
@@ -31,7 +31,7 @@ async function readSettings(settingsFile: string): Promise<Record<string, unknow
 
 /** Never replace someone's status line; show how to add the capture to it instead. */
 async function explainExistingStatusLine(capture: string) {
-  const snippet = `tee "${capture}" | `;
+  const snippet = `tee ${shQuote(capture)} | `;
   const pick = await vscode.window.showInformationMessage(
     'You already have a Claude Code status line, so Herdr left it alone.',
     {
@@ -86,12 +86,12 @@ export async function setUpClaudeUsage(home: string, log: (m: string) => void): 
     await fs.promises.writeFile(script, claudeStatusLineScript(capture), { mode: 0o755 });
     if (fs.existsSync(settingsFile)) await fs.promises.copyFile(settingsFile, `${settingsFile}.herdr-backup`);
     else await fs.promises.mkdir(path.dirname(settingsFile), { recursive: true });
-    settings.statusLine = { type: 'command', command: `sh "${script}"` };
+    settings.statusLine = { type: 'command', command: `sh ${shQuote(script)}` };
     await fs.promises.writeFile(settingsFile, JSON.stringify(settings, null, 2) + '\n');
     log(`claude usage: status line installed (${script}); backup at ${settingsFile}.herdr-backup`);
     vscode.window.showInformationMessage('Herdr: done. Claude plan limits appear after the next Claude reply.');
     return true;
-  } catch (e: any) {
+  } catch (e) {
     vscode.window.showErrorMessage(`Herdr: couldn't set up the status line: ${errorText(e)}`);
     return false;
   }

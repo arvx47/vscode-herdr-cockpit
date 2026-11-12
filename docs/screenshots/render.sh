@@ -20,4 +20,4 @@ shot() { # page width,height output
 mkdir -p ../images
 shot vscode.html 1600,960 vscode.png
 shot flow.html 1600,780 terminal-to-vscode.png
-shot sidebar-feature.html 1200,1000 sidebar.png
+shot sidebar-feature.html 1200,1080 sidebar.png

@@ -232,6 +232,11 @@ function sandbox() {
     assert.match(r.stdout, /Cockpit window: connected, space "api", 3 tabs open\n {4}agents: 1 working, 2 blocked, 0 done, 4 idle/);
     fs.writeFileSync(path.join(st.hub, 'status', 'cursor.json'), JSON.stringify({ pid: 999999, connected: true, updated: Date.now() }, null, 2));
     assert.match(st.run(sh, ['status'], {}, '\n').stdout, /Cockpit window: not open/, 'dead process');
+    // pid 0 / -1 / 1 aren't a window: `kill -0 0` and `kill -0 -1` succeed (process group, every process).
+    for (const pid of [0, -1, 1, '"12x"']) {
+      fs.writeFileSync(path.join(st.hub, 'status', 'cursor.json'), `{\n  "pid": ${pid},\n  "connected": true,\n  "updated": ${Date.now()}\n}`);
+      assert.match(st.run(sh, ['status'], {}, '\n').stdout, /Cockpit window: not open/, `pid ${pid}`);
+    }
     console.log(`✓ ${tag} status popup`);
 
     fs.rmSync(t.dir, { recursive: true, force: true });

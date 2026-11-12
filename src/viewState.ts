@@ -1,15 +1,17 @@
 // Everything the sidebar webview draws, as plain JSON. Built from the normalized model plus
 // what only the extension knows (git, mounted folders, attached terminals, pane activity).
-// The webview (media/panel.js) only renders this; it never talks to Herdr.
+// The webview (webview/sidebar, React) only renders this; it never talks to Herdr.
 // No vscode imports (tested standalone).
 
 import * as os from 'os';
 import type { PaneActivity } from './activity';
-import type { ProviderUsage } from './usage';
+import type { ProviderUsage, UsageWindow } from './usage';
 import type { DownReason } from './connection';
 import type { GitInfo } from './gitInfo';
 import type { AgentStatus, Model, Pane, Space, Tab } from './model';
+import { repoSpace } from './model';
 import { agentTitle } from './herdrActions';
+import { shortCount } from './format';
 
 export interface PaneView {
   id: string;
@@ -45,7 +47,14 @@ export interface PaneView {
     failed: boolean;
     changedAt?: number;
   };
+  /** The working folder, when it isn't the space's own (that one is on the space card). */
   cwd?: string;
+  /** Its space's name (shown on Needs you rows, which sit outside their space). */
+  spaceLabel: string;
+  /** Its space's folder is open in this window: right-click offers Attach, else where to open it. */
+  spaceMounted: boolean;
+  /** Blocked or done with the Needs you section off: framed in its space instead. */
+  needs: boolean;
 }
 
 export interface SpaceView {
@@ -53,6 +62,8 @@ export interface SpaceView {
   label: string;
   /** cwd with the home directory shortened to ~ */
   path?: string;
+  /** The card's folder line: `path` shortened to fit (see shortPath()), and a worktree's repository. */
+  folder?: { text: string; worktreeOf?: string };
   status?: AgentStatus;
   /** Herdr's focused workspace. */
   focused: boolean;
@@ -60,6 +71,10 @@ export interface SpaceView {
   mounted: boolean;
   /** Open in this window (its own space, or one of its folders): listed under "This window". */
   here: boolean;
+  /** Unfolded until you fold it: open here, Herdr's focused space, or an agent needs you. */
+  defaultOpen: boolean;
+  /** The Shells group starts unfolded when it's short. */
+  shellsDefaultOpen: boolean;
   counts: Record<AgentStatus, number>;
   git?: GitInfo;
   worktree: boolean;
@@ -82,6 +97,28 @@ export interface ViewConnection {
   expectedProtocol: number;
 }
 
+/** How full a plan-limit window is: under 60%, under 85%, or more. */
+export type UsageLevel = 'ok' | 'warn' | 'high';
+
+/** A provider's usage, with what the sidebar shows worked out. */
+export interface UsageView extends ProviderUsage {
+  /** The plan as the provider's own app names it ("team" is ChatGPT Business). */
+  planName?: string;
+  windows: (UsageWindow & { level: UsageLevel })[];
+  /** The folded Usage heading's number: the 5-hour window, else the first one, credits or tokens. */
+  summary: { text: string; level: UsageLevel };
+}
+
+/** How the Spaces list is split. */
+export interface SpacesLayout {
+  /** "This window" on top and "Other spaces" folded below; else one plain list. */
+  split: boolean;
+  /** "Other spaces" starts unfolded (this window has no space of its own). */
+  othersOpenByDefault: boolean;
+  /** This window has folders but no space for them: the card offering to create or add one. */
+  noSpaceHere?: { name: string; canAdd: boolean };
+}
+
 export interface ViewState {
   /** A snapshot is shown (possibly the last one, while reconnecting). */
   connected: boolean;
@@ -93,11 +130,12 @@ export interface ViewState {
    * space open here, or with a tab open here. Empty when the section is turned off (needsYou false).
    */
   attention: PaneView[];
-  /** The Needs you section is on; when off, blocked and done agents are highlighted in their space instead. */
+  /** The Needs you section is on; when off, blocked and done agents are framed in their space instead (PaneView.needs). */
   needsYou: boolean;
   spaces: SpaceView[];
+  layout: SpacesLayout;
   /** Plan usage of the coding agents with local data (Claude Code, Codex, Kiro). */
-  usage: ProviderUsage[];
+  usage: UsageView[];
   /** Shown at the bottom of the sidebar. */
   versions?: { cockpit: string; herdr?: string };
   /**
@@ -124,7 +162,7 @@ export interface ViewInputs {
   versions?: { cockpit: string; herdr?: string };
   /** Whether a space is open in this window; without it, none are. */
   here?(space: Space): boolean;
-  /** herdr.showNeedsYou: list blocked and done agents in a "Needs you" section (default true). */
+  /** herdr.showNeedsYou: list blocked and done agents in a "Needs you" section (default false, as the setting). */
   needsYou?: boolean;
   /** See ViewState.thisWindow. */
   thisWindow?: { name: string };
@@ -144,8 +182,51 @@ export function orderByActivity(spaces: Space[], lastActive: (s: Space) => numbe
 const home = os.homedir();
 const tilde = (p?: string) => (p && home && (p === home || p.startsWith(home + '/')) ? '~' + p.slice(home.length) : p);
 const emptyCounts = (): Record<AgentStatus, number> => ({ idle: 0, working: 0, blocked: 0, done: 0, unknown: 0 });
-const meaningfulTab = (tab: Tab | undefined, name: string) =>
-  tab && !/^\d+$/.test(tab.label) && tab.label !== name ? tab.label : undefined;
+/** The tab's label when it says something the name doesn't: not a bare number, not the name in other case. */
+function meaningfulTab(tab: Tab | undefined, name: string): string | undefined {
+  if (!tab || /^\d+$/.test(tab.label) || tab.label.toLowerCase() === name.toLowerCase()) {
+    return undefined;
+  }
+  return tab.label;
+}
+
+/** The pane's folder, unless it's the space's own. */
+function ownCwd(p: Pane, space: Space): string | undefined {
+  if (!p.cwd || p.cwd === space.cwd) {
+    return undefined;
+  }
+  return tilde(p.cwd);
+}
+
+const PLAN_NAMES: Record<string, string> = { team: 'Business', pro: 'Pro', plus: 'Plus', enterprise: 'Enterprise', edu: 'Edu', free: 'Free' };
+
+export function usageLevel(pct: number): UsageLevel {
+  if (pct >= 85) {
+    return 'high';
+  }
+  if (pct >= 60) {
+    return 'warn';
+  }
+  return 'ok';
+}
+
+export function usageView(u: ProviderUsage): UsageView {
+  const windows = u.windows.map((w) => ({ ...w, level: usageLevel(w.usedPercent) }));
+  const w = windows.find((x) => x.label === '5h') ?? windows[0];
+  let summary: UsageView['summary'] = { text: '—', level: 'ok' };
+  if (w) {
+    summary = { text: `${w.label} ${Math.round(w.usedPercent)}%`, level: w.level };
+  } else if (u.credits) {
+    summary = { text: `${u.credits.month.toFixed(1)} cr`, level: 'ok' };
+  } else if (u.block) {
+    summary = { text: `${shortCount(u.block.tokens)} tok`, level: 'ok' };
+  }
+  let planName: string | undefined;
+  if (u.plan) {
+    planName = PLAN_NAMES[u.plan] ?? u.plan.charAt(0).toUpperCase() + u.plan.slice(1);
+  }
+  return { ...u, windows, summary, planName };
+}
 
 /**
  * Claude prints "※ recap: ..." hard-wrapped over several lines; otherwise use the last line,
@@ -165,6 +246,9 @@ export function headline(lines: string[]): string | undefined {
   if (last && /^[a-z]/.test(last) && content.length > 1) return `${content[content.length - 2].trim()} ${last}`;
   return last || lines[lines.length - 1]?.trim() || undefined;
 }
+
+/** A shell's default terminal title: "user@host:~/path" or "user@host: /path". */
+const SHELL_TITLE = /^[\w.-]+@[\w.-]+:\s?[~/]/;
 
 /** An agent's "<glyph> <Verb>ed for 1m 59s · done …" status line. */
 const STATUS_LINE = /^[^\w\s]\s+\w+ for \d+[smh]\b/;
@@ -203,7 +287,44 @@ export function paneName(tab: Tab | undefined, p: Pane): string {
   }
   if (p.raw.pane?.label) return p.raw.pane.label;
   if (!tab) return 'shell';
-  return /^\d+$/.test(tab.label) ? `Tab ${tab.label}` : tab.label;
+  return shellTabName(tab.label);
+}
+
+/**
+ * A folder short enough for one line, keeping what tells folders apart (its end):
+ * `~/repos/personal/my-app` stays, `~/a/b/c/d/my-app` becomes `~/…/d/my-app`.
+ */
+export function shortPath(p: string): string {
+  const parts = p.split('/');
+  // "/x/y" splits as ["", "x", "y"]: the root is the empty first part.
+  if (parts.length <= 4) {
+    return p;
+  }
+  return [parts[0], '…', ...parts.slice(-2)].join('/');
+}
+
+/** The card's folder line: where the space lives, and for a worktree, whose checkout it is. */
+export function folderLine(sp: Space, spaces: Space[]): { text: string; worktreeOf?: string } | undefined {
+  const p = tilde(sp.cwd);
+  if (!p) {
+    return undefined;
+  }
+  const line: { text: string; worktreeOf?: string } = { text: shortPath(p) };
+  const wt = sp.worktree;
+  if (wt?.is_linked_worktree) {
+    // The repo's own space by its name in the sidebar, else Herdr's name for the repository.
+    const repo = repoSpace(spaces, sp);
+    line.worktreeOf = repo?.label ?? wt.repo_name;
+  }
+  return line;
+}
+
+/** A shell named after its Herdr tab: Herdr numbers unnamed tabs ("2"), which reads as "Tab 2". */
+export function shellTabName(tabLabel: string): string {
+  if (/^\d+$/.test(tabLabel)) {
+    return `Tab ${tabLabel}`;
+  }
+  return tabLabel;
 }
 
 /** What every Herdr tab's name starts with, so they stand apart from the editor's own terminals. */
@@ -225,7 +346,10 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   // Terminal titles are often just "kiro: ~/path" — the path adds nothing next to the space.
   let detail = p.title ?? p.terminalTitle;
   if (detail && kind && detail.toLowerCase().startsWith(kind.toLowerCase() + ':')) detail = detail.slice(kind.length + 1).trim();
-  if (detail && (/^[~/]/.test(detail) || detail === name)) detail = undefined;
+  // Paths and shell prompt titles ("user@host:~/code/app") say nothing the space doesn't, and show the user name.
+  if (detail && (/^[~/]/.test(detail) || SHELL_TITLE.test(detail) || detail === name)) {
+    detail = undefined;
+  }
   const act = i.activity(p.id);
   const lines = act?.output ?? [];
   const status = p.status ?? 'unknown';
@@ -247,7 +371,10 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     ),
     headline: headline(lines),
     preview: status === 'blocked' ? lines.slice(-5) : status === 'done' ? lines.slice(-3) : [],
-    cwd: tilde(p.cwd),
+    cwd: ownCwd(p, space),
+    spaceLabel: space.label,
+    spaceMounted: i.mounted(space),
+    needs: false,
   };
 }
 
@@ -267,7 +394,10 @@ function shellView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     shell: act
       ? { state: act.state ?? 'unknown', command: act.command, typed: act.typed, output: act.output, failed: act.failed, changedAt: act.changedAt }
       : { state: 'unknown', output: [], failed: false },
-    cwd: tilde(p.cwd),
+    cwd: ownCwd(p, space),
+    spaceLabel: space.label,
+    spaceMounted: i.mounted(space),
+    needs: false,
   };
 }
 
@@ -283,16 +413,20 @@ export function buildViewState(i: ViewInputs): ViewState {
     for (const a of agents) totals[a.status ?? 'unknown']++;
     totals.agents += agents.length;
     totals.shells += shells.length;
+    const mounted = i.mounted(sp);
     return {
       id: sp.id,
       label: sp.label,
       path: tilde(sp.cwd),
       status: sp.status,
       focused: sp.focused,
-      mounted: i.mounted(sp),
+      mounted,
       here: !!i.here?.(sp),
+      defaultOpen: mounted || sp.focused || sp.counts.blocked + sp.counts.done > 0,
+      shellsDefaultOpen: shells.length <= 3,
       counts: { ...sp.counts },
       git: i.git(sp.cwd),
+      folder: folderLine(sp, all),
       worktree: !!sp.worktree?.is_linked_worktree,
       tokens: Object.values(sp.tokens),
       agents,
@@ -300,7 +434,14 @@ export function buildViewState(i: ViewInputs): ViewState {
     };
   });
   const rank: Partial<Record<AgentStatus, number>> = { blocked: 0, done: 1 };
-  const needsYou = i.needsYou ?? true;
+  const needsYou = i.needsYou ?? false;
+  if (!needsYou) {
+    for (const s of spaces) {
+      for (const a of s.agents) {
+        a.needs = a.status === 'blocked' || a.status === 'done';
+      }
+    }
+  }
   let attention: PaneView[] = [];
   if (needsYou) {
     attention = spaces
@@ -318,8 +459,22 @@ export function buildViewState(i: ViewInputs): ViewState {
     attention,
     needsYou,
     spaces,
-    usage: i.usage.filter((u) => running.has(u.id)),
+    layout: spacesLayout(spaces, i.thisWindow),
+    usage: i.usage.filter((u) => running.has(u.id)).map(usageView),
     versions: i.versions,
     thisWindow: i.thisWindow,
   };
+}
+
+/**
+ * This window's spaces on top and the rest under "Other spaces" when both exist; a window with folders of its
+ * own and no space for them always splits, with a card saying so and the other spaces unfolded.
+ */
+export function spacesLayout(spaces: SpaceView[], thisWindow: { name: string } | undefined): SpacesLayout {
+  const here = spaces.filter((s) => s.here).length;
+  const others = spaces.length - here;
+  if (thisWindow && !here) {
+    return { split: true, othersOpenByDefault: true, noSpaceHere: { name: thisWindow.name, canAdd: others > 0 } };
+  }
+  return { split: here > 0 && others > 0, othersOpenByDefault: false };
 }

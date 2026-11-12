@@ -1,12 +1,12 @@
 /* Herdr sidebar. Colors come from the active VS Code theme, so it fits dark, light and high contrast. */
 :root {
-  --st-blocked: var(--vscode-charts-orange, #d18616);
-  --st-done: var(--vscode-charts-green, #89d185);
-  --st-working: var(--vscode-charts-blue, #3794ff);
-  --st-idle: var(--vscode-charts-purple, #b180d7);
-  --st-unknown: var(--vscode-descriptionForeground, #9d9d9d);
-  --st-failed: var(--vscode-charts-red, #f14c4c);
-  --st-running: var(--vscode-charts-blue, #3794ff);
+  --st-blocked: var(--vscode-charts-orange);
+  --st-done: var(--vscode-charts-green);
+  --st-working: var(--vscode-charts-blue);
+  --st-idle: var(--vscode-charts-purple);
+  --st-unknown: var(--vscode-descriptionForeground);
+  --st-failed: var(--vscode-charts-red);
+  --st-running: var(--vscode-charts-blue);
   --fg: var(--vscode-foreground);
   --muted: var(--vscode-descriptionForeground);
   --card: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
@@ -14,6 +14,12 @@
   --hover: var(--vscode-list-hoverBackground);
   --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
   --radius: 7px;
+  /* Text sizes: tiny (pills, chips), small (labels, meta), body (rows), and headings. */
+  --fs-xs: 10.5px;
+  --fs-sm: 11px;
+  --fs-md: 12px;
+  --fs-lg: 13px;
+  --fs-xl: 14px;
 }
 
 * { box-sizing: border-box; }
@@ -45,14 +51,18 @@ button { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 2;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 8px 10px 8px 12px;
-  background: var(--vscode-sideBar-background);
+  /* See-through and blurred rather than painted: the view can sit in the side bar or the panel, whose colors
+     differ, and a webview can't tell which. */
+  background: transparent;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--card-border);
 }
 .stats { display: flex; gap: 5px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .stat {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 2px 8px 2px 7px; border-radius: 999px; border: 0;
-  font-size: 11px; font-weight: 600;
+  font-size: var(--fs-sm); font-weight: 600;
   color: var(--c);
   background: color-mix(in srgb, var(--c) 15%, transparent);
   white-space: nowrap;
@@ -61,26 +71,21 @@ button.stat { cursor: pointer; }
 button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .stat .n { font-variant-numeric: tabular-nums; }
 .stat.quiet { color: var(--muted); background: transparent; font-weight: 400; padding-left: 0; }
-.tools { display: flex; gap: 2px; }
 .icon-btn {
   display: inline-grid; place-items: center;
   width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px;
   background: transparent; color: var(--muted); cursor: pointer;
 }
 .icon-btn:hover { background: var(--vscode-toolbar-hoverBackground, var(--hover)); color: var(--fg); }
-.icon-btn[aria-pressed="true"] {
-  color: var(--vscode-inputOption-activeForeground, var(--fg));
-  background: var(--vscode-inputOption-activeBackground, color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent));
-}
 
 .section-label {
   display: flex; align-items: center; gap: 6px;
   padding: 12px 14px 4px;
-  font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  font-size: var(--fs-sm); font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   color: var(--muted);
 }
 .section-label .label-btn { margin-left: auto; width: 20px; height: 20px; }
-.section-label .count {
+.section-label .count, .sub-label .count {
   font-weight: 600; letter-spacing: 0;
   padding: 0 6px; border-radius: 999px;
   background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
@@ -101,7 +106,7 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   background: var(--c, transparent);
   opacity: .9;
 }
-.space.st-idle::before, .space.st-unknown::before, .space.none::before { opacity: 0; }
+.space.st-idle::before, .space.st-unknown::before, .space.st-none::before { opacity: 0; }
 .space.herdr-focused { border-color: color-mix(in srgb, var(--vscode-focusBorder) 55%, transparent); }
 
 .space-head {
@@ -116,35 +121,45 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   color: var(--muted); transition: transform .12s ease;
 }
 .chev:hover { background: var(--vscode-toolbar-hoverBackground, var(--hover)); color: var(--fg); }
-.space:not(.open) .chev { transform: rotate(-90deg); }
+.chev.closed, .space:not(.open) > .space-head .chev { transform: rotate(-90deg); }
+.group .chev, .others-label .chev, .usage-label .chev { width: 16px; height: 16px; }
+.others-label .chev, .usage-label .chev { margin-left: -3px; }
 .space-name {
   flex: 1; min-width: 0;
-  font-weight: 600; font-size: 13px;
+  font-weight: 600; font-size: var(--fs-lg);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tag {
-  flex: none;
-  font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
-  padding: 1px 5px; border-radius: 4px;
-  border: 1px solid currentColor;
-  opacity: .85;
-}
-.tag.herdr { color: var(--vscode-focusBorder); }
-.tag.open { color: var(--vscode-textLink-foreground); }
 .dots { display: inline-flex; gap: 3px; flex: none; }
+.open-btn {
+  flex: none; margin-left: 2px; padding: 1px 8px; border: 0; border-radius: 4px; cursor: pointer;
+  font-size: var(--fs-sm); line-height: 16px;
+  color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
+}
+.open-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 .space.open .dots { display: none; }
 
+/* Where the space lives: one line under its name, the end of the path kept (shortPath() in viewState.ts). */
+.space-folder {
+  display: flex; align-items: center; gap: 5px; min-width: 0;
+  padding: 0 10px 4px 30px;
+  font-size: var(--fs-sm); color: var(--muted);
+}
+.space-folder .codicon { font-size: 12px; flex: none; }
+.space-folder .worktree-of { flex: none; }
+.space-folder .folder-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--fs-xs); }
+/* New worktree: on repo cards, while the card is hovered or has focus (like New tab). */
+.space:not(:hover):not(:focus-within) .worktree-btn { display: none; }
 .space-meta {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
   padding: 0 10px 7px 30px;
-  font-size: 11.5px; color: var(--muted);
+  font-size: var(--fs-md); color: var(--muted);
 }
 .space-meta .m { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; min-width: 0; }
 .space-meta .m .codicon { font-size: 12px; }
 .space-meta .branch { max-width: 100%; color: var(--fg); }
 .space-meta .branch .bn { overflow: hidden; text-overflow: ellipsis; opacity: .9; }
-.space-meta .branch .age { margin-left: 4px; color: var(--muted); font-size: 10.5px; }
+.space-meta .branch .age { margin-left: 4px; color: var(--muted); font-size: var(--fs-xs); }
 .space-meta .muted { color: var(--muted); }
 .space-meta .sync { color: var(--vscode-textLink-foreground); font-weight: 600; }
 .space-meta .clean { color: var(--vscode-gitDecoration-addedResourceForeground, var(--st-done)); }
@@ -153,7 +168,7 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   display: inline-flex; align-items: center; gap: 8px;
   padding: 1px 4px 1px 6px; margin-left: -2px;
   border: 1px solid var(--card-border); border-radius: 5px;
-  background: transparent; cursor: pointer; font-size: 11px;
+  background: transparent; cursor: pointer; font-size: var(--fs-sm);
 }
 .space-meta .changes:hover { background: var(--hover); border-color: color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent); }
 .space-meta .changes > span { display: inline-flex; align-items: center; gap: 3px; }
@@ -168,21 +183,22 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 }
 .space-meta .changes .review .codicon { font-size: 12px; }
 
-.space-body { padding: 0 6px 6px; display: none; }
-.space.open .space-body { display: block; }
+.space-body { padding: 0 6px 6px; }
+.space:not(.open) .space-body { display: none; }
+/* "New tab" shows while you're on the card (mouse or keyboard), not on every card at once. */
+.space:not(:hover):not(:focus-within) .add-row { display: none; }
 .add-row {
   display: flex; align-items: center; gap: 6px; width: 100%;
   margin-top: 6px; padding: 4px 8px;
   border: 1px dashed var(--card-border); border-radius: 6px;
-  background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; text-align: left;
+  background: transparent; color: var(--muted); font-size: var(--fs-md); cursor: pointer; text-align: left;
 }
 .add-row:hover, .add-row:focus-visible { color: var(--vscode-textLink-foreground); border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 50%, transparent); outline: none; }
 .add-row .codicon { font-size: 13px; }
-.empty-note { padding: 4px 8px 6px 24px; font-size: 12px; color: var(--muted); font-style: italic; }
+.empty-note { padding: 4px 8px 6px 24px; font-size: var(--fs-md); color: var(--muted); font-style: italic; }
 
 /* hover-revealed actions */
 .actions { display: none; gap: 1px; flex: none; }
-.space-head:hover .actions, .space-head:focus-within .actions,
 .row:hover .actions, .row:focus-within .actions { display: inline-flex; }
 .actions .icon-btn { width: 22px; height: 22px; }
 
@@ -202,29 +218,39 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 }
 
 .avatar {
-  position: relative;
+  position: relative; isolation: isolate;
   width: 28px; height: 28px; border-radius: 8px;
   display: grid; place-items: center;
-  font-weight: 700; font-size: 12.5px;
+  font-weight: 700; font-size: var(--fs-lg);
   color: var(--c);
-  background: color-mix(in srgb, var(--c) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  --tile-bg: color-mix(in srgb, var(--c) 16%, transparent);
+  --tile-border: color-mix(in srgb, var(--c) 30%, transparent);
+  /* The status dot sits in a see-through notch (center and radius), so it reads on any background. */
+  --notch-at: 1.5px; --notch: 4.5px;
+}
+/* The tile itself, under the logo, with the notch cut out of its corner. */
+.avatar::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit;
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  -webkit-mask: radial-gradient(circle at calc(100% - var(--notch-at)) calc(100% - var(--notch-at)), transparent var(--notch), #000 calc(var(--notch) + .5px));
+  mask: radial-gradient(circle at calc(100% - var(--notch-at)) calc(100% - var(--notch-at)), transparent var(--notch), #000 calc(var(--notch) + .5px));
 }
 .avatar .codicon { font-size: 15px; }
 /* Known agents show their logo; status stays on the ring, corner dot and pill. */
 .avatar.logo {
   color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
-  border-color: color-mix(in srgb, var(--c) 55%, transparent);
+  --tile-bg: color-mix(in srgb, var(--fg) 6%, transparent);
+  --tile-border: color-mix(in srgb, var(--c) 55%, transparent);
 }
 .agent-logo { width: 17px; height: 17px; display: block; }
 .avatar::after {
-  content: ""; position: absolute; right: -3px; bottom: -3px;
-  width: 9px; height: 9px; border-radius: 50%;
+  content: ""; position: absolute; right: -1px; bottom: -1px;
+  width: 5px; height: 5px; border-radius: 50%;
   background: var(--c);
-  border: 2px solid var(--vscode-sideBar-background);
 }
-.shell .avatar { color: var(--muted); background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: var(--card-border); }
+.shell .avatar { color: var(--muted); --tile-bg: color-mix(in srgb, var(--fg) 7%, transparent); --tile-border: var(--card-border); }
 .st-working .avatar::after, .sh-live .avatar::after { animation: pulse 1s ease-out infinite; animation-delay: inherit; }
 .st-blocked .avatar::after { animation: pulse 1s ease-out infinite; animation-delay: inherit; }
 .sh-prompt .avatar::after, .sh-unknown .avatar::after { opacity: .55; }
@@ -234,7 +260,7 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .state {
   flex: none; display: inline-flex; align-items: center; gap: 4px;
-  font-size: 10.5px; font-weight: 600;
+  font-size: var(--fs-xs); font-weight: 600;
   padding: 1px 7px; border-radius: 999px;
   color: var(--c);
   background: color-mix(in srgb, var(--c) 15%, transparent);
@@ -242,15 +268,15 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 }
 .state .t { font-weight: 400; opacity: .85; font-variant-numeric: tabular-nums; }
 .state .codicon { font-size: 11px; }
-.sub { margin-top: 1px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { margin-top: 1px; font-size: var(--fs-md); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row.open .sub { white-space: normal; color: var(--fg); opacity: .85; }
 .headline {
-  margin-top: 3px; font-size: 11.5px; color: var(--muted);
+  margin-top: 3px; font-size: var(--fs-md); color: var(--muted);
   display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
 }
 .cwd {
   display: flex; align-items: center; gap: 4px; margin-top: 4px;
-  font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-sm); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cwd .codicon { font-size: 11px; flex: none; }
 /* right column: hover actions + the details chevron */
@@ -259,22 +285,22 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .row:hover .expander, .row.open .expander, .expander:focus-visible { opacity: 1; }
 .shell .avatar { width: 24px; height: 24px; border-radius: 7px; margin: 2px 0 0 2px; }
 .shell .avatar .codicon { font-size: 13px; }
-.shell .avatar::after { width: 8px; height: 8px; }
+.shell .avatar { --notch-at: 1px; --notch: 4px; }
+.shell .avatar::after { width: 4px; height: 4px; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .chip {
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 10.5px; padding: 0 6px; border-radius: 4px; line-height: 17px;
+  font-size: var(--fs-xs); padding: 0 6px; border-radius: 4px; line-height: 17px;
   color: var(--muted);
   background: color-mix(in srgb, var(--fg) 7%, transparent);
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .chip .codicon { font-size: 11px; }
-.chip.live { color: var(--vscode-textLink-foreground); }
 
 .cmd {
   display: flex; align-items: center; gap: 5px;
   margin-top: 2px; min-width: 0;
-  font-family: var(--mono); font-size: 11.5px;
+  font-family: var(--mono); font-size: var(--fs-md);
 }
 .cmd .sigil { color: var(--c); flex: none; font-weight: 700; }
 .cmd .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .9; }
@@ -287,7 +313,7 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   border-radius: 5px;
   border-left: 2px solid color-mix(in srgb, var(--c) 70%, transparent);
   background: color-mix(in srgb, var(--vscode-terminal-background, var(--vscode-editor-background)) 70%, transparent);
-  font-family: var(--mono); font-size: 11px; line-height: 1.45;
+  font-family: var(--mono); font-size: var(--fs-sm); line-height: 1.45;
   color: var(--vscode-terminal-foreground, var(--fg));
 }
 .term div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .82; }
@@ -302,78 +328,68 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   margin: 6px 0 0;
   padding: 8px 6px 8px 8px;
 }
-.attention .row:hover, .row.needs:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
-.attention .where { font-size: 11px; color: var(--muted); }
 .row.needs { margin: 4px 0; }
+.attention .row:hover, .row.needs:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
+.attention .where { font-size: var(--fs-sm); color: var(--muted); }
 
 /* shells group */
 .group {
   display: flex; align-items: center; gap: 6px;
   margin: 6px 0 0; padding: 4px 6px;
   border-radius: 5px; cursor: pointer;
-  font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+  font-size: var(--fs-sm); font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
   color: var(--muted);
 }
 .group:hover { background: var(--hover); color: var(--fg); }
-.group .chev { width: 16px; height: 16px; }
-.group.closed .chev { transform: rotate(-90deg); }
 .group .sum { margin-left: auto; display: inline-flex; gap: 5px; text-transform: none; letter-spacing: 0; font-weight: 500; }
 .group .sum span { color: var(--c); }
-.group.closed + .shells { display: none; }
 
-/* ---------- usage ---------- */
 /* "This window" / "Other spaces" inside the Spaces list */
 .sub-label {
   display: flex; align-items: center; gap: 6px;
   padding: 8px 14px 2px;
-  font-size: 11px; color: var(--muted);
+  font-size: var(--fs-sm); color: var(--muted);
 }
-.sub-label .count {
-  font-weight: 600;
-  padding: 0 6px; border-radius: 999px;
-  background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
-}
+.sub-label .count { font-weight: 600; }
 .others-label { cursor: pointer; margin-top: 4px; }
 .no-space {
   margin: 4px 8px 2px; padding: 10px 12px; border-radius: 6px;
   border: 1px dashed var(--vscode-widget-border, var(--muted)); background: var(--card);
-  font-size: 12px; color: var(--muted);
+  font-size: var(--fs-md); color: var(--muted);
 }
 .no-space-title { color: var(--fg); }
-.no-space-sub { margin-top: 2px; font-size: 11.5px; }
+.no-space-sub { margin-top: 2px; font-size: var(--fs-md); }
 .no-space-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .others-label:hover { color: var(--fg); }
-.others-label .chev { width: 16px; height: 16px; margin-left: -3px; }
-.others-label .chev.closed { transform: rotate(-90deg); }
+/* ---------- usage ---------- */
 .usage-label { cursor: pointer; }
 .usage-label:hover { color: var(--fg); }
-.usage-label .chev { width: 16px; height: 16px; margin-left: -3px; }
-.usage-label .chev.closed { transform: rotate(-90deg); }
 .usums { margin-left: auto; display: inline-flex; gap: 8px; text-transform: none; letter-spacing: 0; font-weight: 600; }
-.usum { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
+.usum { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sm); }
 .usum .agent-logo { width: 12px; height: 12px; }
 .usage { margin: 2px 8px 4px; padding: 4px 6px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--card-border); }
 .usage-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 5px 2px; }
 .usage-row + .usage-row { border-top: 1px solid var(--card-border); }
-.avatar.small { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; --c: var(--muted); }
+.avatar.small { width: 22px; height: 22px; border-radius: 6px; font-size: var(--fs-sm); --c: var(--muted); }
 .avatar.small::after { display: none; }
+.avatar.small::before { -webkit-mask: none; mask: none; }
 .avatar.small .agent-logo { width: 14px; height: 14px; }
-.umeta { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
-.meter { display: grid; grid-template-columns: 20px minmax(40px, 1fr) 34px 58px; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; }
+.umeta { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.meter { display: grid; grid-template-columns: 20px minmax(40px, 1fr) 34px 58px; align-items: center; gap: 6px; margin-top: 4px; font-size: var(--fs-sm); }
 .meter .ml { color: var(--muted); font-variant-numeric: tabular-nums; }
 .meter .bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 10%, transparent); overflow: hidden; }
 .meter .fill { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--lvl); transition: width .3s ease; }
 .meter .pct { text-align: right; font-weight: 600; color: var(--lvl); font-variant-numeric: tabular-nums; }
-.meter .reset { color: var(--muted); white-space: nowrap; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
-.lvl-ok { --lvl: var(--vscode-charts-blue, #3794ff); }
+.meter .reset { color: var(--muted); white-space: nowrap; font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; }
+.lvl-ok { --lvl: var(--vscode-charts-blue); }
 .lvl-warn { --lvl: var(--st-blocked); }
 .lvl-high { --lvl: var(--st-failed); }
 .usum.lvl-warn, .usum.lvl-high { color: var(--lvl); }
-.ustat { margin-top: 3px; font-size: 11.5px; color: var(--muted); }
+.ustat { margin-top: 3px; font-size: var(--fs-md); color: var(--muted); }
 .ustat b { color: var(--fg); font-weight: 600; }
 .link-btn {
   display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0;
-  border: 0; background: transparent; cursor: pointer; font-size: 11.5px; color: var(--vscode-textLink-foreground);
+  border: 0; background: transparent; cursor: pointer; font-size: var(--fs-md); color: var(--vscode-textLink-foreground);
 }
 .link-btn:hover { text-decoration: underline; }
 .link-btn .codicon { font-size: 12px; }
@@ -381,8 +397,8 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 /* ---------- empty & disconnected ---------- */
 .splash { padding: 28px 18px; text-align: center; color: var(--muted); }
 .splash .big { font-size: 34px; color: var(--muted); opacity: .7; }
-.splash h2 { margin: 10px 0 4px; font-size: 14px; color: var(--fg); }
-.splash p { margin: 0 0 14px; font-size: 12px; }
+.splash h2 { margin: 10px 0 4px; font-size: var(--fs-xl); color: var(--fg); }
+.splash p { margin: 0 0 14px; font-size: var(--fs-md); }
 .splash .btns { display: flex; flex-direction: column; gap: 6px; max-width: 220px; margin: 0 auto; }
 .btn {
   border: 0; border-radius: 4px; padding: 6px 10px; cursor: pointer;
@@ -393,19 +409,21 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .btn.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
 
 .splash .big .codicon { font-size: 34px; }
-.splash .path { margin: 14px 0 0; font-size: 11px; word-break: break-all; }
+.splash .path { margin: 14px 0 0; font-size: var(--fs-sm); word-break: break-all; }
 .splash .path code { font-family: var(--mono); }
-.splash .links { margin-top: 14px; font-size: 11.5px; }
+.splash .links { margin-top: 14px; font-size: var(--fs-md); }
 .splash .links a { color: var(--vscode-textLink-foreground); text-decoration: none; }
 .splash .links a:hover { text-decoration: underline; }
-.splash .btns .btn + .btn { margin-top: 0; }
 .banner {
   display: flex; align-items: center; gap: 6px; margin: 6px 8px 0; padding: 5px 9px;
-  border-radius: 6px; font-size: 12px; color: var(--fg);
+  border-radius: 6px; font-size: var(--fs-md); color: var(--fg);
   background: color-mix(in srgb, var(--vscode-focusBorder) 14%, transparent);
 }
 .banner.warn { background: color-mix(in srgb, var(--st-blocked) 16%, transparent); }
-.stale { opacity: .5; pointer-events: none; filter: grayscale(.4); }
+.stale { opacity: .6; filter: grayscale(.4); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Agent logos are inline SVG strings (media/agent-icons.js): the wrapper takes no space of its own. */
+.logo-svg { display: contents; }
 
 @keyframes pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 70%, transparent); }
@@ -418,4 +436,4 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 }
 
 /* Versions, at the bottom of the sidebar. */
-.versions { color: var(--muted); font-size: 11px; text-align: center; padding: 14px 0 8px; opacity: 0.8; user-select: text; }
+.versions { color: var(--muted); font-size: var(--fs-sm); text-align: center; padding: 14px 0 8px; opacity: 0.8; user-select: text; }

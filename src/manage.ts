@@ -6,8 +6,10 @@ import * as path from 'path';
 import { AGENT_KINDS, AGENT_NAME, agentName, agentTitle, HerdrActions, resumeArgs } from './herdrActions';
 import { errorText } from './herdrClient';
 import type { AgentSessionInfo } from './herdrTypes';
+import { repoSpace } from './model';
 import type { Pane, Space } from './model';
 import { paneName, tabName } from './viewState';
+import { branchFromInput, branchProblem } from './branchName';
 
 /** What a new tab runs: a plain shell, or an agent kind ("claude", "codex", ...). */
 export interface What {
@@ -27,6 +29,10 @@ export interface ManageDeps {
   spaces(): Space[];
   /** Current git branch of a folder, when it is a repository. */
   branchOf(cwd?: string): string | undefined;
+  /** The branch new worktrees start from (gitInfo.ts mainBranch()); undefined when git can't say. */
+  mainBranch(cwd: string): Promise<string | undefined>;
+  /** The space is open in this window (its folder is one of this window's). */
+  isOpenHere(space: Space): boolean;
   /** Agent names in use (agent names must be unique). */
   agentNames(): string[];
   /** Agents listed first when choosing (setting herdr.agents). */
@@ -273,29 +279,20 @@ export async function newSpace(deps: ManageDeps, folder?: string) {
     from = picked.from;
   }
 
-  let create: () => Promise<{ pane: { pane_id: string } }>;
-  let label: string;
-  if (dirPath) {
-    const dir = dirPath;
-    const name = await vscode.window.showInputBox({ title, prompt: 'Space name', value: path.basename(dir), validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
-    if (!name?.trim()) return;
-    label = name.trim();
-    create = () => deps.actions.createSpace({ cwd: dir, label });
-  } else {
-    const repo = from!;
-    const branch = await vscode.window.showInputBox({
-      title: `New worktree of ${repo.label}`,
-      prompt: `New branch name (created from ${deps.branchOf(repo.cwd)})`,
-      placeHolder: 'e.g. feat/new-idea',
-      validateInput: (v) => (!v.trim() ? 'Enter a branch name' : /\s|\.\.|[~^:?*[\\]|^[-/]|[/.]$|@\{/.test(v.trim()) ? 'Not a valid git branch name' : undefined),
-    });
-    if (!branch?.trim()) return;
-    label = branch.trim();
-    create = () => deps.actions.createWorktreeSpace({ workspace_id: repo.id, cwd: repo.cwd, branch: label, label });
+  if (!dirPath) {
+    return newWorktree(deps, from);
   }
-
+  const dir = dirPath;
+  const name = await vscode.window.showInputBox({ title, prompt: 'Space name', value: path.basename(dir), validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
+  if (!name?.trim()) return;
+  const label = name.trim();
   const what = await pickWhat(deps, `Start in "${label}"`);
   if (!what) return;
+  await createAndOpen(deps, label, what, () => deps.actions.createSpace({ cwd: dir, label }));
+}
+
+/** Create a space, name its first tab after what runs in it, and open it like any new pane. */
+async function createAndOpen(deps: ManageDeps, label: string, what: What, create: () => Promise<{ pane: { pane_id: string } }>) {
   try {
     const { pane } = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Creating space "${label}"…` },
@@ -312,18 +309,111 @@ export async function newSpace(deps: ManageDeps, folder?: string) {
   }
 }
 
+/** The spaces new worktrees can start from: each repo once, from its own space (not another worktree's). */
+function repoSpaces(deps: ManageDeps): Space[] {
+  const repos: Space[] = [];
+  for (const s of deps.spaces()) {
+    const repo = repoSpace(deps.spaces(), s);
+    if (repo && repo.cwd && deps.branchOf(repo.cwd) && !repos.includes(repo)) {
+      repos.push(repo);
+    }
+  }
+  return repos;
+}
+
+/** The repo a new worktree comes from when none was clicked: the one open in this window, the only one, or ask. */
+async function pickRepo(deps: ManageDeps): Promise<Space | undefined> {
+  const repos = repoSpaces(deps);
+  if (!repos.length) {
+    vscode.window.showInformationMessage('Herdr: no space is a git repository yet. Create a space on your repo\'s folder first (the + next to Spaces).');
+    return undefined;
+  }
+  const here = repos.filter((s) => deps.isOpenHere(s));
+  if (here.length === 1) {
+    return here[0];
+  }
+  if (repos.length === 1) {
+    return repos[0];
+  }
+  const ordered = [...here, ...repos.filter((s) => !here.includes(s))];
+  const pick = await vscode.window.showQuickPick(
+    ordered.map((s) => ({ label: s.label, description: s.cwd, iconPath: new vscode.ThemeIcon('repo'), s })),
+    { title: 'New worktree', placeHolder: 'Which repository?' },
+  );
+  return pick?.s;
+}
+
+/** What a new worktree space starts with (herdr.newWorktreeStartsWith): a shell, an agent, or ask. */
+async function worktreeStart(deps: ManageDeps, label: string): Promise<What | undefined> {
+  const start = vscode.workspace.getConfiguration('herdr').get<string>('newWorktreeStartsWith', 'shell');
+  if (start === 'ask') {
+    return pickWhat(deps, `Start in "${label}"`);
+  }
+  if (start === 'shell' || !start) {
+    return {};
+  }
+  return { kind: start };
+}
+
+/**
+ * A new space on a new git worktree of a repo, for one piece of work (a ticket): one question, the branch name
+ * (a ticket key or its link works too). The branch starts from the repo's main branch, not from whatever branch
+ * its space has checked out, so it doesn't carry another ticket's unfinished work. `from` is the space clicked;
+ * a worktree space stands for its repo.
+ */
+export async function newWorktree(deps: ManageDeps, from?: Space) {
+  if (!(await deps.ensureConnected())) return;
+  let repo: Space | undefined;
+  if (from) {
+    repo = repoSpace(deps.spaces(), from);
+    if (!repo) {
+      vscode.window.showWarningMessage(`Herdr: "${from.label}" is a worktree whose repository has no space here. Open the repository's own space first.`);
+      return;
+    }
+  } else {
+    repo = await pickRepo(deps);
+  }
+  if (!repo?.cwd) {
+    return;
+  }
+  const base = await deps.mainBranch(repo.cwd);
+  let startsFrom = `It starts from ${deps.branchOf(repo.cwd) ?? 'the current branch'}.`;
+  if (base) {
+    startsFrom = `It starts from your local ${base} (pull it first if it's behind).`;
+  }
+  const typed = await vscode.window.showInputBox({
+    title: `New worktree of ${repo.label}`,
+    prompt: `A branch name, a ticket key or the ticket's link. ${startsFrom}`,
+    placeHolder: 'e.g. OUT-9656 or feat/rate-limit',
+    validateInput: (v) => branchProblem(branchFromInput(v)),
+  });
+  if (typed === undefined) return;
+  const branch = branchFromInput(typed);
+  if (branchProblem(branch)) return;
+  const what = await worktreeStart(deps, branch);
+  if (!what) return;
+  const repoId = repo.id;
+  await createAndOpen(deps, branch, what, () => {
+    if (base) {
+      return deps.actions.createWorktreeSpace({ workspace_id: repoId, branch, label: branch, base });
+    }
+    return deps.actions.createWorktreeSpace({ workspace_id: repoId, branch, label: branch });
+  });
+}
+
 /** Where a new space goes: a folder you pick (`dir`), or a new worktree of a space's repo (`from`). */
 async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir?: string; from?: Space } | undefined> {
   type Item = vscode.QuickPickItem & { folder?: boolean; from?: Space };
-  const repos = deps.spaces().filter((s) => s.cwd && deps.branchOf(s.cwd));
+  // Herdr starts new worktrees from the repo's own space, not from another worktree's: offer each repo once.
+  const repos = repoSpaces(deps);
   const items: Item[] = [
     { label: 'Choose a folder…', iconPath: new vscode.ThemeIcon('folder-opened'), detail: 'The space opens in that folder', folder: true },
     ...(repos.length ? [{ label: 'New git worktree of', kind: vscode.QuickPickItemKind.Separator } as Item] : []),
     ...repos.map((s): Item => ({
       label: s.label,
       iconPath: new vscode.ThemeIcon('repo-forked'),
-      description: `branch off ${deps.branchOf(s.cwd)}`,
-      detail: 'A separate checkout on a new branch, so agents can work without touching this one',
+      description: 'a new branch from its main branch',
+      detail: 'A separate checkout for one piece of work, so agents can work without touching this one',
       from: s,
     })),
   ];

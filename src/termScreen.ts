@@ -76,6 +76,30 @@ const WORD_BREAK = /[\s()[\]{}<>'"`|│,;]/;
 
 export type ScrollDir = 'up' | 'down';
 
+/** A find match on screen (a viewport row), drawn highlighted; `current` is the one the find bar is on. */
+export interface Mark {
+  y: number;
+  from: number;
+  to: number;
+  current: boolean;
+}
+
+/**
+ * A selected row kept while it's out of view: its text when every cell is one UTF-16 unit (most rows), else one
+ * string per cell (wide characters leave an empty cell, emoji take two units).
+ */
+interface KeptRow {
+  text: string;
+  cells?: string[];
+  wrapped: boolean;
+}
+
+/**
+ * Selected rows kept at most: a drag held on an edge scrolls up to 200 rows a second. Past it, rows newly scrolled
+ * into the selection aren't kept (and aren't copied); the rows kept first, from the anchor along the drag, stay.
+ */
+const KEPT_MAX = 10_000;
+
 /** Keys that delete the selection when it's on the line being typed. */
 export const isDeleteKey = (text: string) => text === '\x7f' || text === '\b' || text === `${ESC}[3~`;
 
@@ -89,14 +113,14 @@ export class Screen {
   private lastClick = { at: 0, x: -1, y: -1, count: 0 };
   /** Lines the view scrolled back since the selection started (negative: forward). */
   private offset = 0;
-  /** The selected rows' cells by content row, kept while they scroll out of view. */
-  private kept = new Map<number, { cells: string[]; wrapped: boolean }>();
+  /** The selected rows by content row, kept while they scroll out of view (at most KEPT_MAX). */
+  private kept = new Map<number, KeptRow>();
   /** A scroll sent to Herdr whose frame hasn't come: the rows before it, to see how far it moved. */
   private pending?: { dir: ScrollDir; lines: number; before: string[] };
   /** The view shows the live screen (not Herdr's scrollback), so the cursor is where the program put it. */
   private live = true;
-  /** Find matches on screen (viewport rows), drawn highlighted; `current` is the one the find bar is on. */
-  private marks: { y: number; from: number; to: number; current: boolean }[] = [];
+  /** Find matches on screen by viewport row. */
+  private marks = new Map<number, Mark[]>();
 
   constructor(cols: number, rows: number) {
     this.term = new Terminal({ cols, rows, allowProposedApi: true, scrollback: 0 });
@@ -108,7 +132,11 @@ export class Screen {
     return new Promise((r) =>
       this.term.write(data, () => {
         const moved = this.settle();
-        this.keep();
+        // Selected rows a scroll brought into view. At offset 0 nothing scrolled away: selectionText() reads the
+        // rows on screen when it's asked, so there's nothing to copy on every frame.
+        if (this.offset !== 0) {
+          this.keep();
+        }
         r(moved);
       }),
     );
@@ -142,6 +170,8 @@ export class Screen {
 
   /** A scroll is about to be sent to Herdr. The next frame that matches it says how far the view moved. */
   scrollSent(dir: ScrollDir, lines: number) {
+    // The selected rows as they are, before some of them leave the view.
+    this.keep();
     this.pending = { dir, lines, before: this.visibleText() };
   }
   /** No frame came for the scroll: the view didn't move (the top of the scrollback, or the live screen). */
@@ -162,13 +192,19 @@ export class Screen {
 
   // ----- find highlights -----
 
-  setMarks(marks: { y: number; from: number; to: number; current: boolean }[]) {
-    this.marks = marks.filter((m) => m.y >= 0 && m.y < this.rows);
-  }
-  private markAt(x: number, y: number): 'match' | 'current' | undefined {
-    let hit: 'match' | 'current' | undefined;
-    for (const m of this.marks) if (m.y === y && x >= m.from && x < m.to) hit = m.current ? 'current' : (hit ?? 'match');
-    return hit;
+  setMarks(marks: Mark[]) {
+    this.marks = new Map();
+    for (const m of marks) {
+      if (m.y < 0 || m.y >= this.rows) {
+        continue;
+      }
+      const row = this.marks.get(m.y);
+      if (row) {
+        row.push(m);
+      } else {
+        this.marks.set(m.y, [m]);
+      }
+    }
   }
   /** The text of a row on screen, with the cell column of each UTF-16 index (to place find highlights). */
   rowText(y: number): { text: string; colOf: number[] } {
@@ -292,6 +328,13 @@ export class Screen {
     }
     return out;
   }
+  private keptRow(line: IBufferLine): KeptRow {
+    const cells = this.cellsOf(line);
+    if (cells.every((c) => c.length === 1)) {
+      return { text: cells.join(''), wrapped: line.isWrapped };
+    }
+    return { text: '', cells, wrapped: line.isWrapped };
+  }
   /**
    * Remember the selected rows on screen, for when they scroll out of view. Once the view has scrolled, a row keeps
    * the text it had when first seen: a full-screen program's fixed footer would otherwise overwrite the rows that
@@ -300,8 +343,14 @@ export class Screen {
   private keep() {
     for (const y of this.rowsOf()) {
       const r = y - this.offset;
+      const known = this.kept.has(r);
+      if ((known && this.offset !== 0) || (!known && this.kept.size >= KEPT_MAX)) {
+        continue;
+      }
       const line = this.line(y);
-      if (line && (this.offset === 0 || !this.kept.has(r))) this.kept.set(r, { cells: this.cellsOf(line), wrapped: line.isWrapped });
+      if (line) {
+        this.kept.set(r, this.keptRow(line));
+      }
     }
   }
 
@@ -317,7 +366,12 @@ export class Screen {
       const from = row === r.start.r ? r.start.x : 0;
       const to = row === r.end.r ? r.end.x + 1 : this.cols;
       if (row > r.start.r && !line.wrapped) out += '\n';
-      const seg = line.cells.slice(from, to).join('');
+      let seg: string;
+      if (line.cells) {
+        seg = line.cells.slice(from, to).join('');
+      } else {
+        seg = line.text.slice(from, to);
+      }
       // Trailing spaces are padding, except before the continuation of a wrapped line.
       out += row < r.end.r && this.kept.get(row + 1)?.wrapped ? seg : seg.replace(/[ \t]+$/, '');
     }
@@ -449,13 +503,21 @@ export class Screen {
 
   // ----- painting -----
 
-  private selected(x: number, y: number): boolean {
-    const r = this.range();
+  /** The selected columns of screen row `y`, inclusive (`from > to`: none). */
+  private selectedSpan(sel: { start: Pos; end: Pos } | undefined, y: number): { from: number; to: number } {
     const row = y - this.offset;
-    if (!r || row < r.start.r || row > r.end.r) return false;
-    if (row === r.start.r && x < r.start.x) return false;
-    if (row === r.end.r && x > r.end.x) return false;
-    return true;
+    if (!sel || row < sel.start.r || row > sel.end.r) {
+      return { from: 1, to: 0 };
+    }
+    let from = 0;
+    let to = this.cols - 1;
+    if (row === sel.start.r) {
+      from = sel.start.x;
+    }
+    if (row === sel.end.r) {
+      to = sel.end.x;
+    }
+    return { from, to };
   }
 
   /**
@@ -475,15 +537,27 @@ export class Screen {
     if (!rows.length) return '';
     let out = `${ESC}[?2026h${ESC}7`;
     const cell = this.term.buffer.active.getNullCell();
+    // Worked out once per paint and per row, not per cell: a frame repaints every selected row.
+    const sel = this.range();
     for (const y of rows) {
       const line = this.line(y);
-      if (!line || y < 0 || y >= this.rows) continue;
+      if (!line || y < 0 || y >= this.rows) {
+        continue;
+      }
+      const { from, to } = this.selectedSpan(sel, y);
+      const marks = this.marks.get(y);
       out += `${ESC}[${y + 1};1H`;
       let sgr = '';
       for (let x = 0; x < this.cols; x++) {
         const c = line.getCell(x, cell);
-        if (!c || c.getWidth() === 0) continue;
-        const s = sgrOf(c, this.selected(x, y), this.markAt(x, y));
+        if (!c || c.getWidth() === 0) {
+          continue;
+        }
+        let mark: 'match' | 'current' | undefined;
+        if (marks) {
+          mark = markAt(marks, x);
+        }
+        const s = sgrOf(c, x >= from && x <= to, mark);
         if (s !== sgr) {
           out += `${ESC}[${s}m`;
           sgr = s;
@@ -494,6 +568,21 @@ export class Screen {
     }
     return out + `${ESC}8${ESC}[?2026l`;
   }
+}
+
+/** The find highlight on column `x` of a row with these marks: the current match wins over the others. */
+function markAt(marks: Mark[], x: number): 'match' | 'current' | undefined {
+  let hit: 'match' | 'current' | undefined;
+  for (const m of marks) {
+    if (x < m.from || x >= m.to) {
+      continue;
+    }
+    if (m.current) {
+      return 'current';
+    }
+    hit = 'match';
+  }
+  return hit;
 }
 
 /** SGR parameters for a cell (starting from a reset), inverted when selected, highlighted for a find match. */

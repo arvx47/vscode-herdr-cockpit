@@ -105,6 +105,25 @@ const killStarted = () => {
 
   assert.deepStrictEqual((await startServer(path.join(dir, 'missing-herdr'), env, log)).ok, false);
 
+  // Only one window starts a session's server: a fresh lock held by another window means wait, not start.
+  const lock = path.join(dir, 'locks', 'start.lock');
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  fs.writeFileSync(lock, '1');
+  setState({ running: false, server: 'up' });
+  const waited = await startServer(fake, env, log, 900, lock);
+  assert.ok(!waited.ok && /another editor window is starting/.test(waited.error ?? ''), `waits for the other window: ${waited.error}`);
+  assert.ok(!fs.existsSync(startedFlag), 'no second server started while another window holds the lock');
+  setTimeout(() => setState({ running: true, protocol: 22 }), 400);
+  assert.deepStrictEqual(await startServer(fake, env, log, 3000, lock), { ok: true, already: true }, "the other window's server came up");
+  // A lock left by a start that died long ago is taken over, and released after
+  setState({ running: false, server: 'up' });
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(lock, old, old);
+  assert.deepStrictEqual(await startServer(fake, env, log, 15_000, lock), { ok: true });
+  assert.ok(fs.existsSync(startedFlag), 'started after taking over a stale lock');
+  assert.ok(!fs.existsSync(lock), 'lock released');
+  killStarted();
+
   // A custom socket must never start a second server for a session that already runs elsewhere.
   assert.strictEqual(sessionOfSocket('/Users/dev/.config/herdr/sessions/work/herdr.sock'), 'work');
   assert.strictEqual(sessionOfSocket('/tmp/custom.sock'), undefined);
@@ -113,7 +132,7 @@ const killStarted = () => {
   const clash = await startServer(fake, herdrEnv('/tmp/custom.sock'), log);
   assert.ok(!clash.ok && /already running for this session/.test(clash.error ?? ''), `refuses: ${clash.error}`);
   assert.ok(!fs.existsSync(startedFlag), 'no second server started');
-  console.log('✓ start server: already running (no second server), started, early exit, timeout, missing binary, custom-socket clash');
+  console.log('✓ start server: already running (no second server), started, early exit, timeout, missing binary, one window at a time, custom-socket clash');
 
   // The server gets a terminal-like environment: no VS Code variables, and Kiro told not to wrap shells.
   const vs = serverEnv({ PATH: '/usr/bin', HOME: '/h', VSCODE_PID: '1', VSCODE_IPC_HOOK: '/x', ELECTRON_RUN_AS_NODE: '1', __CFBundleIdentifier: 'com.microsoft.VSCode', TERM_PROGRAM: 'vscode', HERDR_SESSION: 'w' });

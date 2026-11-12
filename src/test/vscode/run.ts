@@ -74,6 +74,7 @@ async function main() {
         'herdr.socketPath': socket,
         'herdr.startServer': 'never',
         'herdr.closeTabInHerdr': 'ask',
+        'herdr.followMode': true, // step 7 follows a switch made in Herdr (off by default since the new defaults)
         'herdr.copyOnSelect': true, // the test's double-click copies
         'workbench.startupEditor': 'none',
         'security.workspace.trust.enabled': false,
@@ -86,13 +87,19 @@ async function main() {
 
   const editor =
     process.env.HERDR_HUB_TEST_EDITOR ?? (process.platform === 'darwin' ? '/Applications/Visual Studio Code.app/Contents/MacOS/Code' : 'code');
+  const launchArgs = [hub, '--user-data-dir', userData, '--extensions-dir', path.join(tmp, 'x'), '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes'];
+  if (process.platform === 'darwin') {
+    // A fresh profile asks the macOS Keychain for its secrets key, and the system popup can hold the editor until
+    // someone answers it: use Chromium's in-memory keychain instead.
+    launchArgs.push('--use-mock-keychain');
+  }
   let failed = false;
   try {
     await runTests({
       vscodeExecutablePath: editor,
       extensionDevelopmentPath: root,
       extensionTestsPath: path.join(__dirname, 'suite'),
-      launchArgs: [hub, '--user-data-dir', userData, '--extensions-dir', path.join(tmp, 'x'), '--disable-workspace-trust', '--skip-welcome', '--skip-release-notes'],
+      launchArgs,
       extensionTestsEnv: {
         HOME: home,
         HERDR_HUB_TEST_SESSION: SESSION,

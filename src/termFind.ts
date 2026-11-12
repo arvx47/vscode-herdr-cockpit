@@ -6,7 +6,7 @@
 //    `max_offset_from_bottom + viewport_rows` screen rows, row 0 the oldest.
 //  - `pane.selection.read {anchor, cursor}` returns the text between two points (columns must be < the pane's
 //    width), one line per logical line: a soft-wrapped line comes back joined, so lines are mapped back to rows
-//    by wrapping them at the pane's width (`layout`). ~100ms for 3,000 rows.
+//    by wrapping them at the pane's width (`layout`, which keeps only where each line wraps). ~100ms for 3,000 rows.
 //  - `pane.scroll {offset_from_bottom}` scrolls the view there (the top row is then `max - offset`).
 //  - `pane.copy_motion` with no revision answers the current `content_revision` (it changes with the content).
 //  - Herdr's own `pane.copy_search` is literal and case-sensitive, and returns at most 1024 matches, so the
@@ -39,25 +39,56 @@ export function charWidth(ch: string): number {
   return 1;
 }
 
-/** Where each character of a line lands when it's wrapped at `cols`: row offset and column, per UTF-16 index. */
+/**
+ * Where each character of a line lands when it's wrapped at `cols`: `at(index)` gives the row offset and column of
+ * a UTF-16 index (past the end: where the line ends). Only the index each row starts at is stored, and `at` walks
+ * that one row: a whole history is laid out, and a position per character cost more memory than the text.
+ */
 export function layout(line: string, cols: number): { rows: number; at: (index: number) => { row: number; col: number } } {
-  const pos: { row: number; col: number }[] = [];
-  let row = 0;
+  const starts = [0];
   let col = 0;
   for (let i = 0; i < line.length; ) {
-    const cp = line.codePointAt(i)!;
-    const ch = String.fromCodePoint(cp);
+    const ch = String.fromCodePoint(line.codePointAt(i)!);
     const w = charWidth(ch);
     if (w > 0 && col + w > cols) {
-      row++;
+      starts.push(i);
       col = 0;
     }
-    for (let k = 0; k < ch.length; k++) pos[i + k] = { row, col };
     col += w;
     i += ch.length;
   }
-  const end = { row, col };
-  return { rows: row + 1, at: (index) => pos[index] ?? end };
+  /** The column of `index` on `row` (the row's end when `index` is past it). */
+  const colOn = (row: number, index: number) => {
+    let c = 0;
+    for (let i = starts[row]; i < line.length; ) {
+      const ch = String.fromCodePoint(line.codePointAt(i)!);
+      if (index < i + ch.length) {
+        return c;
+      }
+      c += charWidth(ch);
+      i += ch.length;
+    }
+    return c;
+  };
+  const at = (index: number) => {
+    const last = starts.length - 1;
+    if (!(index >= 0 && index < line.length)) {
+      return { row: last, col: colOn(last, line.length) };
+    }
+    // The last row starting at or before it (a wide character that can't fit even an empty row starts two).
+    let lo = 0;
+    let hi = last;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= index) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return { row: lo, col: colOn(lo, index) };
+  };
+  return { rows: starts.length, at };
 }
 
 /** A pane's history as text, with the screen row each line starts on. */

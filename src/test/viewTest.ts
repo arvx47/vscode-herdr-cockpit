@@ -5,8 +5,10 @@ import * as path from 'path';
 import * as assert from 'assert';
 import { describeProcess, isShellProcess, summarizeAgent, summarizeShell } from '../activity';
 import * as vm from 'vm';
-import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize } from '../model';
-import { buildViewState, headline, orderByActivity, paneName, setAgentNames } from '../viewState';
+import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../model';
+import type { Space } from '../model';
+import { ago, left } from '../format';
+import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, shortPath, spacesLayout, usageView } from '../viewState';
 import type { PaneActivity } from '../activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
 
@@ -115,7 +117,7 @@ const allDone = (x: (typeof model.spaces)[number]) => {
   const tabs = x.tabs.map((t) => ({ ...t, panes: t.panes.map((p) => (p.isAgent ? { ...p, status: 'done' as const } : p)) }));
   return { ...x, tabs, agents: tabs.flatMap((t) => t.panes.filter((p) => p.isAgent)) };
 };
-const needy = { ...inputs, model: { ...model, spaces: model.spaces.map(allDone) } };
+const needy = { ...inputs, model: { ...model, spaces: model.spaces.map(allDone) }, needsYou: true };
 const allNeedy = buildViewState({ ...needy, here: () => true });
 assert.strictEqual(allNeedy.attention.length, 5, 'every agent when every space is here');
 const someNeedy = buildViewState({ ...needy, here: (s) => s.id === 'w2' });
@@ -126,6 +128,9 @@ assert.ok(withTab.attention.some((a) => a.id === otherAgent), 'an agent whose ta
 assert.deepStrictEqual(buildViewState({ ...needy, here: () => false }).attention, [], 'no space here: nothing');
 const off = buildViewState({ ...needy, here: () => true, needsYou: false });
 assert.deepStrictEqual([off.attention, off.needsYou, allNeedy.needsYou], [[], false, true], 'the section can be turned off');
+assert.strictEqual(buildViewState({ ...needy, needsYou: undefined }).needsYou, false, 'off by default, like the herdr.showNeedsYou setting');
+assert.ok(off.spaces.flatMap((x) => x.agents).every((a) => a.needs), 'with the section off, waiting agents are framed in their space');
+assert.ok(allNeedy.spaces.flatMap((x) => x.agents).every((a) => !a.needs), 'with it on, they are not');
 assert.ok(waitingSpaces.size > 1);
 console.log('✓ Needs you lists only this window\'s agents, and can be turned off');
 console.log("✓ spaces open in this window are marked for the This window group");
@@ -133,6 +138,74 @@ const ownWindow = buildViewState({ ...inputs, here: () => false, thisWindow: { n
 assert.deepStrictEqual(ownWindow.thisWindow, { name: 'my-repo' }, "a window with folders of its own says so (the sidebar shows its 'no space' card)");
 assert.strictEqual(all.thisWindow, undefined, 'the Cockpit window or an empty one: no This window card');
 console.log('✓ a window with its own folders is marked for the "no space here" card');
+{
+  // A shell prompt title ("user@host:~/path") isn't shown as an agent's detail: noise, and it has the user name.
+  const withTitle = (title: string) => {
+    const spaces = model.spaces.map((x) => ({ ...x, tabs: x.tabs.map((t) => ({ ...t, panes: t.panes.map((p) => (p.isAgent ? { ...p, title } : p)) })) }));
+    return buildViewState({ ...inputs, model: { ...model, spaces } }).spaces.flatMap((x) => x.agents).map((a) => a.detail);
+  };
+  assert.ok(withTitle('dev@box:~/code/app').every((d) => d === undefined), 'user@host:~/path dropped');
+  assert.ok(withTitle('dev@box.local: /srv/app').every((d) => d === undefined), 'user@host: /path dropped');
+  assert.ok(withTitle('Fix the login bug').some((d) => d === 'Fix the login bug'), 'a real task title stays');
+  console.log('✓ shell prompt titles are not shown as details');
+}
+
+// ---- new worktrees start from the repo's own space, not from another worktree's
+{
+  const sp = (id: string, cwd: string, worktree?: Space['worktree']) => ({ id, label: id, cwd, worktree }) as unknown as Space;
+  const main = sp('m', '/r/app');
+  const wt = sp('w', '/wt/app/feat', { checkout_path: '/wt/app/feat', is_linked_worktree: true, repo_key: 'k', repo_name: 'app', repo_root: '/r/app' });
+  const managedMain = sp('mm', '/r/lib', { checkout_path: '/r/lib', is_linked_worktree: false, repo_key: 'lib', repo_name: 'lib', repo_root: '/r/lib' });
+  const wtLib = sp('wl', '/wt/lib/x', { checkout_path: '/wt/lib/x', is_linked_worktree: true, repo_key: 'lib', repo_name: 'lib', repo_root: '/r/lib' });
+  const orphan = sp('o', '/wt/gone/y', { checkout_path: '/wt/gone/y', is_linked_worktree: true, repo_key: 'gone', repo_name: 'gone', repo_root: '/r/gone' });
+  const all = [main, wt, managedMain, wtLib, orphan];
+  assert.strictEqual(repoSpace(all, main), main, 'a plain space is its own');
+  assert.strictEqual(repoSpace(all, wt), main, "a worktree's repo space found by its folder");
+  assert.strictEqual(repoSpace(all, wtLib), managedMain, "a worktree's repo space found by repo key");
+  assert.strictEqual(repoSpace(all, orphan), undefined, 'no repo space open: none');
+  console.log("✓ new worktrees start from the repo's own space");
+
+  // The card's folder line: the folder, and for a worktree, the repo it's a checkout of
+  assert.strictEqual(shortPath('~/repos/personal/my-app'), '~/repos/personal/my-app');
+  assert.strictEqual(shortPath('~/a/b/c/d/my-app'), '~/…/d/my-app');
+  assert.strictEqual(shortPath('/srv/project'), '/srv/project');
+  assert.strictEqual(shortPath('/a/b/c/d/e'), '/…/d/e');
+  assert.deepStrictEqual(folderLine(main, all), { text: '/r/app' });
+  assert.deepStrictEqual(folderLine(wt, all), { text: '/wt/app/feat', worktreeOf: 'm' }, 'named after its repo space');
+  assert.deepStrictEqual(folderLine(orphan, all), { text: '/wt/gone/y', worktreeOf: 'gone' }, "no repo space: Herdr's repo name");
+  assert.strictEqual(folderLine(sp('x', ''), all), undefined, 'no folder known: no line');
+  console.log('✓ space cards show their folder, and a worktree its repo');
+}
+
+// ---- decisions the sidebar draws: layout split, default folding, rows, usage
+{
+  const card = (id: string, here: boolean) => ({ id, here }) as any;
+  assert.deepStrictEqual(spacesLayout([card('a', true), card('b', false)], undefined), { split: true, othersOpenByDefault: false });
+  assert.deepStrictEqual(spacesLayout([card('a', true)], undefined), { split: false, othersOpenByDefault: false }, 'only this window: plain list');
+  assert.deepStrictEqual(spacesLayout([card('b', false)], undefined), { split: false, othersOpenByDefault: false }, 'Cockpit or empty window: plain list');
+  assert.deepStrictEqual(spacesLayout([card('b', false)], { name: 'repo' }), { split: true, othersOpenByDefault: true, noSpaceHere: { name: 'repo', canAdd: true } });
+  assert.deepStrictEqual(spacesLayout([], { name: 'repo' }).noSpaceHere, { name: 'repo', canAdd: false }, 'nothing to add');
+  console.log('✓ spaces layout: split, no-space card, other spaces unfolded');
+
+  const v = buildViewState({ ...inputs, mounted: (sp) => sp.id === 'w2' });
+  const w2 = v.spaces.find((x) => x.id === 'w2')!;
+  assert.ok(w2.defaultOpen, 'a space open here starts unfolded');
+  assert.strictEqual(w2.shellsDefaultOpen, w2.shells.length <= 3);
+  assert.ok(w2.agents.every((a) => a.spaceMounted && a.spaceLabel === w2.label), 'rows know their space');
+  const src = model.spaces.find((x) => x.id === 'w2')!;
+  assert.ok(w2.agents.every((a, n) => a.cwd === undefined || src.agents[n]?.cwd !== src.cwd), "a pane in the space's own folder doesn't repeat it");
+  console.log('✓ rows: space name, mounted, own folder only; spaces fold by default');
+
+  const u = usageView({ id: 'codex', name: 'Codex', plan: 'team', windows: [{ label: '7d', usedPercent: 61 }, { label: '5h', usedPercent: 90 }] });
+  assert.deepStrictEqual([u.planName, u.summary, u.windows.map((w) => w.level)], ['Business', { text: '5h 90%', level: 'high' }, ['warn', 'high']]);
+  assert.deepStrictEqual(usageView({ id: 'kiro', name: 'Kiro', windows: [], credits: { month: 12.34, today: 1, limit: 0 } } as any).summary, { text: '12.3 cr', level: 'ok' });
+  assert.deepStrictEqual(usageView({ id: 'claude', name: 'Claude', plan: 'max', windows: [], block: { tokens: 1_500_000 } } as any).summary.text, '1.5M tok');
+  assert.strictEqual(usageView({ id: 'claude', name: 'Claude', plan: 'max', windows: [] }).planName, 'Max');
+  console.log('✓ usage: plan names, levels, folded summary');
+  assert.deepStrictEqual([ago(4_400), ago(61_000), ago(80 * 60_000), ago(120 * 60_000), ago(50 * 3_600_000)], ['4s', '1m', '1h 20m', '2h', '2d']);
+  assert.deepStrictEqual([left(30_000), left(24 * 60_000), left(80 * 60_000), left(71 * 3_600_000), left(48 * 3_600_000)], ['1m', '24m', '1h 20m', '2d 23h', '2d']);
+  console.log('✓ short durations');
+}
 
 // ---- switching to a space opens every pane: agents by urgency, then shells in tab order
 const ka = model.spaces.find((x) => x.id === 'w2')!;

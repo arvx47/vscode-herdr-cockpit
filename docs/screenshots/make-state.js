@@ -9,7 +9,7 @@ const out = path.join(__dirname, 'build');
 const lib = (m) => require(path.join(__dirname, '..', '..', 'out', m));
 const { HerdrClient, resolveSocketPath } = lib('herdrClient');
 const { normalize } = lib('model');
-const { buildViewState } = lib('viewState');
+const { buildViewState, setAgentNames, shortPath } = lib('viewState');
 const { ActivityWatcher } = lib('activity');
 const { gitInfo } = lib('gitInfo');
 const { HerdrStream } = lib('herdrStream');
@@ -54,6 +54,9 @@ function toHtml(bytes, cols, rows) {
     { id: 'codex', name: 'Codex', plan: 'Plus', live: true, windows: [{ label: '5h', usedPercent: 63, resetsAt: now + 1.3 * H }, { label: '7d', usedPercent: 27, resetsAt: now + 98 * H }] },
     { id: 'kiro', name: 'Kiro', windows: [{ label: 'mo', usedPercent: 18, resetsAt: now + 23 * 24 * H }], credits: { today: 6.1, month: 182.4, limit: 1000 } },
   ];
+  // Agents by kind ("Claude", "Codex"), never their terminal titles: those are the demo shells' prompts, with
+  // this machine's user and host names in them.
+  setAgentNames('herdr');
   const state = buildViewState({
     model,
     showShells: true,
@@ -63,12 +66,21 @@ function toHtml(bytes, cols, rows) {
     },
     git,
     mounted: (sp) => sp.label === 'api-service',
+    here: (sp) => sp.label === 'api-service',
     attached: (id) => id.startsWith('w1:'),
     activity: (id) => activity.get(id),
     usage,
     connection: { kind: 'connected', expectedProtocol: 22 },
   });
-  fs.writeFileSync(path.join(out, 'state.js'), scrub(`window.DEMO_STATE = ${JSON.stringify(state, null, 1)};\n`));
+  // The cards' folder lines are shortened from the temporary path: shorten the ~/code one instead.
+  for (const sp of state.spaces) {
+    if (sp.folder && sp.path) {
+      sp.folder.text = shortPath(scrub(sp.path));
+    }
+  }
+  // "Other spaces" unfolded, so the images show every space.
+  const ui = { open: {}, shellsOpen: {}, expanded: {}, othersOpen: true };
+  fs.writeFileSync(path.join(out, 'state.js'), scrub(`window.DEMO_STATE = ${JSON.stringify(state, null, 1)};\nwindow.DEMO_UI = ${JSON.stringify(ui)};\n`));
 
   // The Herdr TUI, captured from a pty (tuicap.py).
   fs.writeFileSync(path.join(out, 'tui.html'), scrub(await toHtml(fs.readFileSync(tuiRaw), Number(tuiCols), Number(tuiRows))));

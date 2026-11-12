@@ -3,7 +3,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['out/**', 'node_modules/**', 'media/codicons/**', 'media/agent-icons.js', 'src/herdrTypes.ts'] },
+  { ignores: ['out/**', 'node_modules/**', 'media/codicons/**', 'media/agent-icons.js', 'media/sidebar.js', 'src/herdrTypes.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -65,7 +65,7 @@ export interface SyncDeps {
 
 export class HerdrSync {
   conn: Conn = { kind: 'connecting' };
-  /** An event stream is live (else the poll is fast). */
+  /** An event stream is live: Herdr acknowledged it (else the poll is fast). */
   eventsLive = false;
   private t: SyncTiming;
   private failures = 0;
@@ -131,8 +131,16 @@ export class HerdrSync {
     this.deps.onChange();
     return prev;
   }
+  /** Starting is over. A connection made meanwhile stays; otherwise the state from before comes back. */
   endStarting(prev: Conn) {
-    this.conn = prev.kind === 'starting' ? { kind: 'connecting' } : prev;
+    if (this.conn.kind !== 'starting') {
+      return;
+    }
+    if (prev.kind === 'starting') {
+      this.conn = { kind: 'connecting' };
+    } else {
+      this.conn = prev;
+    }
     this.deps.onChange();
   }
 
@@ -155,34 +163,41 @@ export class HerdrSync {
   }
 
   private async refreshLoop() {
-    try {
-      do {
-        this.again = false;
-        const res = await this.deps.client.request<SessionSnapshotResult>('session.snapshot');
+    // A refresh asked for while this one runs (`again`) runs once more after it, whether it worked or failed:
+    // a kick() during a failing refresh (socket appeared, Herdr started) must try again, not wait for the backoff.
+    do {
+      this.again = false;
+      try {
+        await this.readSnapshot();
+      } catch (e) {
         if (this.disposed) {
           return;
         }
-        const next = normalize(res);
-        const wasConnected = this.connected;
-        this.conn = { kind: 'connected', protocol: res.snapshot.protocol, version: res.snapshot.version };
-        this.failures = 0;
-        this.panes = allPanes(next).map(({ pane }) => pane.id);
-        this.deps.onSnapshot(next);
-        if (!wasConnected) {
-          this.deps.log(`connected to herdr ${this.conn.version ?? ''}`.trim());
-          this.stopWatchingSocket();
-          this.deps.onConnected();
-        }
-        // Panes came or went: move the live subscription to the new set. (Only a live one: restarting a
-        // failed stream is the poll's job, so a stream that keeps failing can't loop through here.)
-        if (this.sub && this.paneKey() !== this.subscribedPanes) {
-          this.startEvents();
-        }
-      } while (this.again);
-    } catch (e) {
-      if (!this.disposed) {
         await this.onFailure(e);
       }
+    } while (this.again && !this.disposed);
+  }
+
+  private async readSnapshot() {
+    const res = await this.deps.client.request<SessionSnapshotResult>('session.snapshot');
+    if (this.disposed) {
+      return;
+    }
+    const next = normalize(res);
+    const wasConnected = this.connected;
+    this.conn = { kind: 'connected', protocol: res.snapshot.protocol, version: res.snapshot.version };
+    this.failures = 0;
+    this.panes = allPanes(next).map(({ pane }) => pane.id);
+    this.deps.onSnapshot(next);
+    if (!wasConnected) {
+      this.deps.log(`connected to herdr ${this.conn.version ?? ''}`.trim());
+      this.stopWatchingSocket();
+      this.deps.onConnected();
+    }
+    // Panes came or went: move the live subscription to the new set. (Only a live one: restarting a
+    // failed stream is the poll's job, so a stream that keeps failing can't loop through here.)
+    if (this.sub && this.paneKey() !== this.subscribedPanes) {
+      this.startEvents();
     }
   }
 
@@ -262,15 +277,26 @@ export class HerdrSync {
         }
         this.sub = undefined;
         if (this.eventsLive || err) {
-          this.deps.log(`event stream ended${err ? `: ${err.message}` : ''}; polling`);
+          let why = '';
+          if (err) {
+            why = `: ${errorText(err)}`;
+          }
+          this.deps.log(`event stream ended${why}; polling`);
         }
         this.eventsLive = false;
         this.scheduleRefresh(); // events_lost or reconnect => re-read authoritative state
         this.schedulePoll(); // poll fast again until the stream is back
       },
+      {
+        // Live only once Herdr accepted it: a subscription it rejects (pane_not_found) keeps the fast poll.
+        onAck: () => {
+          if (this.sub === self) {
+            this.eventsLive = true;
+          }
+        },
+      },
     );
     this.sub = self;
-    this.eventsLive = true;
   }
 
   // While Herdr is down, reconnect the moment its socket appears.
@@ -279,11 +305,14 @@ export class HerdrSync {
       return;
     }
     try {
+      // Also while a refresh runs (diagnose can take seconds): kick() makes it try once more when it's done.
       this.socketWatch = fs.watch(path.dirname(this.deps.socketPath()), () => {
-        if (!this.connected && !this.inFlight && fs.existsSync(this.deps.socketPath())) {
+        if (!this.connected && fs.existsSync(this.deps.socketPath())) {
           void this.kick();
         }
       });
+      // A watcher error (the folder deleted) would otherwise throw in the extension host; polling covers it.
+      this.socketWatch.on('error', () => this.stopWatchingSocket());
     } catch {
       // The folder doesn't exist yet: backoff polling covers it.
     }

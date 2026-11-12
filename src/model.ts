@@ -3,6 +3,7 @@
 // The snapshot is flat: workspaces, tabs, panes and agents are top-level arrays linked by id,
 // and every agent also appears as a pane (AgentInfo is PaneInfo plus agent-only fields).
 
+import * as path from 'path';
 import type { AgentInfo, AgentStatus, PaneInfo, SessionSnapshotResult, WorkspaceInfo, WorkspaceWorktreeInfo } from './herdrTypes';
 
 export type { AgentStatus } from './herdrTypes';
@@ -217,4 +218,22 @@ export function normalize(res: SessionSnapshotResult): Model {
     focusedSpaceId: focusedWs ?? spaceList.find((x) => x.focused)?.id,
     raw: res,
   };
+}
+
+/**
+ * The space to start a new worktree from: the space itself, or for a linked worktree space, its repo's main
+ * space (same repo, not a linked worktree, or open on the repo's folder). None when that space isn't open.
+ */
+export function repoSpace(spaces: Space[], s: Space): Space | undefined {
+  const wt = s.worktree;
+  if (!wt?.is_linked_worktree) {
+    return s;
+  }
+  const root = path.resolve(wt.repo_root);
+  return spaces.find((p) => {
+    if (p.worktree) {
+      return !p.worktree.is_linked_worktree && p.worktree.repo_key === wt.repo_key;
+    }
+    return !!p.cwd && path.resolve(p.cwd) === root;
+  });
 }

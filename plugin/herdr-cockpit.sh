@@ -51,6 +51,15 @@ json_num() {
   sed -nE 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*(-?[0-9]+).*/\1/p' | head -n 1
 }
 
+# alive PID: a running process with this pid. Only real pids (> 1): `kill -0 0` signals our own process group
+# and -1 every process we may signal, so both "succeed".
+alive() {
+  case $1 in
+    '' | *[!0-9]*) return 1 ;;
+  esac
+  [ "$1" -gt 1 ] 2>/dev/null && kill -0 "$1" 2>/dev/null
+}
+
 # Percent-encode for a URL query value.
 urlencode() {
   S=$1 LC_ALL=C awk 'BEGIN {
@@ -294,7 +303,7 @@ cmd_status() {
     mark=; [ "$s" = "$default" ] && mark="  (used by this plugin)"
     say "  $(json_str name <"$f"): extension $(json_str extensionVersion <"$f")$mark"
     st=$HUB_DIR/status/$s.json
-    if [ -f "$st" ] && kill -0 "$(json_num pid <"$st")" 2>/dev/null && [ "$(age "$(json_num updated <"$st")")" -lt 90 ]; then
+    if [ -f "$st" ] && alive "$(json_num pid <"$st")" && [ "$(age "$(json_num updated <"$st")")" -lt 90 ]; then
       if grep -q '"connected": true' "$st"; then
         sp=$(json_str space <"$st")
         say "    Cockpit window: connected${sp:+, space \"$sp\"}, $(json_num tabs <"$st") tabs open"

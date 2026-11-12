@@ -98,12 +98,17 @@ async function steps(): Promise<void> {
   // 2b. Showing a Herdr tab and moving the active editor moves that tab: how reopened tabs are put back in order.
   const tabLabels = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputTerminal).map((t) => t.label);
   assert.notStrictEqual(first.name, plus.name, 'the two tabs have different names');
+  const allTabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs);
   for (const term of [plus, first]) {
     term.show(false);
+    await until(`"${term.name}" active`, () => vscode.window.tabGroups.activeTabGroup.activeTab?.label === term.name, 5000);
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab!;
     await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: 1 });
     await until(`"${term.name}" moved first`, () => tabLabels()[0] === term.name, 5000);
+    // terminals.ts remembers which pane a tab shows by the Tab object: it must survive a move.
+    assert.ok(allTabs().includes(tab), 'the moved tab is the same Tab object');
   }
-  step('a Herdr tab moves to a given position');
+  step('a Herdr tab moves to a given position, and stays the same Tab object');
 
   // 3. Selecting in it copies (double-click a word).
   const pty: any = (plus.creationOptions as vscode.ExtensionTerminalOptions).pty;
@@ -280,7 +285,8 @@ async function steps(): Promise<void> {
   try {
     await until('the tab shows the pane read-only', () => s2pty.observing === true);
     assert.ok(ours().includes(s2tab) && !s2pty.ended, 'the tab stays open');
-    assert.match(s2pty.note(), /Kiro is using this pane · type here to take it back/);
+    // Who has it, at least: a narrow tab cuts the rest of the note at its edge.
+    assert.match(s2pty.note(), /Kiro is using this pane/);
     execFileSync(BIN, ['pane', 'send-text', s2pane, 'echo SEEN-READ-ONLY\n'], { env: realEnv });
     const screenHas = (text: string) => {
       const b = s2pty.screen.term.buffer.active;

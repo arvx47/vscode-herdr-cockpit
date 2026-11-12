@@ -39,6 +39,7 @@ export class HerdrStream {
   private proc: ChildProcessWithoutNullStreams;
   private buf = '';
   private closed = false;
+  private released = false;
   private stderr = '';
 
   constructor(
@@ -97,13 +98,34 @@ export class HerdrStream {
     this.send({ type: 'terminal.mouse', action, button, column: Math.max(0, column), row: Math.max(0, row), ...(modifiers && { modifiers }) });
   }
 
-  /** Detach (the program keeps running in Herdr), then stop the process. An observer just stops. */
+  /** The process is still running (it can outlive the stream: terminal.closed comes before it exits). */
+  private running(): boolean {
+    return this.proc.exitCode === null && this.proc.signalCode === null && !this.proc.killed;
+  }
+
+  /**
+   * Detach (the program keeps running in Herdr), then stop the process. An observer just stops. A stream Herdr
+   * already closed is past detaching, but its process may still be running: it's stopped all the same.
+   */
   release() {
-    if (this.closed) return;
-    if (this.mode === 'observe') return void this.proc.kill();
+    if (this.released) {
+      return;
+    }
+    this.released = true;
+    if (!this.running()) {
+      return;
+    }
+    if (this.mode === 'observe') {
+      this.proc.kill();
+      return;
+    }
     this.send({ type: 'terminal.release' });
     this.proc.stdin.end();
-    setTimeout(() => this.proc.kill(), 1000).unref();
+    setTimeout(() => {
+      if (this.running()) {
+        this.proc.kill();
+      }
+    }, 1000).unref();
   }
 
   private close(info: { reason?: string; error?: string }) {

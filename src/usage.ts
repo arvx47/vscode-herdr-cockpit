@@ -18,7 +18,6 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
 import { findTool } from './tools';
 import { LEGACY_NAME } from './hubFiles';
 
@@ -194,6 +193,120 @@ async function codexUsage(home: string, now = Date.now()): Promise<ProviderUsage
 
 // ---------- Claude Code ----------
 
+interface ClaudeEntry {
+  ts: number;
+  tokens: number;
+  cacheRead: number;
+  /** message id + request id, to count a message written more than once (streaming) only once. */
+  key: string;
+}
+
+/** What was read of each transcript: complete lines up to `offset`, and the usage entries in them. */
+const transcripts = new Map<string, { offset: number; size: number; mtimeMs: number; entries: ClaudeEntry[] }>();
+
+/** Drops cached transcripts that are no longer recent (or were deleted). */
+function forgetTranscriptsExcept(files: string[]) {
+  const keep = new Set(files);
+  for (const f of transcripts.keys()) {
+    if (!keep.has(f)) {
+      transcripts.delete(f);
+    }
+  }
+}
+
+/** A usage entry from one transcript line, or undefined. */
+function claudeEntry(line: string): ClaudeEntry | undefined {
+  if (!line.includes('"usage"')) return undefined;
+  let o: any;
+  try {
+    o = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  const u = o?.message?.usage;
+  const ts = Date.parse(o?.timestamp);
+  if (!u || !(ts > 0)) return undefined;
+  return {
+    ts,
+    tokens: (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+    cacheRead: u.cache_read_input_tokens ?? 0,
+    key: `${o.message.id ?? ''}:${o.requestId ?? ''}`,
+  };
+}
+
+/**
+ * The usage entries of a Claude transcript. Unchanged files (size and mtime) come from the cache; a file that
+ * grew is read from where the last read stopped (Claude Code only appends); a file that shrank is read again.
+ * A last line that isn't whole yet (being written) is left for the next read.
+ */
+async function claudeEntries(file: string): Promise<ClaudeEntry[]> {
+  let st: fs.Stats;
+  try {
+    st = await fs.promises.stat(file);
+  } catch {
+    transcripts.delete(file);
+    return [];
+  }
+  let c = transcripts.get(file);
+  if (c && c.size === st.size && c.mtimeMs === st.mtimeMs) {
+    return c.entries;
+  }
+  if (!c || st.size < c.offset) {
+    c = { offset: 0, size: 0, mtimeMs: 0, entries: [] };
+  }
+  const cached = c;
+  try {
+    cached.offset = await readLinesFrom(file, cached.offset, (line) => {
+      const e = claudeEntry(line);
+      if (e) {
+        cached.entries.push(e);
+      }
+    });
+  } catch {
+    transcripts.delete(file);
+    return cached.entries;
+  }
+  cached.size = st.size;
+  cached.mtimeMs = st.mtimeMs;
+  transcripts.set(file, cached);
+  return cached.entries;
+}
+
+/** Calls `onLine` for each complete JSONL line from byte `start`; returns the offset after the last one read. */
+async function readLinesFrom(file: string, start: number, onLine: (line: string) => void): Promise<number> {
+  let offset = start;
+  let pending: Buffer[] = [];
+  for await (const chunk of fs.createReadStream(file, { start })) {
+    let buf = chunk as Buffer;
+    for (let nl = buf.indexOf(0x0a); nl >= 0; nl = buf.indexOf(0x0a)) {
+      const line = Buffer.concat([...pending, buf.subarray(0, nl)]);
+      pending = [];
+      offset += line.length + 1;
+      onLine(line.toString('utf8'));
+      buf = buf.subarray(nl + 1);
+    }
+    if (buf.length) {
+      pending.push(buf);
+    }
+  }
+  // The last line without a newline: still being written, unless it's already a whole JSON value.
+  const rest = Buffer.concat(pending);
+  if (rest.length) {
+    const text = rest.toString('utf8');
+    let whole = true;
+    try {
+      JSON.parse(text);
+    } catch {
+      whole = false;
+    }
+    if (whole) {
+      offset += rest.length;
+      onLine(text);
+    }
+  }
+  return offset;
+}
+
 /** Splits message times into 5-hour blocks the way Claude's session windows start: at the hour of the first message. */
 export function currentBlock(entries: { ts: number; tokens: number; cacheRead: number }[], now: number) {
   let block: { startsAt: number; endsAt: number; tokens: number; cacheRead: number; exact: boolean } | undefined;
@@ -227,33 +340,22 @@ async function claudeUsage(home: string, now = Date.now()): Promise<ProviderUsag
   }
 
   // Tokens in the current 5-hour block. A block is at most 5h old, so transcripts untouched for 10h can't matter.
+  // Each transcript is parsed once and then only for what was appended (claudeEntries): a busy session's file
+  // grows to many MB and this runs every minute.
   const since = now - 10 * HOUR;
   const seen = new Set<string>();
-  const entries: { ts: number; tokens: number; cacheRead: number }[] = [];
-  for (const { file } of await recentFiles(projects, '.jsonl', since, 4)) {
-    const rl = readline.createInterface({ input: fs.createReadStream(file, 'utf8'), crlfDelay: Infinity });
-    for await (const line of rl) {
-      if (!line.includes('"usage"')) continue;
-      let o: any;
-      try {
-        o = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      const u = o?.message?.usage;
-      const ts = Date.parse(o?.timestamp);
-      if (!u || !(ts >= since)) continue;
+  const entries: ClaudeEntry[] = [];
+  const recent = await recentFiles(projects, '.jsonl', since, 4);
+  for (const { file } of recent) {
+    for (const e of await claudeEntries(file)) {
+      if (!(e.ts >= since)) continue;
       // Streaming writes the same message more than once.
-      const key = `${o.message.id ?? ''}:${o.requestId ?? ''}`;
-      if (key !== ':' && seen.has(key)) continue;
-      seen.add(key);
-      entries.push({
-        ts,
-        tokens: (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
-        cacheRead: u.cache_read_input_tokens ?? 0,
-      });
+      if (e.key !== ':' && seen.has(e.key)) continue;
+      seen.add(e.key);
+      entries.push(e);
     }
   }
+  forgetTranscriptsExcept(recent.map((r) => r.file));
   // Claude reports when the 5-hour session resets: count exactly that window. Otherwise estimate it.
   const fiveHour = usage.windows.find((w) => w.label === '5h' && w.resetsAt);
   if (fiveHour?.resetsAt) {
@@ -329,22 +431,61 @@ export async function readUsage(home: string, now = Date.now(), opts: UsageOptio
   return all.filter((u): u is ProviderUsage => !!u);
 }
 
+/** `s` as one shell word: single-quoted, with each `'` written as `'\''` (nothing inside is expanded). */
+export function shQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
 /**
- * The opt-in Claude Code status line: saves the JSON Claude Code passes it (for `rate_limits`) and
- * prints the limits. With jq it keeps only `rate_limits`; without, it saves the input as-is.
+ * The opt-in Claude Code status line: saves the `rate_limits` of the JSON Claude Code passes it and prints
+ * the limits. Only rate_limits is kept (the input also has the session's folder, transcript path, ...): with
+ * jq as it is, without jq just the 5h / 7d numbers, picked out with sed. The file is private (umask 077).
  */
 export function claudeStatusLineScript(captureFile: string): string {
-  return `#!/bin/sh
+  // String.raw: the backslashes are the shell's and sed's. No `${` in the script (that would be interpolation).
+  return String.raw`#!/bin/sh
 # Installed by Herdr Cockpit (VS Code). Claude Code shares plan usage (rate_limits) only with a status
 # line command: this saves it for the Herdr sidebar and prints it. Remove "statusLine" from
 # ~/.claude/settings.json to turn it off.
-f="${captureFile}"
+umask 077
+f=${shQuote(captureFile)}
+t="$f.$$.tmp"
 input=$(cat)
 if command -v jq >/dev/null 2>&1; then
-  printf '%s' "$input" | jq -c '{rate_limits}' > "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
-  printf '%s' "$input" | jq -r '[(.rate_limits.five_hour.used_percentage // empty | "5h \\(floor)%"), (.rate_limits.seven_day.used_percentage // empty | "7d \\(floor)%")] | join(" · ")' 2>/dev/null
+  printf '%s' "$input" | jq -c '{rate_limits}' > "$t" 2>/dev/null && mv "$t" "$f"
+  printf '%s' "$input" | jq -r '[(.rate_limits.five_hour.used_percentage // empty | "5h \(floor)%"), (.rate_limits.seven_day.used_percentage // empty | "7d \(floor)%")] | join(" · ")' 2>/dev/null
 else
-  printf '%s' "$input" > "$f.tmp" && mv "$f.tmp" "$f"
+  # No jq: keep only rate_limits.five_hour / seven_day {used_percentage, resets_at}, as plain numbers.
+  rl=$(printf '%s' "$input" | tr -d '\n\r' | sed -n 's/.*"rate_limits"[[:space:]]*:[[:space:]]*\({[^{}]*\({[^{}]*}[^{}]*\)*}\).*/\1/p')
+  num() {
+    printf '%s' "$rl" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*{\([^{}]*\)}.*/\1/p" |
+      sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\}\).*/\1/p"
+  }
+  json=
+  shown=
+  for w in five_hour seven_day; do
+    u=$(num "$w" used_percentage)
+    if [ -z "$u" ]; then
+      continue
+    fi
+    item="\"$w\":{\"used_percentage\":$u"
+    r=$(num "$w" resets_at)
+    if [ -n "$r" ]; then
+      item="$item,\"resets_at\":$r"
+    fi
+    if [ -n "$json" ]; then
+      json="$json,"
+      shown="$shown · "
+    fi
+    json="$json$item}"
+    case $w in
+      five_hour) label=5h ;;
+      *) label=7d ;;
+    esac
+    shown="$shown$label $(printf '%s' "$u" | cut -d. -f1)%"
+  done
+  printf '{"rate_limits":{%s}}\n' "$json" > "$t" && mv "$t" "$f"
+  printf '%s' "$shown"
 fi
 `;
 }

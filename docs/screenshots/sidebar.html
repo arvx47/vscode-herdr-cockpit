@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<!-- The real Herdr Cockpit sidebar (media/panel.js + panel.css), fed the demo session's view state. -->
+<!-- The real Herdr Cockpit sidebar (media/sidebar.js, built from webview/sidebar, + panel.css), fed the demo session's view state. -->
 <html lang="en"><head><meta charset="utf-8">
 <link href="../../media/codicons/codicon.css" rel="stylesheet">
 <link href="../../media/panel.css" rel="stylesheet">
 <link href="theme.css" rel="stylesheet">
 </head><body>
 <main id="app"></main>
-<script>window.acquireVsCodeApi = () => ({ postMessage() {}, getState() { return window.DEMO_UI || null; }, setState() {} });</script>
+<!-- Like src/panel.ts: the state goes out when the sidebar says it's ready (React listens after its first render). -->
+<script>window.acquireVsCodeApi = () => ({ postMessage(m) { if (m && m.type === 'ready') window.postMessage({ type: 'state', state: window.DEMO_STATE }, '*'); }, getState() { return window.DEMO_UI || null; }, setState() {} });</script>
 <script src="build/state.js"></script>
 <script src="../../media/agent-icons.js"></script>
-<script src="../../media/panel.js"></script>
-<script>window.postMessage({ type: 'state', state: window.DEMO_STATE }, '*');</script>
+<script src="../../media/sidebar.js"></script>
 </body></html>

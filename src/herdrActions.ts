@@ -5,6 +5,7 @@
 import type { HerdrClient } from './herdrClient';
 import type {
   AgentInfo,
+  AgentRenameParams,
   AgentManifestStatusResult,
   AgentPromptedResult,
   AgentSessionInfo,
@@ -12,7 +13,9 @@ import type {
   AgentStartParams,
   PaneInfo,
   PaneInfoResult,
+  PaneRenameParams,
   PaneSplitParams,
+  PaneTarget,
   TabCreatedResult,
   TabCreateParams,
   TabInfo,
@@ -103,6 +106,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Requester = Pick<HerdrClient, 'request'>;
 
+/**
+ * worktree.create's params as Herdr checks them: the repo comes from a space (`workspace_id`) or a folder
+ * (`cwd`), not both ("only one of workspace_id or cwd may be supplied"), and exactly one of a new `branch`
+ * or an existing `path` ("exactly one of path or branch is required").
+ */
+export type WorktreeCreate = Omit<WorktreeCreateParams, 'workspace_id' | 'cwd' | 'branch' | 'path'> &
+  ({ workspace_id: string; cwd?: never } | { cwd: string; workspace_id?: never }) &
+  ({ branch: string; path?: never } | { path: string; branch?: never });
+
 export interface Created {
   tab: TabInfo;
   /** The new tab's first pane. */
@@ -125,7 +137,7 @@ export class HerdrActions {
   }
 
   /** New space on a new git worktree of the repo at `cwd` (or of `workspace_id`'s repo). */
-  async createWorktreeSpace(params: WorktreeCreateParams): Promise<Created & { workspace: WorkspaceInfo; worktree: WorktreeInfo }> {
+  async createWorktreeSpace(params: WorktreeCreate): Promise<Created & { workspace: WorkspaceInfo; worktree: WorktreeInfo }> {
     const r = await this.client.request<WorktreeCreatedResult>('worktree.create', { focus: false, ...params }, 30_000);
     return { workspace: r.workspace, tab: r.tab, pane: r.root_pane, worktree: r.worktree };
   }
@@ -153,8 +165,11 @@ export class HerdrActions {
       try {
         const r = await this.client.request<AgentStartedResult>('agent.start', params, AGENT_START_TIMEOUT_MS + 5_000);
         return r.agent;
-      } catch (e: any) {
-        if (e?.code !== 'agent_pane_busy' || Date.now() > deadline) throw e;
+      } catch (e) {
+        const code = (e as { code?: unknown } | undefined)?.code;
+        if (code !== 'agent_pane_busy' || Date.now() > deadline) {
+          throw e;
+        }
         await sleep(250);
       }
     }
@@ -185,12 +200,14 @@ export class HerdrActions {
 
   /** Clearing the label (null) falls back to the tab name / "Tab N". */
   renamePane(paneId: string, label: string | null) {
-    return this.client.request('pane.rename', { pane_id: paneId, label });
+    const params: PaneRenameParams = { pane_id: paneId, label };
+    return this.client.request('pane.rename', params);
   }
 
   /** Rename an agent (its name in Herdr and in the sidebar). */
   renameAgent(paneId: string, name: string | null) {
-    return this.client.request('agent.rename', { target: paneId, name });
+    const params: AgentRenameParams = { target: paneId, name };
+    return this.client.request('agent.rename', params);
   }
 
   /** Split a pane: a new shell next to it in the same Herdr tab. */
@@ -201,7 +218,8 @@ export class HerdrActions {
 
   /** Closes one pane in Herdr: its process ends. */
   closePane(paneId: string) {
-    return this.client.request('pane.close', { pane_id: paneId });
+    const params: PaneTarget = { pane_id: paneId };
+    return this.client.request('pane.close', params);
   }
 
   /** Closes the tab in Herdr: its panes' processes end. */

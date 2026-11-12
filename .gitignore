@@ -3,3 +3,5 @@ out/
 *.vsix
 .DS_Store
 docs/screenshots/build/
+# Built from webview/sidebar by npm run compile
+media/sidebar.js

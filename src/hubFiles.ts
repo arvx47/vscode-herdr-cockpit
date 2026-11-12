@@ -139,12 +139,7 @@ export function hubOpen(scheme: string, home?: string, now = Date.now()): boolea
   if (!SCHEME.test(scheme)) return false;
   const s = readJson(statusFile(scheme, home));
   if (typeof s?.pid !== 'number' || typeof s?.updated !== 'number' || now - s.updated > 90_000) return false;
-  try {
-    process.kill(s.pid, 0);
-    return true;
-  } catch (e: any) {
-    return e?.code === 'EPERM'; // alive, owned by someone else
-  }
+  return alive(s.pid);
 }
 
 export type OfferHubSetting = 'emptyWindows' | 'allWindows' | 'never';
@@ -188,14 +183,23 @@ export const windowKey = (id: string) => crypto.createHash('sha256').update(id).
 const claimFile = (socket: string, pane: string, home?: string) =>
   path.join(hubDir(home), 'claims', crypto.createHash('sha256').update(`${socket}\n${pane}`).digest('hex').slice(0, 24) + '.json');
 
-const alive = (pid: number) => {
+/**
+ * A process with this pid is running. Only real pids (> 1): kill(0) signals our own process group and kill(-1)
+ * every process we may signal, so a file saying pid 0 or -1 would otherwise always look alive.
+ */
+function alive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 1) {
+    return false;
+  }
   try {
     process.kill(pid, 0);
     return true;
-  } catch (e: any) {
-    return e?.code === 'EPERM';
+  } catch (e) {
+    return errnoCode(e) === 'EPERM'; // alive, owned by someone else
   }
-};
+}
+
+const errnoCode = (e: unknown) => (e as NodeJS.ErrnoException | undefined)?.code;
 
 export function writeClaim(socket: string, pane: string, claim: PaneClaim, home?: string) {
   try {
@@ -266,8 +270,8 @@ export function claimNotification(change: string, home?: string, now = Date.now(
     // 'wx' fails when the file exists: exactly one window creates it.
     fs.closeSync(fs.openSync(file, 'wx'));
     return true;
-  } catch (e: any) {
-    return e?.code !== 'EEXIST';
+  } catch (e) {
+    return errnoCode(e) !== 'EEXIST';
   }
 }
 
@@ -481,8 +485,24 @@ export function takePendingLink(
     return undefined;
   }
   const p = readJson(taken);
+  // A newer link may have replaced the one peeked at before the rename: check again what was taken, and give
+  // another window's (or editor's) link back.
+  if (p?.scheme !== scheme || !mine(typeof p.folder === 'string' ? p.folder : undefined)) {
+    putBack(taken, f);
+    return undefined;
+  }
   fs.rmSync(taken, { force: true });
-  if (!p || p.scheme !== scheme || typeof p.path !== 'string' || typeof p.query !== 'string') return undefined;
+  if (typeof p.path !== 'string' || typeof p.query !== 'string') return undefined;
   if (!(Date.now() - p.created < maxAgeMs)) return undefined;
   return { path: p.path, query: p.query };
+}
+
+/** Puts a taken link back, unless an even newer one was written meanwhile (then the taken one is stale). */
+function putBack(taken: string, f: string) {
+  try {
+    fs.linkSync(taken, f); // fails if `f` exists: never overwrites a newer link
+  } catch {
+    // a newer link is there, or the folder is gone
+  }
+  fs.rmSync(taken, { force: true });
 }

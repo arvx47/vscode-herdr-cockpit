@@ -22,14 +22,20 @@ function managed(): readonly vscode.WorkspaceFolder[] {
   return (vscode.workspace.workspaceFolders ?? []).filter((f) => f.index > 0 && f.name.startsWith(PREFIX));
 }
 
-/** VS Code requires waiting for onDidChangeWorkspaceFolders between updates. */
+const folderList = () => (vscode.workspace.workspaceFolders ?? []).map((f) => `${f.name}\n${f.uri.fsPath}`).join('\n\n');
+
+/**
+ * VS Code requires waiting for onDidChangeWorkspaceFolders between updates. A window that's still starting can take
+ * longer than the wait to send it, so when the wait runs out, the folders themselves say whether the update happened.
+ */
 let pending: Promise<void> = Promise.resolve();
 function update(start: number, del: number, ...add: { uri: vscode.Uri; name?: string }[]): Promise<boolean> {
   const run = pending.then(
     () =>
       new Promise<boolean>((resolve) => {
+        const before = folderList();
         const sub = vscode.workspace.onDidChangeWorkspaceFolders(() => done(true));
-        const timer = setTimeout(() => done(false), 4000);
+        const timer = setTimeout(() => done(folderList() !== before), 10_000);
         const done = (ok: boolean) => {
           sub.dispose();
           clearTimeout(timer);

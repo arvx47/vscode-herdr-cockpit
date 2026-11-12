@@ -12,7 +12,8 @@ import { agentTitle } from './herdrActions';
 import { ManageDeps, pickAgent, startAgent } from './manage';
 import type { Space } from './model';
 import type { HerdrPty } from './builtinTerminal';
-import { herdrTabName } from './viewState';
+import { herdrTabName, shellTabName } from './viewState';
+import { errorText } from './herdrClient';
 
 /** Must match package.json contributes.terminal.profiles. */
 export const SHELL_PROFILE_TITLE = 'Herdr Shell';
@@ -50,14 +51,20 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
   const fallback = (reason: string): vscode.TerminalProfile => {
     if (!warned) {
       warned = true;
-      vscode.window.showWarningMessage(`Herdr: ${reason} "+" opens local shells until it's back.`, 'Start Herdr').then((pick) => {
-        if (pick) deps.startHerdr();
+      void vscode.window.showWarningMessage(`Herdr: ${reason} "+" opens local shells until it's back.`, 'Start Herdr').then(async (pick) => {
+        if (!pick) {
+          return;
+        }
+        await deps.startHerdr().catch((e) => deps.log(`start herdr: ${errorText(e)}`));
       });
     }
     return localShell();
   };
-  /** The terminal VS Code made for each tab we answered with (onDidOpenTerminal comes before the tab opens). */
-  const opened = new Map<HerdrPty, vscode.Terminal>();
+  /**
+   * The terminal VS Code made for each tab we answered with (onDidOpenTerminal comes before the tab opens). Weak:
+   * a tab closed before its pane exists never comes back for its entry.
+   */
+  const opened = new WeakMap<HerdrPty, vscode.Terminal>();
 
   const provide = async (p: (typeof PROFILES)[number]): Promise<vscode.TerminalProfile> => {
     const kind = p.pick ? await pickAgent(deps, 'New agent tab') : p.kind;
@@ -76,18 +83,24 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
       let paneId: string;
       let name: string;
       try {
+        // Same name the sidebar will show for this pane (see paneName()): an agent's title, else the pane's
+        // label (a split) or its Herdr tab's (a new tab).
+        let agentLabel: string | undefined;
+        if (kind) {
+          agentLabel = agentTitle(kind);
+        }
         if (split) {
           const pane = await deps.actions.splitPane({ target_pane_id: splitOf, direction: 'right', cwd: space.cwd });
           paneId = pane.pane_id;
-          name = kind ? agentTitle(kind) : (pane.label ?? title);
+          name = agentLabel ?? pane.label ?? title;
         } else {
-          const { tab, pane } = await deps.actions.createTab({ workspace_id: space.id, cwd: space.cwd, label: kind ? agentTitle(kind) : undefined });
+          const { tab, pane } = await deps.actions.createTab({ workspace_id: space.id, cwd: space.cwd, label: agentLabel });
           paneId = pane.pane_id;
-          // Same name the sidebar will show for this pane (see paneName()).
-          name = kind ? agentTitle(kind) : /^\d+$/.test(tab.label) ? `Tab ${tab.label}` : tab.label;
+          name = agentLabel ?? shellTabName(tab.label);
         }
       } catch (e) {
-        deps.log(`profile ${p.id}: ${e instanceof Error ? e.message : e}`);
+        opened.delete(pty);
+        deps.log(`profile ${p.id}: ${errorText(e)}`);
         throw new Error(`couldn't create a ${split ? 'split' : 'tab'} in ${space.label}`);
       }
       deps.log(`profile ${p.id}: ${split ? `split ${splitOf} ->` : 'new tab'} ${paneId} in ${space.label}`);

@@ -11,9 +11,10 @@
 // note on its bottom row saying who has it, and the first keystroke takes control back (that keystroke isn't
 // sent: it could answer an agent's question).
 import * as vscode from 'vscode';
+import { errorText } from './herdrClient';
 import { HerdrStream, isTakenOver, StreamMode } from './herdrStream';
-import { compileQuery, findMatches, Match, offsetFor, PaneText, startAt } from './termFind';
-import { isDeleteKey, parseInput, POSTLUDE, PRELUDE, Screen, ScrollDir } from './termScreen';
+import { FindController } from './termFindController';
+import { InputToken, isDeleteKey, parseInput, POSTLUDE, PRELUDE, Screen, ScrollDir } from './termScreen';
 
 export interface BuiltinDeps {
   binary(): string;
@@ -52,30 +53,10 @@ const ACTION_SEQ = /\x1b\]777;herdr-cockpit;([a-z-]+)\x07/g;
 // eslint-disable-next-line no-control-regex -- control characters are what it excludes
 const isTyped = (text: string) => /^(?:\x1b\[200~[\s\S]*\x1b\[201~|[^\x00-\x1f\x7f\x1b]+)$/.test(text);
 
-interface PaneScroll {
-  offset_from_bottom: number;
-  max_offset_from_bottom: number;
-  viewport_rows: number;
-}
+type MouseToken = Extract<InputToken, { kind: 'mouse' }>;
 
-/** The find bar's state. Rows are the history's (0 = oldest); `view` is Herdr's view as last answered. */
-interface FindState {
-  query: string;
-  matches: Match[];
-  /** Index into matches (oldest first), -1 for none. */
-  cur: number;
-  error?: string;
-  text?: PaneText;
-  view?: PaneScroll;
-  /** Rows the line wrapping guessed wrong by (corrected from the screen after a jump). */
-  drift: number;
-  /** Check the current match against the screen once its frame is in. */
-  verify: number;
-  /** Mark rows painted last (to clear them). */
-  painted: number[];
-  timer?: NodeJS.Timeout;
-  seq: number;
-}
+/** A mouse report's modifier keys as Herdr's terminal.mouse wants them: shift 1, ctrl 2, alt 4. */
+const modBits = (t: MouseToken) => Number(t.shift) | (Number(t.ctrl) << 1) | (Number(t.alt) << 2);
 
 export interface PtyOptions {
   /** Don't take the pane from another editor window that has it: show it read-only instead (follow mode). */
@@ -83,8 +64,6 @@ export interface PtyOptions {
 }
 
 const WHEEL_LINES = 3;
-/** Typing in the find bar: wait this long before searching. */
-const FIND_DEBOUNCE_MS = 120;
 /** Matches listed by Tab in the find bar. */
 const LIST_MAX = 5000;
 /** Dragging on the top or bottom row: how long before it scrolls, and how often after that. */
@@ -93,6 +72,11 @@ const AUTOSCROLL_EVERY_MS = 50;
 const AUTOSCROLL_IDLE_MS = 150;
 /** How long to wait for the frame that answers a scroll: none comes when the view can't move. */
 const SCROLL_WAIT_MS = 250;
+/**
+ * Frames paint over the selection and the find bar, which are then drawn again: at most this often (a busy pane
+ * sends many frames a second, and each repaint goes over every selected row).
+ */
+const REPAINT_MS = 16;
 
 export class HerdrPty implements vscode.Pseudoterminal {
   private readonly writer = new vscode.EventEmitter<string>();
@@ -106,7 +90,7 @@ export class HerdrPty implements vscode.Pseudoterminal {
   paneId?: string;
   private stream?: HerdrStream;
   private screen?: Screen;
-  /** Keeps model writes in frame order. */
+  /** Keeps model writes in frame order. Add to it with inFrameOrder(), which keeps it going after a step fails. */
   private queue: Promise<void> = Promise.resolve();
   private closedByUser = false;
   private toastTimer?: NodeJS.Timeout;
@@ -124,15 +108,13 @@ export class HerdrPty implements vscode.Pseudoterminal {
   /** Scrolling while a drag is held on the top or bottom row. */
   private auto?: { dir: ScrollDir; since: number; timer?: NodeJS.Timeout };
   private scrollWait?: NodeJS.Timeout;
-  private find?: FindState;
-  /**
-   * Find moves Herdr's view with socket requests, keys and the wheel go through the stream: a jump still on its way
-   * must land before input made after it (Esc, then typing or Bottom, was scrolled back to the match once).
-   */
-  private viewQueue: Promise<unknown> = Promise.resolve();
-  private viewPending = 0;
-  /** The last query, offered when the find bar opens again. */
-  private lastQuery = '';
+  private repaintTimer?: NodeJS.Timeout;
+  private readonly finder: FindController;
+
+  /** The open find bar, if any (the editor test checks its matches). */
+  get find() {
+    return this.finder.state;
+  }
 
   constructor(
     /** The pane id, or how to get it once the tab is open (create the pane then). */
@@ -141,6 +123,13 @@ export class HerdrPty implements vscode.Pseudoterminal {
     private readonly opts: PtyOptions = {},
   ) {
     if (typeof target === 'string') this.paneId = target;
+    this.finder = new FindController({
+      screen: () => this.screen,
+      request: <T>(method: string, params: object, timeoutMs?: number) => this.request<T>(method, params, timeoutMs),
+      write: (data) => this.writer.fire(data),
+      log: (line) => this.deps.log(`built-in terminal ${this.paneId ?? '(new pane)'}: ${line}`),
+      showList: () => this.listMatches(),
+    });
   }
 
   setName(name: string) {
@@ -209,13 +198,14 @@ export class HerdrPty implements vscode.Pseudoterminal {
       onFrame: (bytes) => {
         if (stream !== this.stream) return;
         this.writer.fire(bytes.toString('utf8') + (mode === 'observe' ? this.note() : ''));
-        this.queue = this.queue.then(async () => {
+        this.inFrameOrder(async () => {
           const before = screen.rowsOf();
           const moved = await screen.write(bytes);
-          if (moved !== undefined) return this.scrolled(before, moved);
+          if (moved !== undefined) {
+            return this.scrolled(before, moved);
+          }
           // The frame may have painted over the selection or the find bar: show them again.
-          if (this.find) return this.paintFind();
-          if (screen.hasSelection()) this.writer.fire(screen.paint(screen.rowsOf()));
+          this.repaintSoon();
         });
       },
       onClose: ({ reason, error }) => {
@@ -223,6 +213,54 @@ export class HerdrPty implements vscode.Pseudoterminal {
       },
     }, mode);
     this.stream = stream;
+  }
+
+  /** Draw the selection or the find bar again after frames painted over them, once per REPAINT_MS at most. */
+  private repaintSoon() {
+    const screen = this.screen;
+    if (this.repaintTimer || !screen || (!this.finder.active && !screen.hasSelection())) {
+      return;
+    }
+    this.repaintTimer = setTimeout(() => {
+      this.repaintTimer = undefined;
+      // Behind the frames already on their way to the model, so it paints what the tab shows.
+      this.inFrameOrder(() => {
+        if (this.closedByUser) {
+          return;
+        }
+        if (this.finder.active) {
+          this.finder.paint();
+        } else if (screen.hasSelection()) {
+          this.writer.fire(screen.paint(screen.rowsOf()));
+        }
+      });
+    }, REPAINT_MS);
+  }
+
+  /** Clear the selection, and repaint the rows it was on. */
+  private dropSelection(screen: Screen) {
+    if (screen.hasSelection()) {
+      this.writer.fire(screen.paint(screen.clearSelection()));
+    }
+  }
+
+  /**
+   * A left-button event on the screen: update the selection, repaint the rows it changed, and copy a finished one
+   * (per herdr.copyOnSelect). Returns what Screen.mouse() returned.
+   */
+  private leftButton(screen: Screen, t: MouseToken): { repaint: number[]; copy?: string } {
+    const r = screen.mouse(t);
+    if (r.repaint.length) {
+      let out = screen.paint(r.repaint);
+      if (r.repaint.includes(screen.rows - 1)) {
+        out += this.note(); // read-only: the note on the bottom row
+      }
+      this.writer.fire(out);
+    }
+    if (r.copy) {
+      this.selectionMade(r.copy);
+    }
+    return r;
   }
 
   handleInput(data: string): void {
@@ -233,46 +271,69 @@ export class HerdrPty implements vscode.Pseudoterminal {
     for (const a of actions) if ((TAB_ACTIONS as readonly string[]).includes(a)) this.action(a as TabAction);
     if (!data) return;
     if (this.mode === 'observe') return this.observeInput(screen, data);
-    if (this.find) return this.findInput(screen, data);
+    if (this.finder.active) return this.findInput(screen, data);
     for (const t of parseInput(data)) {
       if (t.kind === 'data') {
         // Backspace / Delete on a selection in the line being typed deletes it; typing replaces it.
         const typed = isTyped(t.text);
-        const keys = screen.hasSelection() && (typed || isDeleteKey(t.text)) ? screen.deleteKeys() : undefined;
+        let keys: string | undefined;
+        if (screen.hasSelection() && (typed || isDeleteKey(t.text))) {
+          keys = screen.deleteKeys();
+        }
         this.stopAutoScroll();
-        if (screen.hasSelection()) this.writer.fire(screen.paint(screen.clearSelection()));
-        const out = keys ? keys + (typed ? t.text : '') : t.text;
+        this.dropSelection(screen);
+        let out = t.text;
+        if (keys && typed) {
+          out = keys + t.text;
+        } else if (keys) {
+          out = keys;
+        }
         this.soon(() => this.stream?.input(out));
         screen.inputSent();
       } else if (t.wheel) {
         this.stopAutoScroll();
-        if (screen.hasSelection()) this.writer.fire(screen.paint(screen.clearSelection()));
+        this.dropSelection(screen);
         screen.wheel(t.wheel);
         const dir = t.wheel;
         this.soon(() => this.stream?.scroll(dir, WHEEL_LINES));
       } else if (t.button === 0) {
         // Left button: a drag selects (like the Herdr TUI); a click without movement goes to the program,
         // so buttons in mouse-aware programs (Kiro) work. Herdr drops it for programs without the mouse.
-        if (!t.release && !t.motion) this.press = { x: t.x, y: t.y, moved: false };
-        else if (t.motion && this.press) this.press.moved = true;
-        const r = screen.mouse(t);
-        if (r.repaint.length) this.writer.fire(screen.paint(r.repaint));
-        if (r.copy) this.selectionMade(r.copy);
+        if (!t.release && !t.motion) {
+          this.press = { x: t.x, y: t.y, moved: false };
+        } else if (t.motion && this.press) {
+          this.press.moved = true;
+        }
+        const r = this.leftButton(screen, t);
         this.autoScroll(screen);
+        const click = t.release && this.press && !this.press.moved && !r.copy;
         // Option+click on the line being typed moves the cursor there.
-        const move = t.release && t.alt && this.press && !this.press.moved && !r.copy ? screen.moveKeys(t.x, t.y) : undefined;
+        let move: string | undefined;
+        if (click && t.alt) {
+          move = screen.moveKeys(t.x, t.y);
+        }
         if (move) {
-          this.soon(() => this.stream?.input(move));
+          const keys = move;
+          this.soon(() => this.stream?.input(keys));
           screen.inputSent();
-        } else if (t.release && this.press && !this.press.moved && !r.copy) {
-          const mods = (t.shift ? 1 : 0) | (t.ctrl ? 2 : 0) | (t.alt ? 4 : 0);
+        } else if (click && this.press) {
+          const mods = modBits(t);
           this.stream.mouse('down', 'left', this.press.x, this.press.y, mods);
           this.stream.mouse('up', 'left', t.x, t.y, mods);
         }
-        if (t.release) this.press = undefined;
+        if (t.release) {
+          this.press = undefined;
+        }
       } else if ((t.button === 1 || t.button === 2) && !t.motion) {
-        const mods = (t.shift ? 1 : 0) | (t.ctrl ? 2 : 0) | (t.alt ? 4 : 0);
-        this.stream.mouse(t.release ? 'up' : 'down', t.button === 1 ? 'middle' : 'right', t.x, t.y, mods);
+        let action: 'down' | 'up' = 'down';
+        if (t.release) {
+          action = 'up';
+        }
+        let button: 'middle' | 'right' = 'right';
+        if (t.button === 1) {
+          button = 'middle';
+        }
+        this.stream.mouse(action, button, t.x, t.y, modBits(t));
       }
     }
   }
@@ -294,21 +355,40 @@ export class HerdrPty implements vscode.Pseudoterminal {
     if (auto !== this.auto || !screen || !this.stream || this.mode !== 'control') return;
     if (screen.edge() !== auto.dir) return this.stopAutoScroll(); // the selection went (a resize)
     const held = Date.now() - auto.since;
-    const lines = Math.max(1, Math.min(screen.rows - 1, held < 1500 ? 1 : held < 3000 ? 3 : 10));
+    let step = 10;
+    if (held < 1500) {
+      step = 1;
+    } else if (held < 3000) {
+      step = 3;
+    }
+    const lines = Math.max(1, Math.min(screen.rows - 1, step));
     // In the frame queue, so the frames before it are on the model first.
-    this.queue = this.queue.then(() => {
+    this.inFrameOrder(() => {
       if (auto !== this.auto || !this.stream) return;
       screen.scrollSent(auto.dir, lines);
       this.stream.scroll(auto.dir, lines);
       clearTimeout(this.scrollWait);
       this.scrollWait = setTimeout(() => {
-        this.queue = this.queue.then(() => {
+        this.inFrameOrder(() => {
           const before = screen.rowsOf();
           const moved = screen.scrollTimedOut();
           if (moved !== undefined) this.scrolled(before, moved);
         });
       }, SCROLL_WAIT_MS);
     });
+  }
+
+  /**
+   * Run `step` after the frames and steps before it. A step that throws is logged and the next ones still run:
+   * left rejected, the chain would skip every later frame (no selection, find or autoscroll for the tab's life).
+   */
+  private inFrameOrder(step: () => unknown) {
+    this.queue = this.queue.then(step).then(
+      () => undefined,
+      (e) => {
+        this.deps.log(`built-in terminal ${this.paneId ?? '(new pane)'}: ${errorText(e)}`);
+      },
+    );
   }
 
   /** Herdr's view moved `lines` for a scroll we sent (0: it couldn't): show the selection, scroll on. */
@@ -321,7 +401,11 @@ export class HerdrPty implements vscode.Pseudoterminal {
     const auto = this.auto;
     if (!auto) return;
     // Didn't move (the end of the scrollback, or the program ignored it): keep trying while the drag is held there.
-    auto.timer = setTimeout(() => this.autoTick(auto), lines ? AUTOSCROLL_EVERY_MS : AUTOSCROLL_IDLE_MS);
+    let wait = AUTOSCROLL_IDLE_MS;
+    if (lines) {
+      wait = AUTOSCROLL_EVERY_MS;
+    }
+    auto.timer = setTimeout(() => this.autoTick(auto), wait);
   }
 
   private stopAutoScroll() {
@@ -350,9 +434,15 @@ export class HerdrPty implements vscode.Pseudoterminal {
         return this.openFind();
       // Like Enter / ↑ in the bar: older first, as the search starts from the bottom.
       case 'find-next':
-        return this.find ? this.step(-1) : this.openFind();
-      case 'find-previous':
-        return this.find ? this.step(1) : this.openFind();
+      case 'find-previous': {
+        if (!this.finder.active) {
+          return this.openFind();
+        }
+        if (a === 'find-next') {
+          return this.finder.step(-1);
+        }
+        return this.finder.step(1);
+      }
       case 'output':
         return void this.openOutput();
       default:
@@ -365,36 +455,30 @@ export class HerdrPty implements vscode.Pseudoterminal {
     const screen = this.screen!;
     if (this.mode !== 'control') return;
     const page = Math.max(1, screen.rows - 1);
-    const f = this.find;
-    if (f?.view && this.deps.request && this.paneId) {
-      // While finding, keep Herdr's view known (the highlights are placed from it).
-      const v = f.view;
-      const to = a === 'top' ? v.max_offset_from_bottom : a === 'bottom' ? 0 : v.offset_from_bottom + (a === 'page-up' ? page : -page);
-      return void this.scrollTo(f, Math.min(v.max_offset_from_bottom, Math.max(0, to)));
+    // While finding, Herdr's view is moved through the socket, so it stays known (the highlights are placed from it).
+    if (this.finder.scrollView(a, page)) {
+      return;
     }
-    if (screen.hasSelection()) this.writer.fire(screen.paint(screen.clearSelection()));
+    this.dropSelection(screen);
     if (a === 'bottom') {
       this.soon(() => this.stream?.scroll('down', 65535));
       return screen.inputSent();
     }
     screen.scrolledAway();
-    if (a === 'top') this.soon(() => this.stream?.scroll('up', 65535));
-    else this.soon(() => this.stream?.scroll(a === 'page-up' ? 'up' : 'down', page));
+    if (a === 'top') {
+      this.soon(() => this.stream?.scroll('up', 65535));
+    } else if (a === 'page-up') {
+      this.soon(() => this.stream?.scroll('up', page));
+    } else {
+      this.soon(() => this.stream?.scroll('down', page));
+    }
   }
 
-  // ---------- find ----------
+  // ---------- find (termFindController.ts) ----------
 
-  /** Queue a change of Herdr's view behind the ones still on their way. */
-  private inOrder<T>(fn: () => T | Promise<T>): Promise<T> {
-    this.viewPending++;
-    const p = this.viewQueue.then(fn).finally(() => this.viewPending--);
-    this.viewQueue = p.catch(() => undefined);
-    return p;
-  }
   /** Run now, unless find's view changes are still on their way: then after them. */
   private soon(fn: () => void) {
-    if (this.viewPending) void this.inOrder(fn);
-    else fn();
+    this.finder.soon(fn);
   }
 
   private request<T = any>(method: string, params: object, timeoutMs?: number): Promise<T> {
@@ -411,241 +495,55 @@ export class HerdrPty implements vscode.Pseudoterminal {
       return;
     }
     this.stopAutoScroll();
-    if (!this.find) this.find = { query: this.lastQuery, matches: [], cur: -1, drift: 0, verify: 0, painted: [], seq: 0 };
-    this.paintFind();
-    if (this.find.query) this.searchSoon(0);
+    this.finder.open();
   }
 
-  /** Close the find bar. The view stays where it is (typing returns to the live screen). */
-  closeFind() {
-    const f = this.find;
-    const screen = this.screen;
-    if (!f || !screen) return;
-    clearTimeout(f.timer);
-    this.lastQuery = f.query;
-    this.find = undefined;
-    screen.setMarks([]);
-    this.writer.fire(screen.paint([...new Set([0, ...f.painted])]));
-  }
-
-  /** Keys while the find bar is open: they edit the query and move between matches; the mouse still selects. */
+  /** Input while the find bar is open: keys go to the bar; the mouse still selects, the wheel scrolls the view. */
   private findInput(screen: Screen, data: string) {
-    const f = this.find!;
     for (const t of parseInput(data)) {
-      if (t.kind === 'mouse') {
-        if (t.wheel) {
-          const v = f.view;
-          if (v) void this.scrollTo(f, Math.min(v.max_offset_from_bottom, Math.max(0, v.offset_from_bottom + (t.wheel === 'up' ? WHEEL_LINES : -WHEEL_LINES))));
-        } else if (t.button === 0) {
-          const r = screen.mouse(t);
-          if (r.repaint.length) this.writer.fire(screen.paint(r.repaint));
-          if (r.copy) this.selectionMade(r.copy);
-          this.autoScroll(screen);
+      if (t.kind === 'data') {
+        this.finder.key(t.text);
+        if (!this.finder.active) {
+          return; // Escape closed it: what came with it isn't typed into the pane
         }
-        continue;
-      }
-      let q = f.query;
-      const text = t.text;
-      for (let i = 0; i < text.length; ) {
-        const rest = text.slice(i);
-        let m: RegExpExecArray | null;
-        if (rest.startsWith('\x1b[200~')) {
-          // A paste: its first line goes into the query.
-          const end = rest.indexOf('\x1b[201~');
-          q += rest.slice(6, end < 0 ? undefined : end).split(/\r\n|\r|\n/)[0];
-          i += end < 0 ? rest.length : end + 6;
-          // eslint-disable-next-line no-control-regex -- an escape sequence (arrow keys)
-        } else if ((m = /^\x1b(?:\[[0-9;?]*([A-Za-z~])|O([A-Za-z]))/.exec(rest))) {
-          const key = m[1] ?? m[2];
-          if (key === 'A') this.step(-1);
-          else if (key === 'B') this.step(1);
-          i += m[0].length;
-        } else if (rest[0] === '\x1b' || rest[0] === '\x03') {
-          if (rest[0] === '\x1b' && rest[1] === '\r') {
-            this.step(1); // Option/Alt+Enter: newer
-            i += 2;
-            continue;
-          }
-          return this.closeFind(); // Escape, Ctrl+C
-        } else {
-          const ch = String.fromCodePoint(rest.codePointAt(0)!);
-          i += ch.length;
-          if (ch === '\r') this.step(-1); // Enter: older (upwards from the bottom, like the editor's terminal find)
-          else if (ch === '\t') void this.listMatches();
-          else if (ch === '\x7f' || ch === '\b') q = [...q].slice(0, -1).join('');
-          else if (ch === '\x15') q = '';
-          else if (ch === '\x17') q = q.replace(/\S*\s*$/, '');
-          else if (ch >= ' ') q += ch;
-        }
-      }
-      if (q !== f.query) {
-        f.query = q;
-        this.paintFind();
-        this.searchSoon(FIND_DEBOUNCE_MS);
-      }
-    }
-  }
-
-  private searchSoon(ms: number) {
-    const f = this.find;
-    if (!f) return;
-    clearTimeout(f.timer);
-    f.timer = setTimeout(() => void this.search(f), ms);
-  }
-
-  /** Read the pane's history (again, when its content changed). */
-  private async loadText(f: { text?: PaneText; view?: PaneScroll }): Promise<void> {
-    const rev = (await this.request<{ content_revision: number }>('pane.copy_motion', { cursor: { row: 0, col: 0 }, motion: 'line_end' })).content_revision;
-    const view = (await this.request<{ pane: { scroll?: PaneScroll } }>('pane.get', {})).pane.scroll;
-    if (!view) throw new Error('Herdr gave no scroll position for this pane');
-    f.view = view;
-    if (f.text && f.text.revision === rev) return;
-    const cols = this.screen!.cols;
-    const last = view.max_offset_from_bottom + view.viewport_rows - 1;
-    const read = (col: number) => this.request<{ text: string }>('pane.selection.read', { anchor: { row: 0, col: 0 }, cursor: { row: last, col } }, 30_000);
-    const r = await read(cols - 1).catch(() => read(0)); // a narrower pane than the tab: drop the last row's tail
-    f.text = new PaneText(r.text.split('\n'), cols, rev);
-  }
-
-  private async search(f: FindState) {
-    if (f !== this.find) return;
-    const seq = ++f.seq;
-    const re = compileQuery(f.query);
-    if (!re || re instanceof Error) {
-      f.matches = [];
-      f.cur = -1;
-      f.error = re instanceof Error ? 'Invalid regular expression' : undefined;
-      return this.paintFind();
-    }
-    try {
-      const prev = f.matches[f.cur]?.row;
-      await this.loadText(f);
-      if (seq !== f.seq || f !== this.find) return;
-      f.matches = findMatches(f.text!, re);
-      f.error = undefined;
-      f.drift = 0;
-      const v = f.view!;
-      // Refining the query stays near the match it was on; a new search starts from the bottom of the view.
-      f.cur = f.matches.length ? startAt(f.matches, prev ?? v.max_offset_from_bottom - v.offset_from_bottom + v.viewport_rows - 1) : -1;
-      if (f.cur >= 0) await this.jump(f, f.cur);
-      else this.paintFind();
-    } catch (e) {
-      if (f !== this.find) return;
-      f.error = e instanceof Error ? e.message : String(e);
-      this.paintFind();
-    }
-  }
-
-  /** Next (newer, +1) or previous (older, -1) match, wrapping around. */
-  private step(dir: 1 | -1) {
-    const f = this.find;
-    if (!f) return;
-    if (!f.matches.length) return f.query ? this.searchSoon(0) : undefined;
-    void this.jump(f, (f.cur + dir + f.matches.length) % f.matches.length).then(() => this.recheck(f));
-  }
-
-  /** After moving: if the pane's content changed since it was read, search again (rows may have moved). */
-  private async recheck(f: FindState) {
-    try {
-      const rev = (await this.request<{ content_revision: number }>('pane.copy_motion', { cursor: { row: 0, col: 0 }, motion: 'line_end' })).content_revision;
-      if (f === this.find && f.text && f.text.revision !== rev) await this.search(f);
-    } catch {
-      // stays on what it has
-    }
-  }
-
-  /** Scroll Herdr's view so match `i` is in the middle, and highlight it. */
-  private async jump(f: FindState, i: number) {
-    const m = f.matches[i];
-    if (!m || !f.view) return;
-    f.cur = i;
-    let v = await this.scrollTo(f, offsetFor(m.row, f.view.max_offset_from_bottom, f.view.viewport_rows));
-    // New output since the history was read moves the bottom: aim again from where it is now.
-    const again = v && offsetFor(m.row, v.max_offset_from_bottom, v.viewport_rows);
-    if (v && again !== v.offset_from_bottom) v = await this.scrollTo(f, again!);
-    f.verify = 5;
-  }
-
-  private async scrollTo(f: FindState, offset: number): Promise<PaneScroll | undefined> {
-    try {
-      // Not sent if the bar closed while it waited.
-      const r = await this.inOrder(() => (f === this.find ? this.request<{ pane: { scroll?: PaneScroll } }>('pane.scroll', { offset_from_bottom: offset }) : undefined));
-      if (!r || f !== this.find) return;
-      if (r.pane.scroll) f.view = r.pane.scroll;
-      if (f.view && f.view.offset_from_bottom > 0) this.screen?.scrolledAway();
-      else this.screen?.inputSent();
-      this.paintFind();
-      return f.view;
-    } catch (e) {
-      if (f !== this.find) return;
-      f.error = e instanceof Error ? e.message : String(e);
-      this.paintFind();
-    }
-  }
-
-  /** Highlight the matches on screen and draw the bar. */
-  private paintFind() {
-    const f = this.find;
-    const screen = this.screen;
-    if (!f || !screen) return;
-    if (f.verify) this.verifyCurrent(f, screen);
-    const marks: { y: number; from: number; to: number; current: boolean }[] = [];
-    if (f.view && f.query) {
-      const top = f.view.max_offset_from_bottom - f.view.offset_from_bottom - f.drift;
-      const bottom = top + screen.rows;
-      for (let i = 0; i < f.matches.length; i++) {
-        const m = f.matches[i];
-        if (m.row >= bottom) break;
-        for (const s of m.spans) if (s.row >= top && s.row < bottom) marks.push({ y: s.row - top, from: s.from, to: s.to, current: i === f.cur });
-      }
-    }
-    screen.setMarks(marks);
-    const rows = [...new Set([...f.painted, ...marks.map((m) => m.y), ...screen.rowsOf(), 0])];
-    f.painted = marks.map((m) => m.y);
-    const info = f.error ?? (!f.query ? '' : f.matches.length ? `${f.cur + 1} of ${f.matches.length}` : 'No results');
-    this.writer.fire(screen.paint(rows) + screen.findBar(f.query, info, '↑↓ ↵ · Tab list · Esc', !!f.error));
-  }
-
-  /**
-   * Lines are mapped to rows by wrapping them at the pane's width; if that's off (a character's width), find the
-   * current match on the screen near where it should be and correct for it.
-   */
-  private verifyCurrent(f: FindState, screen: Screen) {
-    const m = f.matches[f.cur];
-    if (!m || !f.view || !f.text) return void (f.verify = 0);
-    f.verify--;
-    const top = f.view.max_offset_from_bottom - f.view.offset_from_bottom - f.drift;
-    const want = f.text.lines[m.line].substr(m.index, m.length).toLowerCase();
-    const y = m.row - top;
-    for (const d of [0, -1, 1, -2, 2, -3, 3]) {
-      if (y + d < 0 || y + d >= screen.rows) continue;
-      if (screen.rowText(y + d).text.toLowerCase().includes(want)) {
-        f.drift += d;
-        f.verify = 0;
-        return;
+      } else if (t.wheel) {
+        this.finder.wheel(t.wheel, WHEEL_LINES);
+      } else if (t.button === 0) {
+        this.leftButton(screen, t);
+        this.autoScroll(screen);
       }
     }
   }
 
   /** Tab in the find bar: every match in a list; moving through it previews, Enter stays there. */
-  private async listMatches() {
-    const f = this.find;
-    if (!f?.text || !f.matches.length) return;
+  private listMatches() {
+    const list = this.finder.list(LIST_MAX);
+    if (!list) {
+      return;
+    }
     type Item = vscode.QuickPickItem & { i: number };
-    const items: Item[] = f.matches.slice(0, LIST_MAX).map((m, i) => ({
-      label: f.text!.lines[m.line].trim().slice(0, 200) || ' ',
-      description: `row ${m.row + 1}`,
-      i,
-    }));
+    const items: Item[] = list.items.map((m, i) => ({ label: m.label || ' ', description: `row ${m.row + 1}`, i }));
     const qp = vscode.window.createQuickPick<Item>();
-    qp.title = `${f.matches.length} match${f.matches.length === 1 ? '' : 'es'} for “${f.query}”${f.matches.length > LIST_MAX ? ` (first ${LIST_MAX})` : ''}`;
+    let plural = 'es';
+    if (list.total === 1) {
+      plural = '';
+    }
+    let shown = '';
+    if (list.total > LIST_MAX) {
+      shown = ` (first ${LIST_MAX})`;
+    }
+    qp.title = `${list.total} match${plural} for “${list.query}”${shown}`;
     qp.placeholder = 'Type to filter the matching lines; Enter goes there';
     qp.items = items;
-    const start = items[Math.min(f.cur, items.length - 1)];
-    if (start) qp.activeItems = [start];
+    const start = items[Math.min(list.current, items.length - 1)];
+    if (start) {
+      qp.activeItems = [start];
+    }
     let ready = false;
     qp.onDidChangeActive(([it]) => {
-      if (ready && it && f === this.find) void this.jump(f, it.i);
+      if (ready && it) {
+        list.jump(it.i);
+      }
     });
     qp.onDidAccept(() => qp.hide());
     qp.onDidHide(() => qp.dispose());
@@ -657,15 +555,14 @@ export class HerdrPty implements vscode.Pseudoterminal {
   async openOutput() {
     if (!this.screen || !this.deps.request || !this.paneId) return;
     try {
-      const f: { text?: PaneText; view?: PaneScroll } = {};
-      await this.loadText(f);
-      const doc = await vscode.workspace.openTextDocument({ content: f.text!.lines.join('\n').replace(/\s+$/, '') + '\n', language: 'log' });
+      const text = await this.finder.readHistory();
+      const doc = await vscode.workspace.openTextDocument({ content: text.lines.join('\n').replace(/\s+$/, '') + '\n', language: 'log' });
       const ed = await vscode.window.showTextDocument(doc, { preview: false });
       const end = new vscode.Position(doc.lineCount - 1, 0);
       ed.selection = new vscode.Selection(end, end);
       ed.revealRange(new vscode.Range(end, end));
     } catch (e) {
-      void vscode.window.showWarningMessage(`Couldn't read this pane's output from Herdr: ${e instanceof Error ? e.message : e}`);
+      void vscode.window.showWarningMessage(`Couldn't read this pane's output from Herdr: ${errorText(e)}`);
     }
   }
 
@@ -674,9 +571,7 @@ export class HerdrPty implements vscode.Pseudoterminal {
     for (const t of parseInput(data)) {
       if (t.kind === 'data') return this.takeBack();
       if (t.button !== 0 || t.wheel) continue; // the wheel scrolls Herdr's scrollback: only a controller can
-      const r = screen.mouse(t);
-      if (r.repaint.length) this.writer.fire(screen.paint(r.repaint) + (r.repaint.includes(screen.rows - 1) ? this.note() : ''));
-      if (r.copy) this.selectionMade(r.copy);
+      this.leftButton(screen, t);
     }
   }
 
@@ -715,14 +610,17 @@ export class HerdrPty implements vscode.Pseudoterminal {
   close(): void {
     this.closedByUser = true;
     this.stopAutoScroll();
-    clearTimeout(this.find?.timer);
-    this.find = undefined;
+    this.finder.dispose();
     clearTimeout(this.scrollWait);
     clearTimeout(this.toastTimer);
     clearTimeout(this.resizeTimer);
+    clearTimeout(this.repaintTimer);
     if (this.mode === 'control' && this.paneId) this.deps.unclaim?.(this.paneId);
     this.stream?.release();
     this.screen?.dispose();
+    this.writer.dispose();
+    this.closer.dispose();
+    this.namer.dispose();
   }
 
   private onStreamClosed(reason?: string, error?: string) {
@@ -733,7 +631,12 @@ export class HerdrPty implements vscode.Pseudoterminal {
       if (isTakenOver(reason)) return this.lostControl(this.paneId);
     }
     this.ended = true;
-    const why = error ? `couldn't stream this pane: ${error}` : reason === 'detached' ? 'detached' : `the stream ended (${reason ?? 'closed'})`;
+    let why = `the stream ended (${reason ?? 'closed'})`;
+    if (error) {
+      why = `couldn't stream this pane: ${error}`;
+    } else if (reason === 'detached') {
+      why = 'detached';
+    }
     this.deps.log(`built-in terminal ${this.paneId ?? '(new pane)'}: ${why}`);
     this.writer.fire(`${POSTLUDE}\r\n\x1b[2m[Herdr Cockpit] ${why}. Close this tab, or click the pane in the sidebar to open it again.\x1b[0m\r\n`);
     this.deps.onEnded();

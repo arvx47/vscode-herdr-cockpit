@@ -5,12 +5,23 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-/** Install folders to check, most likely first. */
-export function toolDirs(home = os.homedir(), platform: NodeJS.Platform = process.platform): string[] {
+/**
+ * Install folders to check, most likely first. `brewPrefix` is $HOMEBREW_PREFIX when the editor got it; Homebrew
+ * can also live in the home folder (an untrusted-admin install: ~/homebrew, ~/brew, ~/.homebrew).
+ */
+export function toolDirs(home = os.homedir(), platform: NodeJS.Platform = process.platform, brewPrefix = process.env.HOMEBREW_PREFIX): string[] {
   const user = [path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), path.join(home, '.nix-profile', 'bin')];
-  if (platform === 'darwin') return ['/opt/homebrew/bin', '/usr/local/bin', ...user, '/run/current-system/sw/bin'];
+  const brew: string[] = [];
+  if (brewPrefix) {
+    brew.push(path.join(brewPrefix, 'bin'));
+  }
+  if (platform === 'darwin') {
+    const homeBrew = ['homebrew', 'brew', '.homebrew'].map((d) => path.join(home, d, 'bin'));
+    return [...new Set([...brew, '/opt/homebrew/bin', '/usr/local/bin', ...homeBrew, ...user, '/run/current-system/sw/bin'])];
+  }
   // Herdr's and Codex's installers default to ~/.local/bin on Linux.
   return [
+    ...brew,
     user[0],
     '/usr/local/bin',
     '/usr/bin',

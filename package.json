@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "Herdr Cockpit",
   "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.3.5",
+  "version": "0.3.9",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -167,9 +167,10 @@
       },
       {
         "command": "herdr.toggleShellPanes",
-        "title": "Toggle Shell Panes",
+        "title": "Show Shell Panes",
         "category": "Herdr Cockpit",
-        "icon": "$(terminal)"
+        "icon": "$(terminal)",
+        "toggled": "config.herdr.showShellPanes"
       },
       {
         "command": "herdr.openSettings",
@@ -220,6 +221,12 @@
         "command": "herdr.newSpaceHere",
         "title": "New Space in This Window's Folder…",
         "category": "Herdr Cockpit"
+      },
+      {
+        "command": "herdr.newWorktree",
+        "title": "New Worktree…",
+        "category": "Herdr Cockpit",
+        "icon": "$(git-branch-create)"
       },
       {
         "command": "herdr.setupClaudeUsage",
@@ -328,6 +335,11 @@
           "command": "herdr.toggleFollow",
           "when": "view == herdr.spaces",
           "group": "1_follow@1"
+        },
+        {
+          "command": "herdr.toggleShellPanes",
+          "when": "view == herdr.spaces",
+          "group": "1_follow@2"
         },
         {
           "command": "herdr.openTui",
@@ -496,6 +508,11 @@
           "group": "0_create@1"
         },
         {
+          "command": "herdr.newWorktree",
+          "when": "webviewId == herdr.spaces && webviewSection =~ /^space/ && spaceRepo",
+          "group": "0_create@2"
+        },
+        {
           "command": "herdr.rename",
           "when": "webviewId == herdr.spaces && webviewSection",
           "group": "7_edit@1"
@@ -561,6 +578,7 @@
           "scope": "machine"
         },
         "herdr.startServer": {
+          "scope": "machine",
           "type": "string",
           "enum": [
             "ask",
@@ -591,6 +609,7 @@
           "description": "When a window opens, offer to open Herdr Cockpit (only when Herdr is installed and no Cockpit window is open)."
         },
         "herdr.followMode": {
+          "scope": "machine",
           "type": "boolean",
           "default": false,
           "description": "When you switch spaces in Herdr (e.g. in your Mac terminal), this window follows. Only active in a Cockpit window or after you've switched a space from VS Code."
@@ -639,6 +658,7 @@
           "description": "When a window opens again, reopen the Herdr tabs it had when it was closed (panes that still exist in Herdr). A pane another window has stays there and shows read-only here."
         },
         "herdr.closeTabInHerdr": {
+          "scope": "machine",
           "type": "string",
           "enum": [
             "ask",
@@ -652,6 +672,27 @@
             "Closing a tab only detaches: the agent or shell keeps running in Herdr."
           ],
           "description": "What closing a Herdr terminal tab yourself (its X) does in Herdr. Switching spaces and closing the window never close anything in Herdr."
+        },
+        "herdr.newWorktreeStartsWith": {
+          "type": "string",
+          "enum": [
+            "shell",
+            "ask",
+            "claude",
+            "codex",
+            "kiro",
+            "cursor"
+          ],
+          "enumDescriptions": [
+            "A shell in the new checkout.",
+            "Ask each time: a shell or an agent.",
+            "Claude Code.",
+            "Codex.",
+            "Kiro.",
+            "Cursor's agent."
+          ],
+          "default": "shell",
+          "description": "What a space made with New Worktree… starts with."
         },
         "herdr.autoAttach": {
           "type": "string",
@@ -667,6 +708,18 @@
           ],
           "default": "all",
           "description": "Which of a space's panes open as terminal tabs when you switch to it. Replaces herdr.autoAttachOnSwitch and herdr.autoAttachShells, which are still read until this is set."
+        },
+        "herdr.autoAttachOnSwitch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open a space's panes as tabs when you switch to it.",
+          "deprecationMessage": "Replaced by herdr.autoAttach (false = \"none\"). Still read until herdr.autoAttach is set."
+        },
+        "herdr.autoAttachShells": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open shell panes too, not only agents, when you switch to a space.",
+          "deprecationMessage": "Replaced by herdr.autoAttach (false = \"agents\"). Still read until herdr.autoAttach is set."
         },
         "herdr.agentNames": {
           "type": "string",
@@ -947,28 +1000,34 @@
     ]
   },
   "scripts": {
-    "compile": "tsc -p .",
+    "compile": "tsc -p . && npm run build:webview",
+    "build:webview": "tsc -p tsconfig.webview.json && node scripts/build-webview.mjs",
     "watch": "tsc -watch -p .",
     "gen:types": "node scripts/gen-herdr-types.mjs",
     "gen:icons": "node scripts/gen-agent-icons.mjs",
     "codicons": "node scripts/copy-codicons.mjs",
     "pretest": "tsc -p .",
-    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/connectionTest.js && node out/test/syncTest.js && node out/test/placementTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/gitTest.js",
-    "package": "npm run codicons && tsc -p . && vsce package",
+    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/usageScriptTest.js && node out/test/connectionTest.js && node out/test/syncTest.js && node out/test/tabMatchTest.js && node out/test/noticesTest.js && node out/test/placementTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/termFindTest.js && node out/test/gitTest.js",
+    "package": "npm run codicons && npm run compile && vsce package",
     "install-local": "npm run package && node scripts/install-local.mjs",
-    "lint": "eslint --no-warn-ignored src media/*.js scripts",
+    "lint": "eslint --no-warn-ignored src webview media/*.js scripts",
     "test:vscode": "npm run compile && node out/test/vscode/run.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@lobehub/icons-static-svg": "^1.95.1",
     "@types/node": "^20.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "@types/vscode": "~1.90.0",
     "@vscode/codicons": "^0.0.46-24",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.0.0",
     "@xterm/addon-serialize": "^0.14.0",
+    "esbuild": "^0.24.2",
     "eslint": "^9.39.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.71.1"
   },

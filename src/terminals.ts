@@ -4,6 +4,7 @@
 import * as vscode from 'vscode';
 import type { Pane } from './model';
 import { BuiltinDeps, HerdrPty, PtyOptions } from './builtinTerminal';
+import { matchTabs, nextMove } from './tabMatch';
 
 export { resolveBinary } from './connection';
 
@@ -37,7 +38,11 @@ export class AttachTerminals implements vscode.Disposable {
   private sub: vscode.Disposable;
   /** The editor group Herdr tabs were last opened in, to keep them together across switches. */
   private lastColumn?: vscode.ViewColumn;
-  private namePoll: NodeJS.Timeout;
+  /** Runs only while there are tabs (see syncNamePoll). */
+  private namePoll?: NodeJS.Timeout;
+  /** Tabs known to show one of our panes (see learnTabs): the tab API doesn't say which terminal a tab is. */
+  private tabPane = new WeakMap<vscode.Tab, string>();
+  private tabSubs: vscode.Disposable[];
   /** The window is closing: its tabs are going away with it, not because you closed them. */
   shuttingDown = false;
 
@@ -56,7 +61,6 @@ export class AttachTerminals implements vscode.Disposable {
     /** You renamed a tab (its Rename... menu): VS Code updates terminal.name but fires no event, so poll. */
     private onUserRename: (paneId: string, name: string) => void = () => {},
   ) {
-    this.namePoll = setInterval(() => this.pollNames(), 1000);
     this.sub = vscode.window.onDidCloseTerminal((t) => {
       for (const [k, e] of this.byPane)
         if (e.term === t) {
@@ -65,10 +69,59 @@ export class AttachTerminals implements vscode.Disposable {
           }
           const wasLive = !e.pty?.ended;
           this.byPane.delete(k);
-          this.onChange();
+          this.changed();
           if (wasLive && t.exitStatus?.reason === vscode.TerminalExitReason.User) this.onUserClose(k);
         }
     });
+    this.tabSubs = [
+      vscode.window.onDidChangeActiveTerminal(() => this.learnTabs()),
+      vscode.window.tabGroups.onDidChangeTabs((e) => this.learnTabs(e.opened)),
+    ];
+  }
+
+  /**
+   * Tie tabs to panes when it's certain: the active tab while its terminal is the active one, or a tab that just
+   * opened when it's the only new tab with that name and only one of our terminals has it, not yet tied.
+   */
+  private learnTabs(opened: readonly vscode.Tab[] = []) {
+    const term = vscode.window.activeTerminal;
+    const active = vscode.window.tabGroups.activeTabGroup.activeTab;
+    const paneId = this.paneIdOf(term);
+    if (paneId && active?.input instanceof vscode.TabInputTerminal && active.label === term?.name) {
+      this.tabPane.set(active, paneId);
+    }
+    const terminalTabs = opened.filter((t) => t.input instanceof vscode.TabInputTerminal);
+    if (!terminalTabs.length) {
+      return;
+    }
+    const tied = new Set<string>();
+    for (const g of vscode.window.tabGroups.all) {
+      for (const t of g.tabs) {
+        const id = this.tabPane.get(t);
+        if (id) {
+          tied.add(id);
+        }
+      }
+    }
+    for (const tab of terminalTabs) {
+      if (this.tabPane.has(tab) || terminalTabs.filter((t) => t.label === tab.label).length > 1) {
+        continue;
+      }
+      const candidates = [...this.byPane].filter(([id, e]) => live(e) && e.term.name === tab.label && !tied.has(id));
+      if (candidates.length === 1) {
+        this.tabPane.set(tab, candidates[0][0]);
+        tied.add(candidates[0][0]);
+      }
+    }
+  }
+
+  private paneIdOf(term: vscode.Terminal | undefined): string | undefined {
+    for (const [paneId, e] of this.byPane) {
+      if (e.term === term) {
+        return paneId;
+      }
+    }
+    return undefined;
   }
 
   /** A tab for a pane, drawn from Herdr's stream: the pane id, or how to create the pane once the tab opens. */
@@ -94,6 +147,21 @@ export class AttachTerminals implements vscode.Disposable {
   /** The pane (and space) a tab shows, if it's one of ours. */
   paneOf(term: vscode.Terminal | undefined): { paneId: string; spaceId: string } | undefined {
     for (const [paneId, e] of this.byPane) if (e.term === term && live(e)) return { paneId, spaceId: e.spaceId };
+  }
+
+  /** The set of tabs changed: poll their names only while there are some, and tell the extension. */
+  private changed() {
+    this.syncNamePoll();
+    this.onChange();
+  }
+
+  private syncNamePoll() {
+    if (this.byPane.size && !this.namePoll) {
+      this.namePoll = setInterval(() => this.pollNames(), 1000);
+    } else if (!this.byPane.size && this.namePoll) {
+      clearInterval(this.namePoll);
+      this.namePoll = undefined;
+    }
   }
 
   /**
@@ -138,62 +206,77 @@ export class AttachTerminals implements vscode.Disposable {
     return [...placed, ...rest].map((paneId) => ({ paneId, spaceId: this.byPane.get(paneId)!.spaceId }));
   }
 
-  /**
-   * Our editor-area tabs as the tab bar shows them, group by group. The tab API doesn't say which terminal a tab
-   * is, so tabs are matched by name; tabs with the same name are matched in the order they opened.
-   */
-  private placedTabs(): { paneId: string; tab: vscode.Tab; column: vscode.ViewColumn; index: number }[] {
-    const unmatched = [...this.byPane].filter(([, e]) => live(e));
-    const placed: { paneId: string; tab: vscode.Tab; column: vscode.ViewColumn; index: number }[] = [];
-    for (const group of vscode.window.tabGroups.all) {
-      group.tabs.forEach((tab, index) => {
-        if (!(tab.input instanceof vscode.TabInputTerminal)) {
-          return;
-        }
-        const i = unmatched.findIndex(([, e]) => e.term.name === tab.label);
-        if (i >= 0) {
-          placed.push({ paneId: unmatched[i][0], tab, column: group.viewColumn, index });
-          unmatched.splice(i, 1);
-        }
-      });
+  /** Our editor-area tabs as the tab bar shows them, group by group (see tabMatch.ts for how tabs are matched). */
+  private placedTabs() {
+    const tabs = vscode.window.tabGroups.all.flatMap((group) =>
+      group.tabs
+        .map((tab, index) => ({ tab, label: tab.label, column: group.viewColumn, index }))
+        .filter((t) => t.tab.input instanceof vscode.TabInputTerminal),
+    );
+    const panes = [...this.byPane].filter(([, e]) => live(e)).map(([paneId, e]) => ({ paneId, name: e.term.name }));
+    return matchTabs(tabs, panes, (tab) => this.tabPane.get(tab));
+  }
+
+  /** Show the pane's tab and wait until the editor has made it the active tab (moving a tab moves the active one). */
+  private async activate(paneId: string): Promise<boolean> {
+    const term = this.byPane.get(paneId)?.term;
+    if (!term) {
+      return false;
     }
-    return placed;
+    term.show(false);
+    for (let i = 0; i < 40; i++) {
+      const active = vscode.window.tabGroups.activeTabGroup.activeTab;
+      if (vscode.window.activeTerminal === term && active?.input instanceof vscode.TabInputTerminal && active.label === term.name) {
+        this.tabPane.set(active, paneId);
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return false;
   }
 
   /**
    * Put our tabs back in `order` (pane ids), within each editor group, in the slots they already take, e.g. after
    * reopening them with the window: tabs VS Code failed to draw are opened again last. Moving a tab means
-   * activating it, so the tab that was active before is shown again at the end.
+   * activating it, so the tab that was active before is shown again at the end. Returns what went wrong, if
+   * anything (a tab that never became active stops it, rather than moving another tab).
    */
-  async arrange(order: readonly string[]) {
+  async arrange(order: readonly string[]): Promise<string | undefined> {
     const rank = new Map(order.map((paneId, i) => [paneId, i] as const));
     const rankOf = (paneId: string) => rank.get(paneId) ?? order.length;
     const before = vscode.window.tabGroups.activeTabGroup.activeTab;
     const beforePane = this.placedTabs().find((t) => t.tab === before)?.paneId;
     let moved = false;
+    let problem: string | undefined;
     for (const column of new Set(this.placedTabs().map((t) => t.column))) {
       // One move at a time, read again from the tab bar after each; never more moves than tabs.
       for (let attempt = 0; attempt < this.byPane.size; attempt++) {
-        const here = this.placedTabs().filter((t) => t.column === column);
-        const slots = here.map((t) => t.index);
-        const wanted = [...here].sort((a, b) => rankOf(a.paneId) - rankOf(b.paneId));
-        const k = wanted.findIndex((t, i) => t.index !== slots[i]);
-        if (k < 0) {
+        const move = nextMove(this.placedTabs().filter((t) => t.column === column), rankOf);
+        if (!move) {
           break;
         }
-        this.byPane.get(wanted[k].paneId)?.term.show(false);
-        await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: slots[k] + 1 });
+        if (!(await this.activate(move.tab.paneId))) {
+          problem = `the tab of ${move.tab.paneId} didn't become active`;
+          break;
+        }
+        await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: move.to + 1 });
         moved = true;
+      }
+      if (problem) {
+        break;
       }
     }
     if (!moved) {
-      return;
+      return problem;
     }
     if (beforePane) {
       this.byPane.get(beforePane)?.term.show(false);
     } else if (before?.input instanceof vscode.TabInputText) {
       await vscode.window.showTextDocument(before.input.uri, { viewColumn: before.group.viewColumn });
+    } else if (before?.input instanceof vscode.TabInputTextDiff) {
+      await vscode.commands.executeCommand('vscode.diff', before.input.original, before.input.modified, before.label, { viewColumn: before.group.viewColumn });
     }
+    return problem;
   }
 
   /** The pane has a tab VS Code never opened (it failed to draw it). */
@@ -265,14 +348,26 @@ export class AttachTerminals implements vscode.Disposable {
     }
     const where = this.location();
     // editorSplit: agents in the first editor group, shells in the second (created when needed).
-    const column = where === 'panel' ? undefined : where === 'editorSplit' ? (pane.isAgent ? vscode.ViewColumn.One : vscode.ViewColumn.Two) : this.editorColumn();
-    const location = column === undefined ? vscode.TerminalLocation.Panel : { viewColumn: column, preserveFocus: !!opts.preserveFocus };
+    let column: vscode.ViewColumn | undefined;
+    if (where === 'editorSplit') {
+      if (pane.isAgent) {
+        column = vscode.ViewColumn.One;
+      } else {
+        column = vscode.ViewColumn.Two;
+      }
+    } else if (where !== 'panel') {
+      column = this.editorColumn();
+    }
+    let location: vscode.TerminalOptions['location'] = vscode.TerminalLocation.Panel;
+    if (column !== undefined) {
+      location = { viewColumn: column, preserveFocus: !!opts.preserveFocus };
+    }
     const { name, iconPath } = this.look(pane, opts.startingAs);
     const pty = this.newPty(pane.id, { polite: opts.polite });
     const term = vscode.window.createTerminal({ name, pty, iconPath, location, isTransient: true });
     this.byPane.set(pane.id, { term, spaceId: pane.workspaceId, pty, column, name, seen: name });
     if (where === 'editor' && column) this.lastColumn = column;
-    this.onChange();
+    this.changed();
     // An editor-area tab opens where `location` says. show() again could move it to the active group, so
     // only the panel needs it (createTerminal doesn't reveal the panel).
     if (column === undefined) term.show(opts.preserveFocus);
@@ -284,14 +379,26 @@ export class AttachTerminals implements vscode.Disposable {
    * attached, closes on space switch and is reused when you click its row.
    */
   adopt(paneId: string, spaceId: string, term: vscode.Terminal, pty?: HerdrPty, name = term.name) {
+    // A tab the pane already had (e.g. one whose stream ended) would be left open and untracked: close it.
+    const old = this.byPane.get(paneId);
+    if (old && old.term !== term) {
+      old.term.dispose();
+    }
     this.byPane.set(paneId, { term, spaceId, pty, name, seen: term.name });
-    if (name !== term.name) pty?.setName(name);
-    this.onChange();
+    if (name !== term.name) {
+      pty?.setName(name);
+    }
+    this.changed();
   }
 
-  /** The space of a terminal we track, e.g. the active one. */
+  /** The space of a live tab we track, e.g. the active one. */
   spaceOf(term: vscode.Terminal | undefined): string | undefined {
-    for (const e of this.byPane.values()) if (e.term === term) return e.spaceId;
+    for (const e of this.byPane.values()) {
+      if (e.term === term && live(e)) {
+        return e.spaceId;
+      }
+    }
+    return undefined;
   }
 
   /** Rename an open tab after its pane was renamed in Herdr, without focusing it. */
@@ -326,11 +433,17 @@ export class AttachTerminals implements vscode.Disposable {
         closed = true;
       }
     }
-    if (closed) this.onChange();
+    if (closed) {
+      this.changed();
+    }
   }
 
   dispose() {
     this.sub.dispose();
+    for (const d of this.tabSubs) {
+      d.dispose();
+    }
     clearInterval(this.namePoll);
+    this.namePoll = undefined;
   }
 }

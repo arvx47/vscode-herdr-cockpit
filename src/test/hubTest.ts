@@ -116,6 +116,10 @@ assert.strictEqual(hubOpen('cursor', home), true, 'fresh status, live process');
 assert.strictEqual(hubOpen('cursor', home, Date.now() + 120_000), false, 'stale heartbeat');
 writeHubStatus({ ...st, pid: 999999, updated: Date.now() }, home);
 assert.strictEqual(hubOpen('cursor', home), false, 'dead process');
+for (const pid of [0, -1, 1, 1.5]) {
+  writeHubStatus({ ...st, pid, updated: Date.now() }, home);
+  assert.strictEqual(hubOpen('cursor', home), false, `pid ${pid} is not a window (kill(0) / kill(-1) would succeed)`);
+}
 assert.strictEqual(hubOpen('vscode', home), false, 'no status file');
 const offer = (o: Partial<Parameters<typeof shouldOfferHub>[0]>) =>
   shouldOfferHub({ mode: 'emptyWindows', isHub: false, hasFolder: false, herdrInstalled: true, hubOpenElsewhere: false, ...o });
@@ -137,7 +141,20 @@ writePendingLink('vscode', '/open', 'space=w2', home, '/repos/api/');
 assert.strictEqual(takePendingLink('vscode', 60_000, home), undefined, "the Cockpit window leaves a link aimed at a space's window");
 assert.strictEqual(takePendingLink('vscode', 60_000, home, (f) => f === '/repos/web'), undefined, 'a window with other folders leaves it too');
 assert.deepStrictEqual(takePendingLink('vscode', 60_000, home, (f) => f === '/repos/api'), { path: '/open', query: 'space=w2' }, 'the window with that folder takes it (trailing slash ignored)');
-console.log("✓ link hand-off: aimed at a space's own window by folder");
+// A newer link replaces the file between the check and the take: the taker checks what it took and gives it back.
+let replaced = false;
+writePendingLink('vscode', '/open', 'space=w3', home, '/repos/api');
+const apiWindow = (f: string | undefined) => {
+  if (!replaced) {
+    replaced = true;
+    writePendingLink('vscode', '/open', 'space=w4', home, '/repos/web'); // lands right after the peek
+  }
+  return f === '/repos/api';
+};
+assert.strictEqual(takePendingLink('vscode', 60_000, home, apiWindow), undefined, "the api window doesn't run the web window's link");
+assert.deepStrictEqual(takePendingLink('vscode', 60_000, home, (f) => f === '/repos/web'), { path: '/open', query: 'space=w4' }, 'it was put back for its window');
+assert.deepStrictEqual(fs.readdirSync(path.join(home, '.herdr-cockpit')).filter((n) => n.includes('pending-link')), [], 'no taken file left behind');
+console.log("✓ link hand-off: aimed at a space's own window by folder; a link swapped in while taking is put back");
 
 // ---------- windows ----------
 const win = (pid: number, extra: Partial<WindowRecord> = {}): WindowRecord => ({ scheme: 'vscode', pid, socket: '/s', folders: [], spaces: [], updated: 1, ...extra });
@@ -210,8 +227,11 @@ assert.strictEqual(fs.readdirSync(path.join(home, '.herdr-cockpit', 'claims')).l
 console.log('✓ pane claims: per session, who took it (newer than us, alive, not us), removed only by their owner');
 
 // ---------- tools ----------
-assert.strictEqual(toolDirs('/h', 'darwin')[0], '/opt/homebrew/bin');
-assert.strictEqual(toolDirs('/h', 'linux')[0], '/h/.local/bin', "Herdr's installer default on Linux");
+assert.strictEqual(toolDirs('/h', 'darwin', '')[0], '/opt/homebrew/bin');
+assert.ok(toolDirs('/h', 'darwin', '').includes('/h/brew/bin'), 'Homebrew in the home folder');
+assert.strictEqual(toolDirs('/h', 'darwin', '/x/brew')[0], '/x/brew/bin', '$HOMEBREW_PREFIX first');
+assert.strictEqual(toolDirs('/h', 'darwin', '/opt/homebrew').filter((d) => d === '/opt/homebrew/bin').length, 1, 'no duplicates');
+assert.strictEqual(toolDirs('/h', 'linux', '')[0], '/h/.local/bin', "Herdr's installer default on Linux");
 assert.ok(toolDirs('/h', 'linux').includes('/home/linuxbrew/.linuxbrew/bin'));
 fs.mkdirSync(path.join(home, '.local', 'bin'), { recursive: true });
 fs.writeFileSync(path.join(home, '.local', 'bin', 'hb-fake-tool'), '');

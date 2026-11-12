@@ -1,43 +1,30 @@
-// Standalone test: fake herdr socket server + real client + normalizer. No VS Code needed.
+// Standalone test: fake herdr socket server (mockHerdr.ts) + real client + normalizer. No VS Code needed.
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as assert from 'assert';
-import { HerdrClient, HerdrError, DEFAULT_SUBSCRIPTIONS, subscriptionsFor } from '../herdrClient';
+import { HerdrClient, HerdrError, DEFAULT_SUBSCRIPTIONS, expandHome, subscriptionsFor } from '../herdrClient';
 import { normalize } from '../model';
 import { ActivityWatcher } from '../activity';
 import { HerdrActions, agentName, agentSlug, agentTitle, resumeArgs } from '../herdrActions';
+import { MockHerdr, pane, snap, tab, validate, ws } from './mockHerdr';
 
-import type { AgentInfo, PaneInfo, SessionSnapshotResult, TabInfo, WorkspaceInfo } from '../herdrTypes';
+import type { AgentInfo, PaneInfo, SessionSnapshotResult } from '../herdrTypes';
 
 const sock = path.join(os.tmpdir(), `herdr-mock-${process.pid}.sock`);
-try { fs.unlinkSync(sock); } catch {}
 
 // Real `herdr api snapshot` output (herdr 0.9.1, protocol 22), saved verbatim.
 const fixture: { result: SessionSnapshotResult } = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', '..', 'test', 'fixtures', 'snapshot-herdr-0.9.1.json'), 'utf8'),
 );
 
-// Synthetic records typed against the generated schema, so a schema change breaks the build here.
-const ws = (workspace_id: string, label: string, extra: Partial<WorkspaceInfo> = {}): WorkspaceInfo => ({
-  workspace_id, label, number: 1, focused: false, pane_count: 1, tab_count: 1, active_tab_id: `${workspace_id}:t1`, agent_status: 'unknown', ...extra,
-});
-const tab = (tab_id: string, label: string): TabInfo => ({
-  tab_id, workspace_id: tab_id.split(':')[0], label, number: 1, focused: false, pane_count: 1, agent_status: 'unknown',
-});
-const pane = (pane_id: string, tab_id: string, extra: Partial<PaneInfo> = {}): PaneInfo => ({
-  pane_id, tab_id, workspace_id: pane_id.split(':')[0], terminal_id: `term_${pane_id}`, focused: false, agent_status: 'unknown', revision: 1, ...extra,
-});
 const agent = (p: PaneInfo, extra: Partial<AgentInfo>): AgentInfo => ({ ...p, agent_status: 'idle', ...extra });
-const snap = (s: Partial<SessionSnapshotResult['snapshot']>): SessionSnapshotResult => ({
-  type: 'session_snapshot',
-  snapshot: { version: '0.9.1', protocol: 22, workspaces: [], tabs: [], panes: [], layouts: [], agents: [], ...s },
-});
 
 const paneA1 = pane('w1:p1', 'w1:t1', { focused: true, cwd: '/repo/api', agent: 'claude' });
 const paneB1 = pane('w2:p1', 'w2:t1', { cwd: '/repo/web', foreground_cwd: '/repo/web/pkg', agent: 'codex' });
 const snapA = snap({
+  version: '0.9.1',
   focused_workspace_id: 'w1',
   focused_pane_id: 'w1:p1',
   workspaces: [ws('w1', 'api'), ws('w2', 'web')],
@@ -49,106 +36,85 @@ const snapA = snap({
 const snapshot = snapA;
 let reads = 0;
 let busyStarts = 2;
-/** Requests the mock received for the create/rename/close methods, in order. */
-const calls: { method: string; params: any }[] = [];
-let subscriber: net.Socket | undefined;
-const server = net.createServer((c) => {
-  c.setEncoding('utf8');
-  let buf = '';
-  c.on('data', (d) => {
-    buf += d;
-    let nl;
-    while ((nl = buf.indexOf('\n')) >= 0) {
-      const req = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
-      const reply = (o: any) => c.write(JSON.stringify({ id: req.id, ...o }) + '\n');
-      switch (req.method) {
-        case 'session.snapshot':
-          // split the response across two writes to test line buffering
-          { const s = JSON.stringify({ id: req.id, result: snapshot }) + '\n'; c.write(s.slice(0, 7)); setTimeout(() => c.write(s.slice(7)), 5); }
-          break;
-        case 'workspace.focus':
-          if (!snapshot.snapshot.workspaces.find((w) => w.workspace_id === req.params.workspace_id))
-            reply({ error: { code: 'not_found', message: 'workspace not found' } });
-          else { snapshot.snapshot.focused_workspace_id = req.params.workspace_id; reply({ result: { type: 'ok' } }); }
-          break;
-        case 'pane.process_info':
-          reply({ result: { type: 'pane_process_info', process_info: {
-            pane_id: req.params.pane_id, foreground_process_group_id: 42,
-            foreground_processes: [{ pid: 42, name: 'Python', argv: ['/usr/local/bin/Python', 'app.py'] }],
-          } } });
-          break;
-        case 'pane.read':
-          assert.ok(['recent_unwrapped', 'detection'].includes(req.params.source));
-          reply({ result: { type: 'pane_read', read: {
-            pane_id: req.params.pane_id, workspace_id: 'w1', tab_id: 'w1:t1', source: req.params.source, format: 'text',
-            revision: 0, truncated: false, text: `GET / 200\nGET /x 500 Internal Server Error\n${reads++}`,
-          } } });
-          break;
-        case 'workspace.create':
-          calls.push(req);
-          reply({ result: { type: 'workspace_created',
-            workspace: ws('w9', req.params.label ?? 'new'), tab: tab('w9:t1', '1'),
-            root_pane: pane('w9:p1', 'w9:t1', { cwd: req.params.cwd }) } });
-          break;
-        case 'tab.create':
-          calls.push(req);
-          reply({ result: { type: 'tab_created', tab: tab(`${req.params.workspace_id}:t7`, req.params.label ?? '7'),
-            root_pane: pane(`${req.params.workspace_id}:p7`, `${req.params.workspace_id}:t7`) } });
-          break;
-        case 'worktree.create':
-          calls.push(req);
-          reply({ result: { type: 'worktree_created', workspace: ws('w8', req.params.branch), tab: tab('w8:t1', '1'),
-            root_pane: pane('w8:p1', 'w8:t1'),
-            worktree: { path: '/wt/x', branch: req.params.branch, is_bare: false, is_detached: false, is_prunable: false, is_linked_worktree: true, label: req.params.branch } } });
-          break;
-        case 'agent.start':
-          // A brand-new pane isn't at its prompt yet: Herdr answers busy until it is.
-          if (busyStarts > 0) {
-            busyStarts--;
-            reply({ error: { code: 'agent_pane_busy', message: `agent target pane ${req.params.pane_id} is not an available shell` } });
-            break;
-          }
-          calls.push(req);
-          // agent.start blocks until the agent is ready; answer after the client's default 5s would have passed.
-          setTimeout(() => reply({ result: { type: 'agent_started', argv: [req.params.kind],
-            agent: { ...pane(req.params.pane_id, 'w1:t7', { agent: req.params.kind }), agent_status: 'idle', name: req.params.name } } }), 5200);
-          break;
-        case 'agent.prompt':
-          calls.push(req);
-          reply({ result: { type: 'agent_prompted', agent: { ...pane(req.params.target, 'w1:t1', { agent: 'claude' }), agent_status: 'working', name: 'claude' } } });
-          break;
-        case 'server.agent_manifests':
-          reply({ result: { type: 'agent_manifest_status', manifests: ['claude', 'codex', 'gemini'].map((agent) => ({ agent, source: 'remote', source_kind: 'remote', local_override_shadowing_remote: false })) } });
-          break;
-        case 'worktree.remove':
-          calls.push(req);
-          reply({ result: { type: 'worktree_removed', workspace_id: req.params.workspace_id, path: '/wt/x', forced: !!req.params.force } });
-          break;
-        case 'workspace.rename': case 'workspace.close': case 'tab.rename': case 'tab.close': case 'pane.rename':
-          calls.push(req);
-          reply({ result: { type: 'ok' } });
-          break;
-        case 'events.subscribe': {
-          // Like herdr 0.9.1: pane-scoped events need a pane_id, and one unknown pane rejects the whole request.
-          assert.ok(Array.isArray(req.params.subscriptions));
-          const PANE_SCOPED = ['pane.agent_status_changed', 'pane.output_matched', 'pane.scroll_changed'];
-          const bad = req.params.subscriptions.find((x: any) => PANE_SCOPED.includes(x.type) && !x.pane_id);
-          if (bad) { reply({ error: { code: 'invalid_request', message: 'invalid request: missing field `pane_id`' } }); break; }
-          const unknown = req.params.subscriptions.find((x: any) => x.pane_id && !snapshot.snapshot.panes.some((p) => p.pane_id === x.pane_id));
-          if (unknown) { reply({ error: { code: 'pane_not_found', message: `pane ${unknown.pane_id} not found` } }); break; }
-          reply({ result: { type: 'subscription_started' } });
-          subscriber = c;
-          break;
-        }
-        default:
-          reply({ error: { code: 'unknown_method', message: req.method } });
+/** What the next session.snapshot answers with instead of the snapshot (a raw line), once. */
+let rawNext: string | undefined;
+const mock = new MockHerdr({
+  socket: sock,
+  snapshot: () => snapshot,
+  handlers: {
+    'session.snapshot': (req, _reply, c) => {
+      if (rawNext !== undefined) {
+        c.write(rawNext + '\n');
+        rawNext = undefined;
+        return;
       }
-    }
-  });
+      // split the response across two writes to test line buffering
+      const s = JSON.stringify({ id: req.id, result: snapshot }) + '\n';
+      c.write(s.slice(0, 7));
+      setTimeout(() => c.write(s.slice(7)), 5);
+    },
+    'workspace.focus': (req, reply) => {
+      if (!snapshot.snapshot.workspaces.find((w) => w.workspace_id === req.params.workspace_id)) {
+        reply({ error: { code: 'not_found', message: 'workspace not found' } });
+        return;
+      }
+      snapshot.snapshot.focused_workspace_id = req.params.workspace_id;
+      reply({ result: { type: 'ok' } });
+    },
+    'pane.process_info': (req, reply) =>
+      reply({ result: { type: 'pane_process_info', process_info: {
+        pane_id: req.params.pane_id, foreground_process_group_id: 42,
+        foreground_processes: [{ pid: 42, name: 'Python', argv: ['/usr/local/bin/Python', 'app.py'] }],
+      } } }),
+    'pane.read': (req, reply) => {
+      assert.ok(['recent_unwrapped', 'detection'].includes(req.params.source));
+      reply({ result: { type: 'pane_read', read: {
+        pane_id: req.params.pane_id, workspace_id: 'w1', tab_id: 'w1:t1', source: req.params.source, format: 'text',
+        revision: 0, truncated: false, text: `GET / 200\nGET /x 500 Internal Server Error\n${reads++}`,
+      } } });
+    },
+    'workspace.create': (req, reply) =>
+      reply({ result: { type: 'workspace_created',
+        workspace: ws('w9', req.params.label ?? 'new'), tab: tab('w9:t1', '1'),
+        root_pane: pane('w9:p1', 'w9:t1', { cwd: req.params.cwd }) } }),
+    'tab.create': (req, reply) =>
+      reply({ result: { type: 'tab_created', tab: tab(`${req.params.workspace_id}:t7`, req.params.label ?? '7'),
+        root_pane: pane(`${req.params.workspace_id}:p7`, `${req.params.workspace_id}:t7`) } }),
+    'worktree.create': (req, reply) =>
+      reply({ result: { type: 'worktree_created', workspace: ws('w8', req.params.branch), tab: tab('w8:t1', '1'),
+        root_pane: pane('w8:p1', 'w8:t1'),
+        worktree: { path: '/wt/x', branch: req.params.branch, is_bare: false, is_detached: false, is_prunable: false, is_linked_worktree: true, label: req.params.branch } } }),
+    'agent.start': (req, reply) => {
+      // A brand-new pane isn't at its prompt yet: Herdr answers busy until it is.
+      if (busyStarts > 0) {
+        busyStarts--;
+        reply({ error: { code: 'agent_pane_busy', message: `agent target pane ${req.params.pane_id} is not an available shell` } });
+        return;
+      }
+      // agent.start blocks until the agent is ready; answer after the client's default 5s would have passed.
+      setTimeout(() => reply({ result: { type: 'agent_started', argv: [req.params.kind],
+        agent: { ...pane(req.params.pane_id, 'w1:t7', { agent: req.params.kind }), agent_status: 'idle', name: req.params.name } } }), 5200);
+    },
+    'agent.prompt': (req, reply) =>
+      reply({ result: { type: 'agent_prompted', agent: { ...pane(req.params.target, 'w1:t1', { agent: 'claude' }), agent_status: 'working', name: 'claude' } } }),
+    'server.agent_manifests': (_req, reply) =>
+      reply({ result: { type: 'agent_manifest_status', manifests: ['claude', 'codex', 'gemini'].map((a) => ({ agent: a, source: 'remote', source_kind: 'remote', local_override_shadowing_remote: false })) } }),
+    'worktree.remove': (req, reply) =>
+      reply({ result: { type: 'worktree_removed', workspace_id: req.params.workspace_id, path: '/wt/x', forced: !!req.params.force } }),
+  },
 });
+/** The newest live subscriber connection. */
+const subscriber = () => [...mock.subscribers].pop() as net.Socket;
+/** Requests the mock accepted for the create/start/rename/close methods, in order. */
+const ACTION_METHODS = new Set([
+  'workspace.create', 'tab.create', 'worktree.create', 'agent.start', 'agent.prompt', 'tab.rename', 'tab.close',
+  'workspace.rename', 'workspace.close', 'worktree.remove', 'pane.split', 'pane.rename', 'agent.rename', 'pane.close',
+]);
+const calls = () => mock.requests.filter((r) => ACTION_METHODS.has(r.method) && !(r.method === 'agent.start' && r !== lastStart()));
+const lastStart = () => mock.calls('agent.start').pop();
 
 async function main() {
-  await new Promise<void>((r) => server.listen(sock, r));
+  await mock.start();
   const client = new HerdrClient(() => sock);
 
   // 1. snapshot + normalize (synthetic, schema-typed)
@@ -268,8 +234,14 @@ async function main() {
   await actions.closeSpace('w9', true);
   await actions.removeWorktree('w8');
   await actions.removeWorktree('w8', true);
+  const split = await actions.splitPane({ target_pane_id: 'w1:p1', direction: 'right' });
+  assert.strictEqual(split.tab_id, 'w1:t1', 'the split pane is in the same tab');
+  await actions.renamePane('w1:p2', 'server');
+  await actions.renamePane('w1:p2', null);
+  await actions.renameAgent('w1:p1', 'reviewer-2');
+  await actions.closePane('w1:p2');
   assert.deepStrictEqual(
-    calls.map((c) => [c.method, c.params]),
+    calls().map((c) => [c.method, c.params]),
     [
       ['workspace.create', { focus: false, cwd: '/repo/new', label: 'new' }],
       ['tab.create', { focus: false, workspace_id: 'w1', cwd: '/repo/api' }],
@@ -283,6 +255,11 @@ async function main() {
       ['workspace.close', { workspace_id: 'w9', close_group: true }],
       ['worktree.remove', { workspace_id: 'w8' }],
       ['worktree.remove', { workspace_id: 'w8', force: true }],
+      ['pane.split', { focus: false, target_pane_id: 'w1:p1', direction: 'right' }],
+      ['pane.rename', { pane_id: 'w1:p2', label: 'server' }],
+      ['pane.rename', { pane_id: 'w1:p2', label: null }],
+      ['agent.rename', { target: 'w1:p1', name: 'reviewer-2' }],
+      ['pane.close', { pane_id: 'w1:p2' }],
     ],
     'creates never steal Herdr focus',
   );
@@ -300,7 +277,40 @@ async function main() {
     [['resume', 's1'], undefined, undefined, undefined, ['--resume', 'c1']],
     'resumes only agents whose CLI takes a session id',
   );
-  console.log('✓ create space/tab/worktree, start agent, rename, close');
+  console.log('✓ create space/tab/worktree, start agent, split, rename, close');
+
+  // 3d. the mock refuses what Herdr refuses, so a wrapper sending bad params fails here first
+  const code = (p: Promise<unknown>) => p.then(() => 'ok', (e) => (e instanceof HerdrError ? `${e.code}: ${e.message}` : String(e)));
+  assert.match(await code(client.request('worktree.create', { workspace_id: 'w1', cwd: '/repo', branch: 'x' })), /only one of workspace_id or cwd may be supplied/);
+  assert.match(await code(client.request('worktree.create', { workspace_id: 'w1' })), /exactly one of path or branch is required/);
+  assert.match(await code(client.request('worktree.create', { cwd: '/repo', branch: 'x', path: '/wt' })), /exactly one of path or branch is required/);
+  assert.match(await code(client.request('agent.start', { pane_id: 'w1:p1', kind: 'claude', name: 'Claude 2' })), /agent name/);
+  assert.match(await code(client.request('agent.start', { pane_id: 'w1:p1', kind: 'claude', name: 'claude', timeout_ms: 3000 })), /timeout_ms/);
+  assert.match(await code(client.request('agent.start', { pane_id: 'w1:p1', kind: 'claude', name: 'claude', timeout_ms: 300_001 })), /timeout_ms/);
+  assert.match(await code(client.request('agent.start', { pane_id: 'w1:p1', name: 'claude' })), /missing field `kind`/);
+  assert.match(await code(client.request('agent.prompt', { target: 'w1:p1', text: '  ' })), /^empty_agent_prompt/);
+  assert.match(await code(client.request('pane.split', { target_pane_id: 'w1:p1', direction: 'left' })), /unknown direction/);
+  assert.match(await code(client.request('pane.close', {})), /missing field `pane_id`/);
+  assert.match(await code(actions.closePane('w9:p9')), /^pane_not_found/);
+  assert.match(await code(actions.renameAgent('w1:p1', 'Not Valid')), /agent name/);
+  // Our own wrappers' params pass (the type narrows worktree.create to one source and one of branch/path).
+  assert.strictEqual(validate('worktree.create', { focus: false, cwd: '/repo', path: '/wt/existing' }), undefined);
+  assert.strictEqual(validate('agent.start', { pane_id: 'w1:p1', kind: 'claude', name: 'claude-2', timeout_ms: 60_000, args: ['--resume', 'x'] }), undefined);
+  console.log('✓ mock validates params like Herdr (worktree.create, agent.start, agent.prompt, required fields)');
+
+  // 3e. a response that isn't JSON fails the request at once (it used to be dropped and look like a timeout)
+  rawNext = '<html>not json</html>';
+  const t0 = Date.now();
+  await assert.rejects(client.request('session.snapshot'), /session\.snapshot: malformed line from herdr/);
+  assert.ok(Date.now() - t0 < 1000, 'rejected without waiting for the timeout');
+  console.log('✓ malformed response rejects the request');
+
+  // 3f. `~` expands only on its own or as `~/`
+  assert.deepStrictEqual(
+    [expandHome('~'), expandHome('~/x/herdr.sock'), expandHome('~foo/x'), expandHome('/abs/~/x')],
+    [os.homedir(), path.join(os.homedir(), 'x', 'herdr.sock'), '~foo/x', '/abs/~/x'],
+  );
+  console.log('✓ home expansion (~ and ~/ only)');
 
   // 4. subscription: ack is swallowed, events delivered, close reported
   const events: any[] = [];
@@ -308,10 +318,10 @@ async function main() {
     client.subscribe(DEFAULT_SUBSCRIPTIONS, (e) => events.push(e), () => resolve());
   });
   await new Promise((r) => setTimeout(r, 50));
-  subscriber!.write(JSON.stringify({ event: 'pane.agent_status_changed', data: { pane_id: 'w1:p1', agent_status: 'done' } }) + '\n');
-  subscriber!.write(JSON.stringify({ event: 'workspace.focused', data: { workspace_id: 'w1' } }) + '\n');
+  subscriber().write(JSON.stringify({ event: 'pane.agent_status_changed', data: { pane_id: 'w1:p1', agent_status: 'done' } }) + '\n');
+  subscriber().write(JSON.stringify({ event: 'workspace.focused', data: { workspace_id: 'w1' } }) + '\n');
   await new Promise((r) => setTimeout(r, 50));
-  subscriber!.end();
+  subscriber().end();
   await ended;
   assert.strictEqual(events.length, 2);
   console.log('✓ event subscription (ack, events, close)');
@@ -319,7 +329,7 @@ async function main() {
   // 5. events_lost error ends subscription with error
   const err = await new Promise<Error | undefined>((resolve) => {
     client.subscribe(DEFAULT_SUBSCRIPTIONS, () => {}, resolve);
-    setTimeout(() => subscriber!.write(JSON.stringify({ id: 'x', error: { code: 'events_lost', message: 'fell behind' } }) + '\n'), 50);
+    setTimeout(() => subscriber().write(JSON.stringify({ id: 'x', error: { code: 'events_lost', message: 'fell behind' } }) + '\n'), 50);
   });
   assert.ok(err instanceof HerdrError && err.code === 'events_lost');
   console.log('✓ events_lost surfaces as error');
@@ -336,12 +346,34 @@ async function main() {
   assert.strictEqual(await subscribeResult(subscriptionsFor([...livePanes, 'w9:p9'])), 'pane_not_found');
   console.log('✓ per-pane agent status subscriptions (stale pane id rejected)');
 
+  // 5c. onAck fires once Herdr accepts; an event line that isn't JSON ends the stream (an event lost)
+  let acks = 0;
+  const badEvent = await new Promise<Error | undefined>((resolve) => {
+    client.subscribe(DEFAULT_SUBSCRIPTIONS, () => {}, resolve, { onAck: () => acks++ });
+    setTimeout(() => subscriber().write('{not json\n'), 50);
+  });
+  assert.strictEqual(acks, 1);
+  assert.match(String(badEvent?.message), /malformed line from herdr/);
+  // A server that never acknowledges: the subscription ends after ackTimeoutMs instead of hanging.
+  const silentSock = `${sock}.silent`;
+  const silent = net.createServer(() => {});
+  await new Promise<void>((r) => silent.listen(silentSock, r));
+  const silentClient = new HerdrClient(() => silentSock);
+  let silentAcks = 0;
+  const noAck = await new Promise<Error | undefined>((resolve) => {
+    silentClient.subscribe(DEFAULT_SUBSCRIPTIONS, () => {}, resolve, { onAck: () => silentAcks++, ackTimeoutMs: 100 });
+  });
+  assert.match(String(noAck?.message), /events\.subscribe timed out/);
+  assert.strictEqual(silentAcks, 0);
+  silent.close();
+  console.log('✓ subscribe ack (onAck), ack timeout, malformed event ends the stream');
+
   // 6. no server -> rejects quickly
   const dead = new HerdrClient(() => sock + '.missing');
   await assert.rejects(dead.request('ping'));
   console.log('✓ unreachable server rejects');
 
-  server.close();
+  await mock.stop();
   try { fs.unlinkSync(sock); } catch {}
   console.log('\nall tests passed');
   process.exit(0);

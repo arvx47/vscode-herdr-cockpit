@@ -27,8 +27,15 @@ export function errorText(e: unknown): string {
   return String(e);
 }
 
-function expandHome(p: string): string {
-  return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+/** `~` and `~/…` are the home folder; anything else (including `~user/…`) is left as it is. */
+export function expandHome(p: string): string {
+  if (p === '~') {
+    return os.homedir();
+  }
+  if (p.startsWith('~/')) {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
 }
 
 /** The socket of a named session (`herdr --session <name>`), or of the default one. */
@@ -47,8 +54,8 @@ export function resolveSocketPath(override?: string, session?: string): string {
 let seq = 0;
 const nextId = (kind: string) => `hb_${kind}_${process.pid}_${++seq}`;
 
-/** Splits a utf8 stream into parsed JSON lines. */
-function lineReader(onMsg: (msg: any) => void) {
+/** Splits a utf8 stream into parsed JSON lines. A line that isn't JSON goes to `onBad` (a short excerpt of it). */
+function lineReader(onMsg: (msg: any) => void, onBad: (error: Error) => void) {
   let buf = '';
   return (chunk: string) => {
     buf += chunk;
@@ -57,11 +64,14 @@ function lineReader(onMsg: (msg: any) => void) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
+      let msg: any;
       try {
-        onMsg(JSON.parse(line));
+        msg = JSON.parse(line);
       } catch {
-        /* ignore malformed line */
+        onBad(new Error(`malformed line from herdr: ${JSON.stringify(line.slice(0, 80))}`));
+        continue;
       }
+      onMsg(msg);
     }
   };
 }
@@ -87,11 +97,15 @@ export class HerdrClient {
       sock.on('connect', () => sock.write(JSON.stringify({ id, method, params }) + '\n'));
       sock.on(
         'data',
-        lineReader((msg) => {
-          if (msg.id !== id && msg.id !== '') return;
-          if (msg.error) finish(new HerdrError(msg.error.code ?? 'error', msg.error.message ?? 'unknown error'));
-          else finish(undefined, msg.result);
-        }),
+        lineReader(
+          (msg) => {
+            if (msg.id !== id && msg.id !== '') return;
+            if (msg.error) finish(new HerdrError(msg.error.code ?? 'error', msg.error.message ?? 'unknown error'));
+            else finish(undefined, msg.result);
+          },
+          // One request per connection, so a line that isn't JSON was meant as our answer: fail now, not at the timeout.
+          (e) => finish(new Error(`herdr ${method}: ${errorText(e)}`)),
+        ),
       );
       sock.on('error', (e) => finish(e));
       sock.on('close', () => finish(new Error(`herdr socket closed before ${method} responded`)));
@@ -101,17 +115,25 @@ export class HerdrClient {
   /**
    * Long-lived event subscription. Every pushed event is passed to onEvent;
    * callers should treat events as "something changed, re-read" signals
-   * (that's what Herdr's docs recommend). onEnd fires once on close/error.
+   * (that's what Herdr's docs recommend). onEnd fires once on close/error, including when Herdr doesn't
+   * acknowledge the subscription within `ackTimeoutMs`. `onAck` fires once Herdr accepted it.
    */
-  subscribe(subscriptions: readonly EventSubscription[], onEvent: (ev: any) => void, onEnd: (err?: Error) => void): Subscription {
+  subscribe(
+    subscriptions: readonly EventSubscription[],
+    onEvent: (ev: any) => void,
+    onEnd: (err?: Error) => void,
+    opts: { onAck?: () => void; ackTimeoutMs?: number } = {},
+  ): Subscription {
     const id = nextId('sub');
     const sock = net.createConnection(this.socketPath());
     sock.setEncoding('utf8');
     let ended = false;
     let acked = false;
+    const ackTimer = setTimeout(() => end(new Error('herdr events.subscribe timed out')), opts.ackTimeoutMs ?? 5000);
     const end = (err?: Error) => {
       if (ended) return;
       ended = true;
+      clearTimeout(ackTimer);
       sock.destroy();
       onEnd(err);
     };
@@ -120,20 +142,28 @@ export class HerdrClient {
     );
     sock.on(
       'data',
-      lineReader((msg) => {
-        if (msg.error) return end(new HerdrError(msg.error.code ?? 'error', msg.error.message ?? ''));
-        if (!acked && msg.id === id && msg.result) {
-          acked = true;
-          return;
-        }
-        onEvent(msg);
-      }),
+      lineReader(
+        (msg) => {
+          if (ended) return;
+          if (msg.error) return end(new HerdrError(msg.error.code ?? 'error', msg.error.message ?? ''));
+          if (!acked && msg.id === id && msg.result) {
+            acked = true;
+            clearTimeout(ackTimer);
+            opts.onAck?.();
+            return;
+          }
+          onEvent(msg);
+        },
+        // An event we can't read is an event lost: end, so the caller re-reads the snapshot and resubscribes.
+        (e) => end(e),
+      ),
     );
     sock.on('error', (e) => end(e));
     sock.on('close', () => end());
     return {
       dispose: () => {
         ended = true;
+        clearTimeout(ackTimer);
         sock.destroy();
       },
     };

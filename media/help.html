@@ -9,8 +9,8 @@
     are live views of Herdr's panes. Works in VS Code, Cursor, Kiro and Positron, on macOS and Linux.
   </p>
   <nav class="toc">
-    <a href="#start">Getting started</a><a href="#top-bar">Header</a><a href="#usage">Usage</a><a href="#needs-you">Needs you</a><a href="#spaces">Spaces</a><a href="#git">Git line</a>
-    <a href="#create">Create, rename, close</a><a href="#agents">Agents &amp; colors</a><a href="#shells">Shells</a><a href="#terminals">Terminal tabs</a>
+    <a href="#start">Getting started</a><a href="#top-bar">Header</a><a href="#needs-you">Needs you</a><a href="#spaces">Spaces</a><a href="#git">Git line</a>
+    <a href="#create">Create, rename, close</a><a href="#agents">Agents &amp; colors</a><a href="#shells">Shells</a><a href="#usage">Usage</a><a href="#terminals">Terminal tabs</a>
     <a href="#actions">Actions</a><a href="#elsewhere">Status bar &amp; alerts</a><a href="#follow">Follow mode</a><a href="#plugin">Herdr plugin</a><a href="#offline">When Herdr isn't running</a>
     <a href="#keys">Keyboard</a><a href="#settings">Settings</a><a href="#privacy">Privacy &amp; safety</a><a href="#trouble">Troubleshooting</a>
   </nav>
@@ -32,7 +32,7 @@
 
 <section id="top-bar">
   <h2>Header</h2>
-  <p>The top of the view has two rows: VS Code's title bar for the view, then the sidebar's own toolbar.</p>
+  <p>The top of the view has two rows: VS Code's title bar for the view, then the status counters.</p>
   <div class="demo titlebar">
     <span class="tb-title">HERDR COCKPIT</span>
     <span class="tb-icons"><span class="icon-btn"><span class="codicon codicon-question"></span></span><span class="icon-btn"><span class="codicon codicon-ellipsis"></span></span></span>
@@ -42,6 +42,7 @@
     <tr><td><span class="codicon codicon-question"></span> Help</td><td>Opens this page.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Start Herdr</b></td><td>Only while Herdr isn't running: starts it in the background. See <a href="#offline">When Herdr isn't running</a>.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Follow Herdr Focus</b></td><td>On/off (checked when on). When you switch spaces in Herdr itself, this window switches too. See <a href="#follow">Follow mode</a>.</td></tr>
+    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Show Shell Panes</b></td><td>On/off (checked when on): lists plain shell panes in every space, under each space's <b>Shells</b> group.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Open Herdr TUI</b></td><td>Opens Herdr's own full-screen interface in an editor tab (also starts the Herdr server if it isn't running).</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Set Up Cockpit Window</b></td><td>Opens a dedicated VS Code window for Herdr. See <a href="#follow">the Cockpit window</a>.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Refresh</b></td><td>Re-reads everything from Herdr now. Rarely needed: the view updates by itself.</td></tr>
@@ -54,79 +55,27 @@
       <span class="stat st-working"><span class="codicon codicon-sync spin"></span><span class="n">1</span> working</span>
       <span class="stat st-idle"><span class="codicon codicon-circle-filled"></span><span class="n">3</span> idle</span>
     </div>
-    <div class="tools">
-      <span class="icon-btn" aria-pressed="true"><span class="codicon codicon-terminal"></span></span>
-    </div>
   </div>
   <table>
-    <tr><th>Toolbar</th><th>What it does</th></tr>
+    <tr><th>Counters</th><th>What they do</th></tr>
     <tr><td>Counters</td><td>Your agents by status across all spaces. Click <b>blocked</b> or <b>done</b> to jump straight to the agent that
       needs you (blocked first). With no agents running it reads "<i>N</i> spaces · <i>N</i> agents".</td></tr>
-    <tr><td><span class="codicon codicon-terminal"></span> Shells</td><td>Shows or hides plain shell panes in every space (highlighted = shown).</td></tr>
   </table>
-  <p>Further down, <b>Usage</b> and <b>Spaces</b> are section headings: click <b>Usage</b> to fold it, and use the
-    <span class="codicon codicon-add"></span> next to <b>Spaces</b> to create a space. When some spaces are open in this window (its own space, or the spaces whose folders it has) and others aren't, the list
-    puts this window's under <b>This window</b>, at the top, and the rest under <b>Other spaces</b>, folded until you click it
-    (it stays the way you leave it, per window). A window with a folder open but no space for it shows a card under
-    <b>This window</b> ("No Herdr space for <i>my-repo</i>") with <b>Create space here</b> (a new space in that folder)
-    and <b>Add a space…</b> (open an existing space here), and <b>Other spaces</b> starts unfolded. The Cockpit window
-    and a window with no folder list every space without the split. Every action is also in the Command
-    Palette (<!--PALETTE-->) under <b>Herdr Cockpit:</b>, for example <b>Herdr Cockpit: New Space…</b></p>
-</section>
-
-<section id="usage">
-  <h2>Usage</h2>
-  <p>How much of each agent's plan you've used, for the agents <b>running in Herdr right now</b>: close every Codex pane
-    and Codex disappears from here (and isn't checked). Refreshed once a minute while the sidebar is visible. Click
-    <b>Usage</b> to fold it into a one-line summary (each agent's 5-hour window, or Kiro's month). With none of these agents
-    running, the section is hidden.</p>
-  <div class="demo">
-    <div class="usage">
-      <div class="usage-row"><div class="avatar logo small" data-logo="claude"></div><div class="main">
-        <div class="line1"><span class="name">Claude Code</span><span class="umeta">as of 2m ago</span></div>
-        <div class="meter lvl-warn"><span class="ml">5h</span><span class="bar"><span class="fill w72"></span></span><span class="pct">72%</span><span class="reset">↻ 1h 19m</span></div>
-        <div class="meter lvl-ok"><span class="ml">7d</span><span class="bar"><span class="fill w18"></span></span><span class="pct">18%</span><span class="reset">↻ 2d 23h</span></div>
-        <div class="ustat">This session: <b>1.7M</b> tokens</div></div></div>
-      <div class="usage-row"><div class="avatar logo small" data-logo="codex"></div><div class="main">
-        <div class="line1"><span class="name">Codex</span><span class="umeta">Business · live</span></div>
-        <div class="meter lvl-high"><span class="ml">5h</span><span class="bar"><span class="fill w91"></span></span><span class="pct">91%</span><span class="reset">↻ 24m</span></div></div></div>
-      <div class="usage-row"><div class="avatar logo small" data-logo="kiro"></div><div class="main">
-        <div class="line1"><span class="name">Kiro</span></div>
-        <div class="meter lvl-ok"><span class="ml">mo</span><span class="bar"><span class="fill w18"></span></span><span class="pct">18%</span><span class="reset">↻ 26d</span></div>
-        <div class="ustat"><b>182.4</b> / 1,000 credits this month · 6.1 today</div></div></div>
-    </div>
-  </div>
-  <dl>
-    <dt>Bars (5h, 7d)</dt>
-    <dd>The share of your plan's 5-hour and weekly limits used, and when each window resets (<b>↻</b>). Blue below 60%,
-      orange from 60%, red from 85%. <b>reset</b> means the window has started over since the agent last reported, so it's at 0%.</dd>
-    <dt>live / as of</dt>
-    <dd><b>live</b>: fetched from the provider just now. <b>as of …</b>: when the agent last reported the numbers; they update while you use it.</dd>
-    <dt>Codex</dt>
-    <dd>Live: every 5 minutes the sidebar asks Codex itself (the same data as Codex's <code>/usage</code>, so it includes Codex use on
-      other machines and in the IDE). Codex signs that request with its own login; Herdr never sees it. If Codex can't answer, the
-      sidebar falls back to Codex's session logs, which are only as fresh as your last Codex prompt.</dd>
-    <dt>Claude Code</dt>
-    <dd>The bars match Claude's own <code>/usage</code> ("Current session" and "Current week (all models)"). Per-model weekly limits
-      (such as "Current week (Fable)") aren't shared outside Claude Code, so they're not shown. <b>This session</b> counts the tokens
-      Claude Code used on this machine in the current 5-hour session (input, output and cache writes; hover for cache reads). Without plan
-      limits the session window is estimated from your first message (<b>5-hour block (est.)</b>). Claude Code shares its plan-limit
-      percentages only with a status line, so the bars appear after you click <b>Show plan limits…</b>: Herdr adds a small
-      status line to <code>~/.claude/settings.json</code> (backed up first; it shows "5h 42% · 7d 18%" under the Claude prompt and
-      hides some of Claude Code's footer hints). It works for claude.ai Pro and Max plans; numbers appear after the next
-      Claude reply. To undo, remove <code>statusLine</code> from that file. If you already have a status line, Herdr leaves it alone
-      and shows how to add the capture to it.</dd>
-    <dt>Kiro</dt>
-    <dd>Credits used today and this month, from Kiro's session files (Kiro CLI on this machine). Kiro doesn't share your plan's
-      allowance with other tools, so click <b>Set monthly credits…</b> once and enter the number from Kiro's <code>/usage</code>
-      (setting <code>herdr.kiroMonthlyCredits</code>); the <b>mo</b> bar then shows how much of it you've used, renewing on the 1st.
-      "Used" counts Kiro CLI on this machine only (not the Kiro IDE or other computers), and the calendar month stands in for your billing cycle.</dd>
-  </dl>
+  <p>Below them come <b>Needs you</b> (when it's on), <b>Spaces</b>, then <b>Usage</b> at the bottom. Click <b>Usage</b>
+    to fold it to one line of numbers, and use the <span class="codicon codicon-add"></span> next to <b>Spaces</b> to create
+    a space. When some spaces are open in this window (its own space, or the spaces whose folders it has) and others
+    aren't, the list puts this window's under <b>This window</b>, at the top, and the rest under <b>Other spaces</b>,
+    folded until you click it (it stays the way you leave it, per window). A window with a folder open but no space for
+    it shows a card under <b>This window</b> ("No Herdr space for <i>my-repo</i>") with <b>Create space here</b> (a new
+    space in that folder) and <b>Add a space…</b> (open an existing space here), and <b>Other spaces</b> starts unfolded.
+    The Cockpit window splits the same way once a space is open in it; a window with no folder lists every space. Every
+    action is also in the Command Palette (<!--PALETTE-->) under <b>Herdr Cockpit:</b>, for example <b>Herdr Cockpit: New
+    Space…</b></p>
 </section>
 
 <section id="needs-you">
   <h2>Needs you</h2>
-  <p>Appears at the top only when an agent is <b>blocked</b> (waiting for your answer) or <b>done</b> (finished, waiting for
+  <p>When it's on, appears under the counters, above Spaces, only when an agent is <b>blocked</b> (waiting for your answer) or <b>done</b> (finished, waiting for
     you to look). Each card says which space it's in and shows the end of the agent's screen: the question it's asking, or
     the wrap-up of what it did. Click the card to open that agent.</p>
   <p>It lists only <b>this window's</b> agents: those in the spaces open here, or whose tab is open here. Agents of other
@@ -150,7 +99,8 @@
   <p>Each Herdr space is a card.</p>
   <div class="demo">
     <section class="space st-working open herdr-focused">
-      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">api-service</span></div>
+      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">api-service</span><span class="icon-btn"><span class="codicon codicon-git-branch-create"></span></span></div>
+      <div class="space-folder"><span class="codicon codicon-folder"></span><span class="folder-path">~/code/api-service</span></div>
       <div class="space-meta">
         <span class="m branch"><span class="codicon codicon-git-branch"></span><span class="bn">feat/auth</span><span class="age">2h</span></span>
         <span class="m sync"><span class="codicon codicon-arrow-up"></span>2</span>
@@ -161,19 +111,27 @@
       </div>
     </section>
     <section class="space st-idle">
-      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">docs-site</span><span class="dots"><span class="dot st-idle"></span><span class="dot st-idle"></span></span></div>
+      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">docs-site</span><span class="dots"><span class="dot st-idle"></span><span class="dot st-idle"></span></span><span class="open-btn">Open</span></div>
+      <div class="space-folder"><span class="codicon codicon-folder"></span><span class="folder-path">~/code/docs-site</span></div>
       <div class="space-meta"><span class="m branch"><span class="codicon codicon-git-branch"></span><span class="bn">main</span><span class="age">3d</span></span><span class="m muted"><span class="codicon codicon-check"></span>synced</span><span class="m clean"><span class="codicon codicon-pass"></span>clean</span></div>
     </section>
+    <section class="space st-none">
+      <div class="space-head"><span class="chev closed"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">OUT-9656</span><span class="open-btn">Open</span></div>
+      <div class="space-folder"><span class="codicon codicon-repo-forked"></span><span class="worktree-of">api-service worktree ·</span><span class="folder-path">~/…/api-service/out-9656</span></div>
+    </section>
   </div>
-  <p>The bottom of the sidebar shows the versions: Herdr Cockpit's, and Herdr's while connected (for example <b>Herdr Cockpit v0.2.6 · Herdr 0.9.3</b>).</p>
+  <p>Under its name, each card shows the folder the space lives in (hover for the full path). A worktree space says whose
+    checkout it is: <b>api-service worktree</b>. Long paths keep their end (<code>~/…/parent/folder</code>).</p>
+  <p>The bottom of the sidebar shows the versions: Herdr Cockpit's, and Herdr's while connected (for example <b>Herdr Cockpit v0.3.6 · Herdr 0.9.5</b>).</p>
   <p><b>Order:</b> spaces keep Herdr's own order. Set <code>herdr.spaceOrder</code> to <code>activity</code> to put spaces with an agent working or waiting on you first, then the most recently active ones (an agent started, finished or asked something, or you switched to the space here or in Herdr); that order is remembered across reloads.</p>
   <dl>
     <dt>Click the space name</dt>
     <dd>Expands or collapses the card, like the chevron. It doesn't open anything: click an agent or shell to open it as a tab.
-      To switch to the whole space, right-click it and pick <b>Switch to Space</b>. If another window already has the space, that window comes forward
+      To open the whole space, click <b>Open</b> on its card (spaces that aren't open in this window have it), or right-click it and pick
+      <b>Switch to Space</b>. If another window already has the space, that window comes forward
       and opens it. Otherwise (with <code>herdr.windowMode</code> = <code>folder</code>, the default) you pick <b>Open in its own window</b> or
       <b>Add to this window</b> (for a pane: <b>Attach in its space's window</b> or <b>Attach in this window</b>), once or always for this window;
-      right-click a space, or a pane whose space isn't in this window, for either one any time. A pane whose space is here offers <b>Attach Terminal</b>. Switching mounts its folder (Explorer, Search and Source Control follow), focuses it in
+      right-click a space, or a pane whose space isn't in this window, for either one any time. A pane whose space is here offers <b>Attach Terminal</b>; one whose space isn't offers <b>Attach in Its Space's Window</b> / <b>Attach in This Window</b> instead. Switching mounts its folder (Explorer, Search and Source Control follow), focuses it in
       Herdr, closes the previous space's terminal tabs and opens <b>every pane of the space as its own tab</b>: agents
       first (most urgent first), then shells. Set <code>herdr.autoAttach</code> to <code>agents</code> to open agents only, or <code>none</code> to open nothing.</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Chevron</dt>
@@ -214,7 +172,16 @@
     <dd>Pick <b>Choose a folder…</b>, or <b>New git worktree of</b> an existing space: a separate checkout on a new branch, so
       an agent can work without touching your current branch (Herdr puts it in <code>~/.herdr/worktrees/&lt;repo&gt;/&lt;branch&gt;</code>).
       Then name it and choose what to start. The window switches to the new space.</dd>
-    <dt><span class="codicon codicon-add"></span> New tab (bottom of a space card, or right-click a space)</dt>
+    <dt><span class="codicon codicon-git-branch-create"></span> New worktree (on a repository's card while the pointer or keyboard is on it, right-click a space, or <b>Herdr Cockpit: New Worktree…</b>)</dt>
+    <dd>The quick way to start a new piece of work, like a ticket, in a repository you already have a space for. It asks one
+      thing: the branch name. Type a ticket key (<code>OUT-9656</code>), paste the ticket's link (its key is used), or any branch
+      name. The branch starts from the repository's main branch (the one <code>origin/HEAD</code> names, else <code>main</code> or
+      <code>master</code>; your local copy, so pull it first if it's behind), not from whatever branch the space has checked out.
+      The new space is named after the branch and opens like any other. It starts with a shell, or with the agent set in
+      <code>herdr.newWorktreeStartsWith</code> (<code>ask</code> asks each time). From the Command Palette it uses the repository
+      open in this window, else asks which. Close the space with <b>Close in Herdr…</b> when the work is done: that also offers
+      to delete the worktree.</dd>
+    <dt><span class="codicon codicon-add"></span> New tab (bottom of a space card while the pointer or keyboard is on it, or right-click a space)</dt>
     <dd>Choose <b>Shell</b>, <b>Shell with a name…</b> or an agent. The agents listed first come from the
       <code>herdr.agents</code> setting; <b>More agents…</b> lists every agent Herdr can start. The tab opens right away;
       an agent starts in it in the background (a notification shows progress).</dd>
@@ -309,12 +276,62 @@
   <p class="note">Shell activity is read every few seconds, only while the sidebar is visible, and never leaves your machine.</p>
 </section>
 
+<section id="usage">
+  <h2>Usage</h2>
+  <p>How much of each agent's plan you've used, for the agents <b>running in Herdr right now</b>: close every Codex pane
+    and Codex disappears from here (and isn't checked). Refreshed once a minute while the sidebar is visible. Click
+    <b>Usage</b> to fold it into a one-line summary (each agent's 5-hour window, or Kiro's month). With none of these agents
+    running, the section is hidden.</p>
+  <div class="demo">
+    <div class="usage">
+      <div class="usage-row"><div class="avatar logo small" data-logo="claude"></div><div class="main">
+        <div class="line1"><span class="name">Claude Code</span><span class="umeta">as of 2m ago</span></div>
+        <div class="meter lvl-warn"><span class="ml">5h</span><span class="bar"><span class="fill w72"></span></span><span class="pct">72%</span><span class="reset">↻ 1h 19m</span></div>
+        <div class="meter lvl-ok"><span class="ml">7d</span><span class="bar"><span class="fill w18"></span></span><span class="pct">18%</span><span class="reset">↻ 2d 23h</span></div>
+        <div class="ustat">This session: <b>1.7M</b> tokens</div></div></div>
+      <div class="usage-row"><div class="avatar logo small" data-logo="codex"></div><div class="main">
+        <div class="line1"><span class="name">Codex</span><span class="umeta">Business · live</span></div>
+        <div class="meter lvl-high"><span class="ml">5h</span><span class="bar"><span class="fill w91"></span></span><span class="pct">91%</span><span class="reset">↻ 24m</span></div></div></div>
+      <div class="usage-row"><div class="avatar logo small" data-logo="kiro"></div><div class="main">
+        <div class="line1"><span class="name">Kiro</span></div>
+        <div class="meter lvl-ok"><span class="ml">mo</span><span class="bar"><span class="fill w18"></span></span><span class="pct">18%</span><span class="reset">↻ 26d</span></div>
+        <div class="ustat"><b>182.4</b> / 1,000 credits this month · 6.1 today</div></div></div>
+    </div>
+  </div>
+  <dl>
+    <dt>Bars (5h, 7d)</dt>
+    <dd>The share of your plan's 5-hour and weekly limits used, and when each window resets (<b>↻</b>). Blue below 60%,
+      orange from 60%, red from 85%. <b>reset</b> means the window has started over since the agent last reported, so it's at 0%.</dd>
+    <dt>live / as of</dt>
+    <dd><b>live</b>: fetched from the provider just now. <b>as of …</b>: when the agent last reported the numbers; they update while you use it.</dd>
+    <dt>Codex</dt>
+    <dd>Live: every 5 minutes the sidebar asks Codex itself (the same data as Codex's <code>/usage</code>, so it includes Codex use on
+      other machines and in the IDE). Codex signs that request with its own login; Herdr never sees it. If Codex can't answer, the
+      sidebar falls back to Codex's session logs, which are only as fresh as your last Codex prompt.</dd>
+    <dt>Claude Code</dt>
+    <dd>The bars match Claude's own <code>/usage</code> ("Current session" and "Current week (all models)"). Per-model weekly limits
+      (such as "Current week (Fable)") aren't shared outside Claude Code, so they're not shown. <b>This session</b> counts the tokens
+      Claude Code used on this machine in the current 5-hour session (input, output and cache writes; hover for cache reads). Without plan
+      limits the session window is estimated from your first message (<b>5-hour block (est.)</b>). Claude Code shares its plan-limit
+      percentages only with a status line, so the bars appear after you click <b>Show plan limits…</b>: Herdr adds a small
+      status line to <code>~/.claude/settings.json</code> (backed up first; it shows "5h 42% · 7d 18%" under the Claude prompt and
+      hides some of Claude Code's footer hints). It works for claude.ai Pro and Max plans; numbers appear after the next
+      Claude reply. To undo, remove <code>statusLine</code> from that file. If you already have a status line, Herdr leaves it alone
+      and shows how to add the capture to it.</dd>
+    <dt>Kiro</dt>
+    <dd>Credits used today and this month, from Kiro's session files (Kiro CLI on this machine). Kiro doesn't share your plan's
+      allowance with other tools, so click <b>Set monthly credits…</b> once and enter the number from Kiro's <code>/usage</code>
+      (setting <code>herdr.kiroMonthlyCredits</code>); the <b>mo</b> bar then shows how much of it you've used, renewing on the 1st.
+      "Used" counts Kiro CLI on this machine only (not the Kiro IDE or other computers), and the calendar month stands in for your billing cycle.</dd>
+  </dl>
+</section>
+
 <section id="terminals">
   <h2>Terminal tabs</h2>
   <ul>
     <li>Click any agent or shell row to open it in a VS Code terminal tab. The tab has the agent's logo (or a terminal icon for shells) as its icon. Its name is the row's name with <b>Herdr:</b> in front (<b>Herdr: Fix login</b>, <b>Herdr: Tab 2</b>), so Herdr tabs stand apart from the editor's own terminals. Clicking again brings the existing tab forward.</li>
     <li>Agents open with <b>takeover</b>: your keystrokes go to the agent from this tab.</li>
-    <li><b>One client controls a pane at a time.</b> When another one takes it (a Cockpit window in another editor, or <code>herdr attach</code> in a terminal), the tab keeps showing the pane live but read-only, with a yellow note on its bottom row saying who has it, for example <b>Kiro is using this pane · type here to take it back</b>. The first key you press takes control back; that key isn't sent, so it can't answer an agent's question by accident. Selecting and copying still work while it's read-only. A notification says which panes were taken, with <b>Take Back</b> (setting <code>herdr.notifyOnTakeover</code>). Clicking the pane or its space in the sidebar takes it back too.</li>
+    <li><b>One client controls a pane at a time.</b> When another one takes it (a Cockpit window in another editor, or <code>herdr attach</code> in a terminal), the tab keeps showing the pane live but read-only, with a yellow note on its bottom row saying who has it, for example <b>Kiro is using this pane · type here to take it back</b>. The first key you press takes control back; that key isn't sent, so it can't answer an agent's question by accident. Selecting and copying still work while it's read-only. Turn on <code>herdr.notifyOnTakeover</code> (off by default) for a notification saying which panes were taken, with <b>Take Back</b>. Clicking the pane or its space in the sidebar takes it back too.</li>
     <li><b>Selecting and copying text</b> works like the Herdr TUI: drag to select, double-click a word, triple-click a line. With <code>herdr.copyOnSelect</code> on, the text is copied when you let go: a green <b>Copied to clipboard</b> note flashes at the bottom of the tab, and the status bar says how many characters. By default the selection stays highlighted and <b>⌘C</b> (Ctrl+Shift+C) copies it; ⌘C works with the setting on too. Keep dragging past the top or bottom of the tab and it scrolls the pane's scrollback for you, selecting as it goes (faster the longer you hold). The mouse wheel scrolls the scrollback too.</li>
     <li><b>Deleting selected text</b>: select part of the line you're typing (a shell command, or the input of Claude Code or Codex) and press Backspace or Delete. The tab moves the cursor to the end of the selection and erases it, like an editor. Typing replaces the selection the same way. It works on one line at a time; elsewhere Backspace does what it always does.</li>
     <li><b>Option+click</b> (Alt+click) on the line you're typing moves the cursor there. <b>Shift+click</b> extends a selection (macOS).</li>
@@ -329,7 +346,7 @@
     <li>The terminal <b>+</b> creates a new tab in the current Herdr space, and <b>Split Terminal</b> on a Herdr tab splits that pane in Herdr (in the editor area; in the bottom panel a split makes a new Herdr tab). From the Command Palette, <b>New Herdr Tab…</b> (in the space of the Herdr tab you're in) and <b>Split Herdr Pane…</b> (next to it, in the same Herdr tab) ask whether to run a shell or an agent. A pane you close in Herdr closes its tab here.</li>
     <li><b>Renaming</b> a tab (right-click → Rename) renames the shell's pane in Herdr, or the agent (agent names become lowercase, like <code>reviewer-bot</code>). A pane renamed in Herdr renames its tab here within a few seconds.</li>
     <li>In the Cockpit window, tabs show only their name. Elsewhere VS Code adds the folder name after it; to hide that in every window, set <code>terminal.integrated.tabs.description</code> to <code>${task}</code> in your user settings.</li>
-    <li>Clicking a space opens all its panes as tabs, in order: agents (most urgent first), then shells.</li>
+    <li>Opening a space (<b>Open</b> on its card, or <b>Switch to Space</b>) opens its panes as tabs (setting <code>herdr.autoAttach</code>), in order: agents (most urgent first), then shells.</li>
     <li>Switching spaces closes the previous space's tabs (setting <code>herdr.closeTerminalsOnSwitch</code>). Tabs open in the editor area, the editor area split into agents (left) and shells (right), or the bottom panel (<code>herdr.terminalLocation</code>).</li>
   </ul>
 </section>
@@ -339,8 +356,8 @@
   <table>
     <tr><th>On</th><th>Actions</th></tr>
     <tr><td>Space</td><td><b>New Tab…</b> · <b>Switch to Space</b> · <b>Open in Its Own Window</b> / <b>Add to This Window</b> · <b>Unmount Space</b>: remove its folder from this window · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
-    <tr><td>Agent</td><td><b>Attach Terminal</b> · <b>Prompt Agent…</b>: type a prompt and the agent gets it as if you typed it in its tab · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
-    <tr><td>Shell</td><td><b>Attach Terminal</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
+    <tr><td>Agent</td><td><b>Attach Terminal</b> (or, when its space isn't in this window, <b>Attach in Its Space's Window</b> / <b>Attach in This Window</b>) · <b>Prompt Agent…</b>: type a prompt and the agent gets it as if you typed it in its tab · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
+    <tr><td>Shell</td><td><b>Attach Terminal</b> (or the two placement choices, as for agents) · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
   </table>
   <p class="note">From the Command Palette: <b>Go to Agent or Shell…</b> picks any pane of any space (agents waiting on you first), <b>Send to Agent…</b> sends a prompt about the open file or its selected lines (also in the editor's and the Explorer's right-click menu), and for troubleshooting <b>Show Raw Herdr Record</b> and <b>Show Raw Session Snapshot</b> show what Herdr reports, as JSON.</p>
 </section>
@@ -362,7 +379,7 @@
     just their name, and VS Code's terminal <b>+</b> creates Herdr tabs (see <a href="#create">Create</a>). The first time a Cockpit window opens, it opens this sidebar for you. The Cockpit window opens without the editor's Welcome page, and opening a space closes it in any window.</p>
   <p><b>Cockpit windows in several editors</b> (say VS Code and Kiro) can follow Herdr at the same time. When they follow the same space switch, a pane another window already has stays with that window and shows here read-only (see <a href="#terminals">Terminal tabs</a>); type in its tab to take it.</p>
   <p>A window opened without a folder (a new window, or the editor's first launch) asks whether to open Herdr Cockpit there (setting <code>herdr.offerHubOnStartup</code>; <b>Don't Ask Again</b> turns it off). It doesn't ask when a Cockpit window is already open.</p>
-  <p>Clicking a space in any other window asks first: switching spaces there would make it an untitled workspace (or add folders to your own workspace). <b>Open Cockpit Window</b> opens that space in the Cockpit window instead; <b>Use This Window</b> switches here, and the window remembers your choice. A window with no folder always uses the Cockpit window.</p>
+  <p>With <code>herdr.windowMode</code> set to <code>workspace</code> (one window for every space; the default, <code>folder</code>, gives each space its own window), opening a space in any window other than the Cockpit window asks first: switching spaces there would make it an untitled workspace (or add folders to your own workspace). <b>Open Cockpit Window</b> opens that space in the Cockpit window instead; <b>Use This Window</b> switches here, and the window remembers your choice. A window with no folder always uses the Cockpit window.</p>
   <p><button class="btn secondary" data-cmd="setupHub">Set up Cockpit window</button></p>
 </section>
 
@@ -421,7 +438,7 @@
   <h2>Keyboard</h2>
   <table>
     <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move between spaces, agents and shells</td></tr>
-    <tr><td><kbd>Enter</kbd> / <kbd>Space</kbd></td><td>Same as clicking (switch space, open terminal, toggle group)</td></tr>
+    <tr><td><kbd>Enter</kbd> / <kbd>Space</kbd></td><td>Same as clicking (fold a space or group, open a terminal tab, press a button)</td></tr>
     <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>On a space: collapse / expand. On an agent or shell: hide / show its details.</td></tr>
   </table>
 </section>

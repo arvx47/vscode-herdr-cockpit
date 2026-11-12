@@ -39,6 +39,9 @@ const cache = new Map<string, { at: number; info?: GitInfo; pending?: Promise<Gi
  *  - core.hooksPath=/dev/null              no repo hooks, should any command reach one
  *  - --ignore-submodules=all (status)      submodules carry their own config
  *  - --no-optional-locks, --no-pager       never write the index; never start a pager
+ *  - no GIT_* environment variables        the extension host's own (GIT_DIR, GIT_CONFIG_COUNT/KEY/VALUE,
+ *                                          GIT_EXTERNAL_DIFF, GIT_SSH_COMMAND, ...) could point git at another
+ *                                          repository or add config; see gitEnv()
  * This closes the known routes but can't be proven complete, so the real boundary is VS Code's Workspace
  * Trust: callers skip git entirely in untrusted windows (like VS Code's own git support).
  */
@@ -51,10 +54,25 @@ const SAFE = [
   '-c', 'core.hooksPath=/dev/null',
 ];
 
+/**
+ * The environment git runs with: the extension host's, without any GIT_* variable (an editor started from a git
+ * hook or a terminal could carry GIT_DIR, GIT_WORK_TREE, GIT_CONFIG_COUNT/KEY_n/VALUE_n, GIT_EXTERNAL_DIFF...).
+ * Only GIT_CONFIG_NOSYSTEM is kept: it can only make git read less config.
+ */
+export function gitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (!/^GIT_/i.test(k) || k === 'GIT_CONFIG_NOSYSTEM') {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 /** Exit code (or -1 when git couldn't run / timed out) and stdout. */
 function exec(args: string[]): Promise<{ code: number; out: string }> {
   return new Promise((resolve) =>
-    execFile(GIT, args, { timeout: 3000, maxBuffer: 4 * 1024 * 1024 }, (err, out) =>
+    execFile(GIT, args, { timeout: 3000, maxBuffer: 4 * 1024 * 1024, env: gitEnv() }, (err, out) =>
       resolve({ code: !err ? 0 : typeof (err as any).code === 'number' && !(err as any).killed ? (err as any).code : -1, out: out?.toString() ?? '' }),
     ),
   );
@@ -84,11 +102,13 @@ export async function filterOverrides(cwd: string): Promise<string[] | undefined
   return args;
 }
 
-async function run(cwd: string, args: string[]): Promise<string | undefined> {
-  const filters = await filterOverrides(cwd);
-  if (!filters) return undefined;
+/** Runs git in `cwd` with the safe settings and the filter overrides (from filterOverrides(), read once per load). */
+async function run(cwd: string, filters: string[], args: string[]): Promise<string | undefined> {
   const { code, out } = await exec([...SAFE, ...filters, '-C', cwd, ...args]);
-  return code === 0 ? out : undefined;
+  if (code !== 0) {
+    return undefined;
+  }
+  return out;
 }
 
 const UNMERGED = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
@@ -127,10 +147,15 @@ export function parseStatus(out: string): GitInfo {
 }
 
 async function load(cwd: string): Promise<GitInfo | undefined> {
+  // Once for both commands (it's a git process of its own): 3 git runs per refresh, not 4.
+  const filters = await filterOverrides(cwd);
+  if (!filters) {
+    return undefined;
+  }
   const [status, log] = await Promise.all([
     // Submodules carry their own config (and filters); the sidebar doesn't need them.
-    run(cwd, ['status', '--porcelain=v1', '--branch', '--untracked-files=normal', '--ignore-submodules=all']),
-    run(cwd, ['log', '-1', '--format=%ct%x09%s']),
+    run(cwd, filters, ['status', '--porcelain=v1', '--branch', '--untracked-files=normal', '--ignore-submodules=all']),
+    run(cwd, filters, ['log', '-1', '--format=%ct%x09%s']),
   ]);
   if (status === undefined) return undefined;
   const info = parseStatus(status);
@@ -156,4 +181,28 @@ export function gitInfo(cwd: string | undefined, onUpdate: () => void): GitInfo 
   });
   cache.set(cwd, e);
   return e.info;
+}
+
+/**
+ * The branch new work starts from: the local branch the remote's default points to (origin/HEAD → `master`),
+ * else a local `main` or `master`. Local, not `origin/…`: a branch started from a remote branch would track
+ * it, and a later push could aim at that branch. Undefined when there's none (or git can't run safely here).
+ */
+export async function mainBranch(cwd: string): Promise<string | undefined> {
+  const filters = await filterOverrides(cwd);
+  if (!filters) {
+    return undefined;
+  }
+  const candidates: string[] = [];
+  const remoteHead = (await run(cwd, filters, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']))?.trim();
+  if (remoteHead?.startsWith('origin/')) {
+    candidates.push(remoteHead.slice('origin/'.length));
+  }
+  candidates.push('main', 'master');
+  for (const name of candidates) {
+    if ((await run(cwd, filters, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`])) !== undefined) {
+      return name;
+    }
+  }
+  return undefined;
 }

@@ -2,7 +2,7 @@
 
 The images in `docs/images` are rendered from a throwaway Herdr session. Herdr's screen, the terminal tab and the
 sidebar are real: the Herdr TUI is captured from a pty, the tab is a frame from Herdr's terminal stream, and the
-sidebar is `media/panel.js` drawing the view state that `buildViewState` builds from the session. The repos, the
+sidebar is `media/sidebar.js` (the React sidebar, built from `webview/sidebar`) drawing the view state that `buildViewState` builds from the session. The repos, the
 agents' screens (shell panes printing canned text, marked as agents with `pane.report_agent`) and the usage
 numbers are made up. The VS Code window around them is drawn in HTML (`vscode.html`, `chrome.css`).
 

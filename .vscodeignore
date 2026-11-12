@@ -2,6 +2,8 @@ src/**
 out/test/**
 **/*.map
 tsconfig.json
+tsconfig.webview.json
+webview/**
 node_modules/**
 !node_modules/@xterm/headless/package.json
 !node_modules/@xterm/headless/lib-headless/xterm-headless.js
