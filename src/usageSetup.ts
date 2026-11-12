@@ -68,25 +68,34 @@ async function addToExistingStatusLine(settingsFile: string, capture: string, lo
     }
     return `${c.slice(0, 140)}…`;
   };
-  // Another tool's status line (its hooks folder in the command) may be rewritten by that tool later.
-  let owner = '';
-  const tool = /\/\.([a-z][\w-]*)\/[^\s"']*statusline/i.exec(statusLine.command);
+  // Another tool's status line (its hooks folder, ~/.<tool>/…, in the command): say who, since it may rewrite it.
+  const tool = /\/\.([a-z][\w-]*)\/[^\s"']*statusline/i.exec(statusLine.command)?.[1];
+  let whose = 'Yours';
+  let rewrite = '';
   if (tool) {
-    owner = `\n\nIt looks like ${tool[1]} set up your status line. If ${tool[1]} rewrites it later, plan limits stop updating; run Show plan limits… again then.`;
+    whose = `Yours was set up by another app, ${tool} (it keeps its files in ~/.${tool}), and`;
+    rewrite =
+      `\n\nIf ${tool} rewrites the status line later, plan limits stop updating: click Show plan limits… again then. If you don't ` +
+      `use ${tool} anymore, Use Herdr's Instead replaces its status line with Herdr's, which also shows the two numbers under the prompt.`;
+  }
+  const buttons = ['Add It for Me', 'Copy New Command'];
+  if (tool) {
+    buttons.push("Use Herdr's Instead");
   }
   const pick = await vscode.window.showInformationMessage(
-    'Claude Code already has a status line. Add plan limits to it?',
+    'Add plan limits to your Claude Code status line?',
     {
       modal: true,
       detail:
-        'Claude Code shares your plan limits (the 5-hour and weekly percentages) only with its status line, the line under the Claude ' +
-        'prompt. Yours stays: Herdr puts a small step in front of it that saves just those two numbers for the sidebar and passes ' +
-        'everything on unchanged, so your status line looks the same.\n\n' +
-        `Your command now:\n${short(statusLine.command)}\n\nAfter:\nsh ~/.herdr-cockpit/claude-statusline.sh --pass | { your command }\n\n` +
-        `A backup of ~/.claude/settings.json is saved first. To undo, put the old command back.${owner}`,
+        'Claude Code shares your plan limits (the 5-hour and weekly percentages) only with its "status line": a command, set in ' +
+        `~/.claude/settings.json, that Claude Code runs to draw the line under its prompt. ${whose} Herdr won't replace it.\n\n` +
+        'Click Add It for Me and Herdr makes one change in that file for you, nothing to edit by hand: it puts a small step in front of ' +
+        'the command that saves just those two numbers for the sidebar, then runs the command exactly as before. A backup of the ' +
+        `file is saved next to it first (settings.json.herdr-backup).${rewrite}\n\n` +
+        `The command starts with:\n${short(statusLine.command)}\n\n` +
+        "Copy New Command only copies the changed command, if you'd rather paste it into the file yourself.",
     },
-    'Add It for Me',
-    'Copy New Command',
+    ...buttons,
   );
   if (!pick) {
     return false;
@@ -106,9 +115,17 @@ async function addToExistingStatusLine(settingsFile: string, capture: string, lo
       return false;
     }
     await fs.promises.copyFile(settingsFile, `${settingsFile}.herdr-backup`);
-    settings.statusLine = { ...(settings.statusLine as object), command: wrapped };
+    if (pick === "Use Herdr's Instead") {
+      settings.statusLine = { type: 'command', command: `sh ${shQuote(script)}` };
+    } else {
+      settings.statusLine = { ...(settings.statusLine as object), command: wrapped };
+    }
     await fs.promises.writeFile(settingsFile, JSON.stringify(settings, null, 2) + '\n');
-    log(`claude usage: capture added in front of the existing status line; backup at ${settingsFile}.herdr-backup`);
+    let what = 'capture added in front of the existing status line';
+    if (pick === "Use Herdr's Instead") {
+      what = "the existing status line replaced with Herdr's";
+    }
+    log(`claude usage: ${what}; backup at ${settingsFile}.herdr-backup`);
     vscode.window.showInformationMessage('Herdr: done. Claude plan limits appear after the next Claude reply.');
     return true;
   } catch (e) {

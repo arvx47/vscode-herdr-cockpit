@@ -463,6 +463,13 @@ export function activate(ctx: vscode.ExtensionContext) {
       usage = next;
       scheduleRender();
     }
+    // Once Claude's plan limits are captured, the Usage section drops its Show plan limits… button: the view's ⋯
+    // menu offers it instead (to check or repair the setup, e.g. after another app rewrote the status line).
+    // Unchanged while no Claude agent runs (its usage isn't read then).
+    const claude = next.find((u) => u.id === 'claude');
+    if (claude) {
+      void vscode.commands.executeCommand('setContext', 'herdr.claudeLimitsOn', !claude.canSetUpLimits);
+    }
   }
   const usageTimer = setInterval(pollUsage, 60_000);
 
