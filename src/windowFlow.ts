@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { errorText, HerdrClient } from './herdrClient';
 import { attachOrder, findPane, Model, Pane, Space } from './model';
-import { decidePlacement, followsInto, Placement, WindowMode } from './placement';
+import { decidePlacement, followsInto, insideFolders, Placement, WindowMode } from './placement';
 import { isMounted, mountSpace, PREFIX } from './folders';
 import { LINK_VERSION, normPath, spacesWorkspaceFile, windowWithSpace, writePendingLink } from './hubFiles';
 import { isWelcomeTab } from './tabRestore';
@@ -101,11 +101,23 @@ export class WindowFlow {
    * its tabs still open, so the next pane you open from it asks again.
    */
   isOpenHere(space: Space) {
-    if (isMounted(space)) {
+    if (isMounted(space) || this.isInsideFolder(space)) {
       return true;
     }
     const folder = this.spaceFolders.get(space.id);
     return this.deps.terms.spaces().includes(space.id) && !!folder && this.myFolders().includes(folder);
+  }
+
+  /**
+   * The space's folder is a subfolder of one of this window's: it belongs here from the first time the window
+   * opens, without tabs or memory of it (a shell that `cd`'d into `repo/src` moves its space's folder there).
+   * Not linked worktrees: they live in their own folder (~/.herdr/worktrees) and get a window of their own.
+   */
+  private isInsideFolder(space: Space): boolean {
+    if (!space.cwd || space.worktree?.is_linked_worktree) {
+      return false;
+    }
+    return insideFolders(normPath(space.cwd), this.myFolders());
   }
 
   private otherWindow(space: Space) {
@@ -318,6 +330,7 @@ export class WindowFlow {
       ownWindow: this.isOwnWindow(space),
       openHere: this.isOpenHere(space),
       mounted: isMounted(space),
+      insideFolder: this.isInsideFolder(space),
       otherWindow: !!this.otherWindow(space),
       hasFolders: !!vscode.workspace.workspaceFolders?.length,
       remembered: this.deps.state.get<Placement>(PLACE_KEY),
@@ -371,9 +384,17 @@ export class WindowFlow {
 
   private async switchNow(space: Space, opts: SwitchOptions): Promise<boolean> {
     const { terms, log } = this.deps;
+    /** The space is here without a folder of its own to mount (its folder is inside one of ours). */
+    let stay = false;
     if (opts.fromHerdr) {
-      if (!followsInto({ otherWindow: !!this.otherWindow(space), mode: this.windowMode(), hub: this.deps.isHubWindow(), mounted: isMounted(space) })) {
+      // A space in a subfolder of ours is this window's too: followed into, and opened without mounting.
+      const inside = this.isInsideFolder(space);
+      if (!followsInto({ otherWindow: !!this.otherWindow(space), mode: this.windowMode(), hub: this.deps.isHubWindow(), mounted: isMounted(space) || inside })) {
         return false;
+      }
+      if (inside && !isMounted(space)) {
+        stay = true;
+        opts = { ...opts, pin: true };
       }
     } else {
       const where = await this.placeSpace(space, opts.pane, opts.place);
@@ -392,7 +413,12 @@ export class WindowFlow {
         opts = { ...opts, pane: findPane(model, opts.pane.id)?.pane };
       }
       if (where === 'stay') {
-        return true;
+        // A pane: attachPane opens it. The space: its tabs open here next to the others, mounting nothing.
+        if (opts.pane) {
+          return true;
+        }
+        stay = true;
+        opts = { ...opts, pin: true };
       }
       if (where === 'add') {
         opts = { ...opts, pin: true };
@@ -404,7 +430,7 @@ export class WindowFlow {
         }
       }
     }
-    if (!(await this.ensureMounted(space, !!opts.pin))) {
+    if (!stay && !(await this.ensureMounted(space, !!opts.pin))) {
       return false;
     }
     this.closeWelcome();

@@ -63,7 +63,8 @@
   </table>
   <p>Below them come <b>Needs you</b> (when it's on), <b>Spaces</b>, then <b>Usage</b> at the bottom. Click <b>Usage</b>
     to fold it to one line of numbers, and use the <span class="codicon codicon-add"></span> next to <b>Spaces</b> to create
-    a space. When some spaces are open in this window (its own space, or the spaces whose folders it has) and others
+    a space. When some spaces are open in this window (its own space, the spaces whose folders it has, or whose folder is
+    inside one of them, like a shell that went into <code>my-repo/src</code>) and others
     aren't, the list puts this window's under <b>This window</b>, at the top, and the rest under <b>Other spaces</b>,
     folded until you click it (it stays the way you leave it, per window). A window with a folder open but no space for
     it shows a card under <b>This window</b> ("No Herdr space for <i>my-repo</i>") with <b>Create space here</b> (a new
@@ -324,8 +325,10 @@
       percentages only with a status line, so the bars appear after you click <b>Show plan limits…</b>: Herdr adds a small
       status line to <code>~/.claude/settings.json</code> (backed up first; it shows "5h 42% · 7d 18%" under the Claude prompt and
       hides some of Claude Code's footer hints). It works for claude.ai Pro and Max plans; numbers appear after the next
-      Claude reply. To undo, remove <code>statusLine</code> from that file. If you already have a status line, Herdr leaves it alone
-      and shows how to add the capture to it.
+      Claude reply. To undo, remove <code>statusLine</code> from that file. If you already have a status line (yours, or one another
+      tool set up), Herdr keeps it: <b>Add It for Me</b> puts a small step in front of your command that saves only the two
+      percentages and passes everything on unchanged, so your status line looks the same (the settings file is backed up first;
+      <b>Copy New Command</b> lets you paste it yourself).
       <b>Today</b> covers everything Claude Code did on this machine since midnight: tokens (cache reads included) and the share read
       from the prompt cache (most of an agent's input, at about a tenth of the price), the cost as Claude Code tallies it at API
       prices (what it would cost without a plan, so on a plan it's a measure of use, not a bill), and the lines it added and removed.</dd>

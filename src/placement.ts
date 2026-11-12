@@ -1,5 +1,6 @@
 // Which window a space (or one of its panes) opens in, as plain decisions: extension.ts gathers the facts
 // (folders, other windows' records, settings) and carries the decision out. No vscode imports (test/placementTest.ts).
+import * as path from 'path';
 
 /** Where a space this window doesn't have goes: its own window, or added to this workspace. */
 export type Placement = 'window' | 'workspace';
@@ -19,6 +20,8 @@ export interface PlaceFacts {
   openHere: boolean;
   /** The space's current folder is mounted here. */
   mounted: boolean;
+  /** The space's folder is inside one of this window's folders (a subfolder), without being one of them. */
+  insideFolder?: boolean;
   /** Another window of this editor has the space. */
   otherWindow: boolean;
   /** This window has a folder. */
@@ -37,6 +40,18 @@ export interface PlaceFacts {
  */
 export type PlaceDecision = 'here' | 'add' | 'stay' | 'window' | 'askHub' | 'ask';
 
+/**
+ * `p` is inside one of `folders` (a subfolder; the folder itself doesn't count). Plain paths, no file system:
+ * this runs for every space on every redraw. A space's folder is its first pane's current one, so a shell that
+ * `cd`s into `repo/src` still belongs to a window on `repo`.
+ */
+export function insideFolders(p: string, folders: readonly string[]): boolean {
+  return folders.some((f) => {
+    const rel = path.relative(f, p);
+    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+  });
+}
+
 export function decidePlacement(f: PlaceFacts): PlaceDecision {
   if (f.how === 'window') {
     if (f.ownWindow) {
@@ -49,8 +64,10 @@ export function decidePlacement(f: PlaceFacts): PlaceDecision {
   }
   // 1. The space is open in this window: a pane opens here, next to the other spaces (nothing is swapped out).
   if (f.openHere) {
-    if (f.pane && !f.mounted) {
-      return 'stay'; // its tabs are here but its shell moved to another folder: don't mount that one
+    // Its tabs are here but its shell moved to another folder, or its folder is inside one of ours: open it
+    // here and mount nothing (a single-folder window would have to reload to take another folder).
+    if (!f.mounted && (f.pane || f.insideFolder)) {
+      return 'stay';
     }
     if (f.pane || f.mode === 'folder') {
       return 'add';

@@ -639,18 +639,41 @@ export function shQuote(s: string): string {
  * the limits. Only rate_limits is kept (the input also has the session's folder, transcript path, ...): with
  * jq as it is, without jq just the 5h / 7d numbers, picked out with sed. The file is private (umask 077).
  */
+/**
+ * Your own status line command with the capture in front of it: the script saves the plan limits and passes
+ * Claude Code's input on unchanged, so the command shows what it always did. In a `{ …; }` group, so a chain
+ * like `cd x && foo` still gets all of the input.
+ */
+export function wrapStatusLine(command: string, script: string): string {
+  return `sh ${shQuote(script)} --pass | { ${command.trim()}; }`;
+}
+
+/** The status line command already runs Herdr's capture (installed or wrapped before). */
+export function hasCapture(command: string, script: string): boolean {
+  return command.includes(shQuote(script)) || command.includes(script);
+}
+
 export function claudeStatusLineScript(captureFile: string): string {
   // String.raw: the backslashes are the shell's and sed's. No `${` in the script (that would be interpolation).
   return String.raw`#!/bin/sh
 # Installed by Herdr Cockpit (VS Code). Claude Code shares plan usage (rate_limits) only with a status
 # line command: this saves it for the Herdr sidebar and prints it. Remove "statusLine" from
-# ~/.claude/settings.json to turn it off.
+# ~/.claude/settings.json to turn it off. With --pass it prints its input unchanged instead, to sit in
+# front of your own status line command: sh this-script --pass | { your command; }
 umask 077
+pass=
+if [ "$1" = "--pass" ]; then
+  pass=1
+fi
 f=${shQuote(captureFile)}
 t="$f.$$.tmp"
 input=$(cat)
 if command -v jq >/dev/null 2>&1; then
   printf '%s' "$input" | jq -c '{rate_limits}' > "$t" 2>/dev/null && mv "$t" "$f"
+  if [ -n "$pass" ]; then
+    printf '%s' "$input"
+    exit 0
+  fi
   printf '%s' "$input" | jq -r '[(.rate_limits.five_hour.used_percentage // empty | "5h \(floor)%"), (.rate_limits.seven_day.used_percentage // empty | "7d \(floor)%")] | join(" · ")' 2>/dev/null
 else
   # No jq: keep only rate_limits.five_hour / seven_day {used_percentage, resets_at}, as plain numbers.
@@ -683,6 +706,10 @@ else
     shown="$shown$label $(printf '%s' "$u" | cut -d. -f1)%"
   done
   printf '{"rate_limits":{%s}}\n' "$json" > "$t" && mv "$t" "$f"
+  if [ -n "$pass" ]; then
+    printf '%s' "$input"
+    exit 0
+  fi
   printf '%s' "$shown"
 fi
 `;

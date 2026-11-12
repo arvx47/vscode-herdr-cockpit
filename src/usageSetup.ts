@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { errorText } from './herdrClient';
-import { claudeCaptureFile, claudeStatusLineScript, shQuote } from './usage';
+import { claudeCaptureFile, claudeStatusLineScript, hasCapture, shQuote, wrapStatusLine } from './usage';
 
 /**
  * Claude Code's settings as an object ({} when the file doesn't exist). Undefined, after saying why, when it
@@ -29,19 +29,91 @@ async function readSettings(settingsFile: string): Promise<Record<string, unknow
   return parsed as Record<string, unknown>;
 }
 
-/** Never replace someone's status line; show how to add the capture to it instead. */
-async function explainExistingStatusLine(capture: string) {
-  const snippet = `tee ${shQuote(capture)} | `;
+/** The capture script, written (again) next to the capture file. */
+async function writeScript(capture: string): Promise<string> {
+  const script = path.join(path.dirname(capture), 'claude-statusline.sh');
+  await fs.promises.mkdir(path.dirname(capture), { recursive: true });
+  await fs.promises.writeFile(script, claudeStatusLineScript(capture), { mode: 0o755 });
+  return script;
+}
+
+/**
+ * You already have a status line: never replace it. Offer to put the capture in front of it (it saves only the
+ * plan limits and passes Claude Code's input on unchanged, so your status line shows what it always did), or
+ * copy the new command to paste yourself.
+ */
+async function addToExistingStatusLine(settingsFile: string, capture: string, log: (m: string) => void): Promise<boolean> {
+  const before = await readSettings(settingsFile);
+  const statusLine = before?.statusLine as { type?: unknown; command?: unknown } | undefined;
+  if (!before || !statusLine) {
+    return false;
+  }
+  if (statusLine.type !== 'command' || typeof statusLine.command !== 'string') {
+    vscode.window.showInformationMessage(
+      "Herdr: Claude Code's status line here isn't a command, so Herdr can't read plan limits through it. Remove \"statusLine\" from ~/.claude/settings.json and try again.",
+    );
+    return false;
+  }
+  const script = path.join(path.dirname(capture), 'claude-statusline.sh');
+  if (hasCapture(statusLine.command, script)) {
+    await writeScript(capture);
+    vscode.window.showInformationMessage('Herdr: your status line already saves plan limits. They appear after the next Claude reply.');
+    return true;
+  }
+  const wrapped = wrapStatusLine(statusLine.command, script);
+  // Status lines written by other tools can be very long: the dialog shows how it starts.
+  const short = (c: string) => {
+    if (c.length <= 140) {
+      return c;
+    }
+    return `${c.slice(0, 140)}…`;
+  };
+  // Another tool's status line (its hooks folder in the command) may be rewritten by that tool later.
+  let owner = '';
+  const tool = /\/\.([a-z][\w-]*)\/[^\s"']*statusline/i.exec(statusLine.command);
+  if (tool) {
+    owner = `\n\nIt looks like ${tool[1]} set up your status line. If ${tool[1]} rewrites it later, plan limits stop updating; run Show plan limits… again then.`;
+  }
   const pick = await vscode.window.showInformationMessage(
-    'You already have a Claude Code status line, so Herdr left it alone.',
+    'Claude Code already has a status line. Add plan limits to it?',
     {
       modal: true,
-      detail: `To show plan limits in the sidebar, make your status line command also save its input: put ${snippet}in front of the command in ~/.claude/settings.json ("statusLine" → "command").`,
+      detail:
+        'Claude Code shares your plan limits (the 5-hour and weekly percentages) only with its status line, the line under the Claude ' +
+        'prompt. Yours stays: Herdr puts a small step in front of it that saves just those two numbers for the sidebar and passes ' +
+        'everything on unchanged, so your status line looks the same.\n\n' +
+        `Your command now:\n${short(statusLine.command)}\n\nAfter:\nsh ~/.herdr-cockpit/claude-statusline.sh --pass | { your command }\n\n` +
+        `A backup of ~/.claude/settings.json is saved first. To undo, put the old command back.${owner}`,
     },
-    'Copy Snippet',
+    'Add It for Me',
+    'Copy New Command',
   );
-  if (pick) {
-    await vscode.env.clipboard.writeText(snippet);
+  if (!pick) {
+    return false;
+  }
+  try {
+    await writeScript(capture);
+    if (pick === 'Copy New Command') {
+      await vscode.env.clipboard.writeText(wrapped);
+      vscode.window.showInformationMessage('Herdr: copied. In ~/.claude/settings.json, replace "command" under "statusLine" with it.');
+      return false;
+    }
+    // Read it again: Claude Code may have saved its own changes while the question was open.
+    const settings = await readSettings(settingsFile);
+    const now = settings?.statusLine as { command?: unknown } | undefined;
+    if (!settings || now?.command !== statusLine.command) {
+      vscode.window.showWarningMessage('Herdr: your status line changed meanwhile, so Herdr left it alone. Try again.');
+      return false;
+    }
+    await fs.promises.copyFile(settingsFile, `${settingsFile}.herdr-backup`);
+    settings.statusLine = { ...(settings.statusLine as object), command: wrapped };
+    await fs.promises.writeFile(settingsFile, JSON.stringify(settings, null, 2) + '\n');
+    log(`claude usage: capture added in front of the existing status line; backup at ${settingsFile}.herdr-backup`);
+    vscode.window.showInformationMessage('Herdr: done. Claude plan limits appear after the next Claude reply.');
+    return true;
+  } catch (e) {
+    vscode.window.showErrorMessage(`Herdr: couldn't update the status line: ${errorText(e)}`);
+    return false;
   }
 }
 
@@ -53,8 +125,7 @@ export async function setUpClaudeUsage(home: string, log: (m: string) => void): 
     return false;
   }
   if (before.statusLine) {
-    await explainExistingStatusLine(capture);
-    return false;
+    return addToExistingStatusLine(settingsFile, capture, log);
   }
 
   const ok = await vscode.window.showInformationMessage(
@@ -77,13 +148,10 @@ export async function setUpClaudeUsage(home: string, log: (m: string) => void): 
     return false;
   }
   if (settings.statusLine) {
-    await explainExistingStatusLine(capture);
-    return false;
+    return addToExistingStatusLine(settingsFile, capture, log);
   }
   try {
-    const script = path.join(path.dirname(capture), 'claude-statusline.sh');
-    await fs.promises.mkdir(path.dirname(capture), { recursive: true });
-    await fs.promises.writeFile(script, claudeStatusLineScript(capture), { mode: 0o755 });
+    const script = await writeScript(capture);
     if (fs.existsSync(settingsFile)) await fs.promises.copyFile(settingsFile, `${settingsFile}.herdr-backup`);
     else await fs.promises.mkdir(path.dirname(settingsFile), { recursive: true });
     settings.statusLine = { type: 'command', command: `sh ${shQuote(script)}` };

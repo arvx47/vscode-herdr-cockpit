@@ -151,7 +151,8 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 /* Where the space lives: one line under its name, the end of the path kept (shortPath() in viewState.ts). */
 .space-folder {
   display: flex; align-items: center; gap: 5px; min-width: 0;
-  padding: 0 10px 4px 30px;
+  /* 4px above: room between the name line's hover highlight and this line. */
+  padding: 4px 10px 4px 30px;
   font-size: var(--fs-sm); color: var(--muted);
 }
 .space-folder .codicon { font-size: 12px; flex: none; }
@@ -161,6 +162,8 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
    header keeps its height. */
 .space-head .card-btn { flex: none; width: 18px; height: 18px; margin: -2px 0; border-radius: 4px; }
 .space-head .card-btn .codicon { font-size: 13px; }
+/* A space with no folder known: the git line follows the name, with the same room. */
+.space-head + .space-meta { padding-top: 4px; }
 .space-meta {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
   padding: 0 10px 7px 30px;

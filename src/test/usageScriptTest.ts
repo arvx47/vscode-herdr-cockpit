@@ -6,7 +6,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { claudeStatusLineScript, readUsage, shQuote } from '../usage';
+import { claudeStatusLineScript, hasCapture, readUsage, shQuote, wrapStatusLine } from '../usage';
 
 const shells = [...new Map(['/bin/sh', '/bin/dash', '/usr/bin/dash'].filter((s) => fs.existsSync(s)).map((s) => [fs.realpathSync(s), s])).values()];
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-sh-'));
@@ -77,6 +77,22 @@ for (const sh of shells) {
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(capture, 'utf8')), { rate_limits: {} });
 }
 console.log(`✓ status line saves only rate_limits, privately (${modes.map((m) => m[0]).join(', ')})`);
+
+// In front of your own status line: saves the limits, and your command sees the input unchanged (even a chain).
+const mine = path.join(dir, 'mine.sh');
+fs.writeFileSync(mine, '#!/bin/sh\nprintf "mine:"; wc -c | tr -d " "\n');
+const own = `cd / && sh ${shQuote(mine)}`;
+const wrapped = wrapStatusLine(own, script);
+assert.ok(hasCapture(wrapped, script) && !hasCapture(own, script));
+for (const sh of shells) {
+  for (const [mode, env] of modes) {
+    fs.rmSync(capture, { force: true });
+    const printed = execFileSync(sh, ['-c', wrapped], { input, env: { ...env, PATH: `${env.PATH}:/usr/bin:/bin` } }).toString().trim();
+    assert.strictEqual(printed, `mine:${Buffer.byteLength(input)}`, `${sh} ${mode}: your command got all of the input`);
+    assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(capture, 'utf8'))), ['rate_limits'], `${sh} ${mode}: only rate_limits saved`);
+  }
+}
+console.log('✓ in front of your own status line: input passed through unchanged, limits saved');
 
 // 3. Claude transcripts: parsed once, then only what was appended
 (async () => {
