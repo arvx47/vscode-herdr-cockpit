@@ -98,6 +98,9 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .space {
   position: relative;
   margin: 6px 8px;
+  /* A gutter for the status bar (::before), on every card so they all line up: the bar sits beside the content
+     instead of over its left padding. */
+  padding-left: 3px;
   border-radius: var(--radius);
   background: var(--card);
   border: 1px solid var(--card-border);
@@ -113,11 +116,14 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 
 .space-head {
   display: flex; align-items: center; gap: 6px;
-  /* 10px on the right: the card's actions end where the rows' chevrons do (body 6px + row 4px). */
-  padding: 7px 10px 3px 6px;
+  /* As much room below the name as above (its hover highlight sits evenly around it); 10px on the right: the
+     card's actions end where the rows' chevrons do (body 6px + row 4px). */
+  padding: 6px 10px 6px 6px;
   cursor: pointer; outline: none;
 }
 .space-head:hover { background: var(--hover); }
+/* The highlight follows the card's rounded top-right corner (the top-left one is the status bar's gutter). */
+.space-head { border-radius: 0 calc(var(--radius) - 1px) 0 0; }
 .space-head:focus-visible { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
 .chev {
   display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px;

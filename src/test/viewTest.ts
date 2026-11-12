@@ -8,7 +8,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../model';
 import type { Space } from '../model';
 import { ago, left } from '../format';
-import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, shortPath, spacesLayout, todayParts, usageView } from '../viewState';
+import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, shortPath, spacesLayout, todayLines, usageView } from '../viewState';
 import type { PaneActivity } from '../activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
 
@@ -275,11 +275,11 @@ assert.deepStrictEqual(ordered.map((s) => s.id), ['d', 'c', 'b', 'a', 'e', 'f'])
 console.log('✓ space order: working / blocked first, then most recently active, then Herdr order');
 // The Usage section's Today line and Codex credits
 assert.deepStrictEqual(
-  todayParts({ id: 'claude', name: 'Claude Code', windows: [], today: { tokens: 200_000, cacheRead: 1_800_000, costUSD: 12.4, linesAdded: 1200, linesRemoved: 340 } }),
-  ['2.0M tokens', '90% from cache', '$12.40 at API prices', '+1200 −340 lines'],
+  todayLines({ id: 'claude', name: 'Claude Code', windows: [], today: { tokens: 200_000, cacheRead: 1_800_000, costUSD: 12.4, linesAdded: 4536, linesRemoved: 141 } }),
+  ['Today: 2.0M tokens, 90% from cache', '$12.40 if billed per token', '+4,536 −141 lines of code'],
 );
-assert.deepStrictEqual(todayParts({ id: 'codex', name: 'Codex', windows: [], today: { tokens: 1400, cacheRead: 0 } }), ['1k tokens'], 'no cache share, cost or lines: left out');
-assert.deepStrictEqual(todayParts({ id: 'codex', name: 'Codex', windows: [] }), []);
+assert.deepStrictEqual(todayLines({ id: 'codex', name: 'Codex', windows: [], today: { tokens: 1400, cacheRead: 0 } }), ['Today: 1k tokens'], 'no cache share, cost or lines: left out');
+assert.deepStrictEqual(todayLines({ id: 'codex', name: 'Codex', windows: [] }), []);
 assert.strictEqual(usageView({ id: 'codex', name: 'Codex', windows: [], codexCredits: { balance: 12.5, unlimited: false } }).creditsText, '12.5 credits left');
 assert.strictEqual(usageView({ id: 'codex', name: 'Codex', windows: [], codexCredits: { unlimited: true } }).creditsText, 'unlimited credits');
 console.log('✓ usage: the Today line and Codex credits');

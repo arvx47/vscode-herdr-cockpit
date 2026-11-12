@@ -109,8 +109,8 @@ export interface UsageView extends ProviderUsage {
   windows: (UsageWindow & { level: UsageLevel })[];
   /** The folded Usage heading's number: the 5-hour window, else the first one, credits or tokens. */
   summary: { text: string; level: UsageLevel };
-  /** The "Today" line, piece by piece: tokens, the share read from cache, cost at API prices, lines changed. */
-  todayParts?: string[];
+  /** The "Today" lines, one idea each: tokens and the share read from cache, the cost per token, lines changed. */
+  todayLines?: string[];
   /** Codex credits beyond the plan's windows ("12.5 credits left", "unlimited credits"). */
   creditsText?: string;
 }
@@ -232,9 +232,9 @@ export function usageView(u: ProviderUsage): UsageView {
     planName = PLAN_NAMES[u.plan] ?? u.plan.charAt(0).toUpperCase() + u.plan.slice(1);
   }
   const view: UsageView = { ...u, windows, summary, planName };
-  const parts = todayParts(u);
-  if (parts.length) {
-    view.todayParts = parts;
+  const lines = todayLines(u);
+  if (lines.length) {
+    view.todayLines = lines;
   }
   if (u.codexCredits?.unlimited) {
     view.creditsText = 'unlimited credits';
@@ -244,37 +244,41 @@ export function usageView(u: ProviderUsage): UsageView {
   return view;
 }
 
-/** Lines changed: exact up to 9,999 (a day's edits), short above. */
+/** Lines changed: exact with a thousands separator up to 99,999 (a day's edits), short above. */
 function lineCount(n: number): string {
-  if (n < 10_000) {
-    return String(n);
+  if (n < 100_000) {
+    return n.toLocaleString('en-US');
   }
   return shortCount(n);
 }
 
-/** The pieces of a provider's "Today" line, in order; empty when it did nothing today. */
-export function todayParts(u: ProviderUsage): string[] {
+/**
+ * A provider's "Today" lines (since midnight), one idea each so they read at a glance; empty when it did
+ * nothing today: "Today: 203.6M tokens, 98% from cache", "$72.67 if billed per token", "+4,536 −141 lines of code".
+ */
+export function todayLines(u: ProviderUsage): string[] {
   const t = u.today;
   if (!t) {
     return [];
   }
-  const parts: string[] = [];
+  const lines: string[] = [];
   const all = t.tokens + t.cacheRead;
   if (all > 0) {
-    parts.push(`${shortCount(all)} tokens`);
+    let tokens = `Today: ${shortCount(all)} tokens`;
     // Most of an agent's input is re-read from the prompt cache, which costs about a tenth.
     const cached = Math.round((t.cacheRead / all) * 100);
     if (cached > 0) {
-      parts.push(`${cached}% from cache`);
+      tokens += `, ${cached}% from cache`;
     }
+    lines.push(tokens);
   }
   if (t.costUSD && t.costUSD >= 0.005) {
-    parts.push(`$${t.costUSD.toFixed(2)} at API prices`);
+    lines.push(`$${t.costUSD.toFixed(2)} if billed per token`);
   }
   if (t.linesAdded || t.linesRemoved) {
-    parts.push(`+${lineCount(t.linesAdded ?? 0)} −${lineCount(t.linesRemoved ?? 0)} lines`);
+    lines.push(`+${lineCount(t.linesAdded ?? 0)} −${lineCount(t.linesRemoved ?? 0)} lines of code`);
   }
-  return parts;
+  return lines;
 }
 
 /**
