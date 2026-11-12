@@ -11,7 +11,9 @@
   --muted: var(--vscode-descriptionForeground);
   --card: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
   --card-border: color-mix(in srgb, var(--vscode-foreground) 9%, transparent);
-  --hover: var(--vscode-list-hoverBackground);
+  /* The Explorer's hover color, pushed toward the text color: rows sit on cards a shade lighter than the side
+     bar, which ate most of the plain list hover's contrast. */
+  --hover: color-mix(in srgb, var(--vscode-list-hoverBackground), var(--vscode-foreground) 10%);
   --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
   --radius: 7px;
   /* Text sizes: tiny (pills, chips), small (labels, meta), body (rows), and headings. */
@@ -111,7 +113,8 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 
 .space-head {
   display: flex; align-items: center; gap: 6px;
-  padding: 7px 6px 3px 6px;
+  /* 10px on the right: the card's actions end where the rows' chevrons do (body 6px + row 4px). */
+  padding: 7px 10px 3px 6px;
   cursor: pointer; outline: none;
 }
 .space-head:hover { background: var(--hover); }
@@ -148,8 +151,10 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .space-folder .codicon { font-size: 12px; flex: none; }
 .space-folder .worktree-of { flex: none; }
 .space-folder .folder-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--fs-xs); }
-/* New worktree: on repo cards, while the card is hovered or has focus (like New tab). */
-.space:not(:hover):not(:focus-within) .worktree-btn { display: none; }
+/* A card's actions (New tab, New worktree) on its name line, always shown: no taller than the name, so the
+   header keeps its height. */
+.space-head .card-btn { flex: none; width: 18px; height: 18px; margin: -2px 0; border-radius: 4px; }
+.space-head .card-btn .codicon { font-size: 13px; }
 .space-meta {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
   padding: 0 10px 7px 30px;
@@ -186,15 +191,6 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .space-body { padding: 0 6px 6px; }
 .space:not(.open) .space-body { display: none; }
 /* "New tab" shows while you're on the card (mouse or keyboard), not on every card at once. */
-.space:not(:hover):not(:focus-within) .add-row { display: none; }
-.add-row {
-  display: flex; align-items: center; gap: 6px; width: 100%;
-  margin-top: 6px; padding: 4px 8px;
-  border: 1px dashed var(--card-border); border-radius: 6px;
-  background: transparent; color: var(--muted); font-size: var(--fs-md); cursor: pointer; text-align: left;
-}
-.add-row:hover, .add-row:focus-visible { color: var(--vscode-textLink-foreground); border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 50%, transparent); outline: none; }
-.add-row .codicon { font-size: 13px; }
 .empty-note { padding: 4px 8px 6px 24px; font-size: var(--fs-md); color: var(--muted); font-style: italic; }
 
 /* hover-revealed actions */
@@ -320,16 +316,19 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .term div:last-child { opacity: 1; }
 .sh-failed .term { color: var(--st-failed); }
 
-/* attention cards reuse rows, framed; so does a blocked or done agent in its space when Needs you is off */
+/* attention cards reuse rows, framed; so does an agent in its space that's working, or blocked or done when
+   Needs you is off (PaneView.framed) */
 .attention { padding: 0 8px; }
-.attention .row, .row.needs {
+.attention .row, .row.framed {
   background: color-mix(in srgb, var(--c) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--c) 28%, transparent);
   margin: 6px 0 0;
-  padding: 8px 6px 8px 8px;
+  /* Taller than a plain row, but the same sides once the border counts (a plain row: 6px left, 4px right), so
+     avatars, names and chevrons line up whether a row is framed or not. */
+  padding: 8px 3px 8px 5px;
 }
-.row.needs { margin: 4px 0; }
-.attention .row:hover, .row.needs:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
+.row.framed { margin: 4px 0; }
+.attention .row:hover, .row.framed:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .attention .where { font-size: var(--fs-sm); color: var(--muted); }
 
 /* shells group */

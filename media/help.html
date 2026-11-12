@@ -80,7 +80,8 @@
     the wrap-up of what it did. Click the card to open that agent.</p>
   <p>It lists only <b>this window's</b> agents: those in the spaces open here, or whose tab is open here. Agents of other
     windows' spaces show up in those windows. The section is off by default (setting <code>herdr.showNeedsYou</code>): a blocked or done
-    agent is then framed in its status color right in its space, like the card below.</p>
+    agent is then framed in its status color right in its space, like the card below. A <b>working</b> agent is always
+    framed too, in blue, so the ones busy right now stand out.</p>
   <div class="demo attention">
     <div class="row agent st-blocked">
       <div class="avatar logo" data-logo="claude"></div>
@@ -99,7 +100,7 @@
   <p>Each Herdr space is a card.</p>
   <div class="demo">
     <section class="space st-working open herdr-focused">
-      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">api-service</span><span class="icon-btn"><span class="codicon codicon-git-branch-create"></span></span></div>
+      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">api-service</span><span class="icon-btn card-btn"><span class="codicon codicon-add"></span></span><span class="icon-btn card-btn"><span class="codicon codicon-git-branch-create"></span></span></div>
       <div class="space-folder"><span class="codicon codicon-folder"></span><span class="folder-path">~/code/api-service</span></div>
       <div class="space-meta">
         <span class="m branch"><span class="codicon codicon-git-branch"></span><span class="bn">feat/auth</span><span class="age">2h</span></span>
@@ -111,7 +112,7 @@
       </div>
     </section>
     <section class="space st-idle">
-      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">docs-site</span><span class="dots"><span class="dot st-idle"></span><span class="dot st-idle"></span></span><span class="open-btn">Open</span></div>
+      <div class="space-head"><span class="chev"><span class="codicon codicon-chevron-down"></span></span><span class="space-name">docs-site</span><span class="dots"><span class="dot st-idle"></span><span class="dot st-idle"></span></span><span class="icon-btn card-btn"><span class="codicon codicon-add"></span></span><span class="icon-btn card-btn"><span class="codicon codicon-git-branch-create"></span></span><span class="open-btn">Open</span></div>
       <div class="space-folder"><span class="codicon codicon-folder"></span><span class="folder-path">~/code/docs-site</span></div>
       <div class="space-meta"><span class="m branch"><span class="codicon codicon-git-branch"></span><span class="bn">main</span><span class="age">3d</span></span><span class="m muted"><span class="codicon codicon-check"></span>synced</span><span class="m clean"><span class="codicon codicon-pass"></span>clean</span></div>
     </section>
@@ -143,7 +144,9 @@
     <dt>Hover the name</dt>
     <dd>Shows the space's folder.</dd>
     <dt><span class="codicon codicon-add"></span> New tab</dt>
-    <dd>The dashed row at the bottom of an open card. See <a href="#create">Create, rename and close</a>.</dd>
+    <dd>The <span class="codicon codicon-add"></span> on a space's name line. See <a href="#create">Create, rename and close</a>.</dd>
+    <dt><span class="codicon codicon-git-branch-create"></span> New worktree</dt>
+    <dd>Next to it, on a git repository's name line. See <a href="#create">Create, rename and close</a>.</dd>
   </dl>
 </section>
 
@@ -172,7 +175,7 @@
     <dd>Pick <b>Choose a folder…</b>, or <b>New git worktree of</b> an existing space: a separate checkout on a new branch, so
       an agent can work without touching your current branch (Herdr puts it in <code>~/.herdr/worktrees/&lt;repo&gt;/&lt;branch&gt;</code>).
       Then name it and choose what to start. The window switches to the new space.</dd>
-    <dt><span class="codicon codicon-git-branch-create"></span> New worktree (on a repository's card while the pointer or keyboard is on it, right-click a space, or <b>Herdr Cockpit: New Worktree…</b>)</dt>
+    <dt><span class="codicon codicon-git-branch-create"></span> New worktree (the <span class="codicon codicon-git-branch-create"></span> on a repository's name line, right-click a space, or <b>Herdr Cockpit: New Worktree…</b>)</dt>
     <dd>The quick way to start a new piece of work, like a ticket, in a repository you already have a space for. It asks one
       thing: the branch name. Type a ticket key (<code>OUT-9656</code>), paste the ticket's link (its key is used), or any branch
       name. The branch starts from the repository's main branch (the one <code>origin/HEAD</code> names, else <code>main</code> or
@@ -181,7 +184,7 @@
       <code>herdr.newWorktreeStartsWith</code> (<code>ask</code> asks each time). From the Command Palette it uses the repository
       open in this window, else asks which. Close the space with <b>Close in Herdr…</b> when the work is done: that also offers
       to delete the worktree.</dd>
-    <dt><span class="codicon codicon-add"></span> New tab (bottom of a space card while the pointer or keyboard is on it, or right-click a space)</dt>
+    <dt><span class="codicon codicon-add"></span> New tab (the <span class="codicon codicon-add"></span> on a space's name line, folded or not, or right-click a space)</dt>
     <dd>Choose <b>Shell</b>, <b>Shell with a name…</b> or an agent. The agents listed first come from the
       <code>herdr.agents</code> setting; <b>More agents…</b> lists every agent Herdr can start. The tab opens right away;
       an agent starts in it in the background (a notification shows progress).</dd>
@@ -288,7 +291,8 @@
         <div class="line1"><span class="name">Claude Code</span><span class="umeta">as of 2m ago</span></div>
         <div class="meter lvl-warn"><span class="ml">5h</span><span class="bar"><span class="fill w72"></span></span><span class="pct">72%</span><span class="reset">↻ 1h 19m</span></div>
         <div class="meter lvl-ok"><span class="ml">7d</span><span class="bar"><span class="fill w18"></span></span><span class="pct">18%</span><span class="reset">↻ 2d 23h</span></div>
-        <div class="ustat">This session: <b>1.7M</b> tokens</div></div></div>
+        <div class="ustat">This session: <b>1.7M</b> tokens</div>
+        <div class="ustat">Today: 41.2M tokens · 97% from cache · $18.40 at API prices · +812 −96 lines</div></div></div>
       <div class="usage-row"><div class="avatar logo small" data-logo="codex"></div><div class="main">
         <div class="line1"><span class="name">Codex</span><span class="umeta">Business · live</span></div>
         <div class="meter lvl-high"><span class="ml">5h</span><span class="bar"><span class="fill w91"></span></span><span class="pct">91%</span><span class="reset">↻ 24m</span></div></div></div>
@@ -307,7 +311,9 @@
     <dt>Codex</dt>
     <dd>Live: every 5 minutes the sidebar asks Codex itself (the same data as Codex's <code>/usage</code>, so it includes Codex use on
       other machines and in the IDE). Codex signs that request with its own login; Herdr never sees it. If Codex can't answer, the
-      sidebar falls back to Codex's session logs, which are only as fresh as your last Codex prompt.</dd>
+      sidebar falls back to Codex's session logs, which are only as fresh as your last Codex prompt. <b>Today</b> adds up the tokens of
+      Codex's sessions on this machine since midnight, from those logs. When your account has Codex credits (used once a plan
+      window runs out), their balance shows too.</dd>
     <dt>Claude Code</dt>
     <dd>The bars match Claude's own <code>/usage</code> ("Current session" and "Current week (all models)"). Per-model weekly limits
       (such as "Current week (Fable)") aren't shared outside Claude Code, so they're not shown. <b>This session</b> counts the tokens
@@ -317,7 +323,10 @@
       status line to <code>~/.claude/settings.json</code> (backed up first; it shows "5h 42% · 7d 18%" under the Claude prompt and
       hides some of Claude Code's footer hints). It works for claude.ai Pro and Max plans; numbers appear after the next
       Claude reply. To undo, remove <code>statusLine</code> from that file. If you already have a status line, Herdr leaves it alone
-      and shows how to add the capture to it.</dd>
+      and shows how to add the capture to it.
+      <b>Today</b> covers everything Claude Code did on this machine since midnight: tokens (cache reads included) and the share read
+      from the prompt cache (most of an agent's input, at about a tenth of the price), the cost as Claude Code tallies it at API
+      prices (what it would cost without a plan, so on a plan it's a measure of use, not a bill), and the lines it added and removed.</dd>
     <dt>Kiro</dt>
     <dd>Credits used today and this month, from Kiro's session files (Kiro CLI on this machine). Kiro doesn't share your plan's
       allowance with other tools, so click <b>Set monthly credits…</b> once and enter the number from Kiro's <code>/usage</code>

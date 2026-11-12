@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { claudeCaptureFile, claudeStatusLineScript, codexLiveUsage, currentBlock, legacyClaudeCaptureFile, readUsage } from '../usage';
+import { claudeCaptureFile, claudeStatusLineScript, codexLiveUsage, currentBlock, legacyClaudeCaptureFile, readUsage, todayDelta } from '../usage';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-'));
 const put = (rel: string, body: string) => {
@@ -128,6 +128,43 @@ require('readline').createInterface({ input: process.stdin }).on('line', (l) => 
   assert.deepStrictEqual([lu?.live, lu?.plan, lu?.windows.map((w) => [w.label, w.usedPercent])], [true, 'team', [['5h', 12], ['7d', 40]]]);
   assert.strictEqual(await codexLiveUsage(path.join(home, 'missing-codex'), 2000), undefined, 'no Codex: undefined, no throw');
   console.log('✓ live Codex limits via app-server protocol');
+
+  // Today (since local midnight): what each session's running totals grew by today.
+  assert.strictEqual(todayDelta([{ ts: 1, value: 3 }, { ts: 10, value: 5 }], 5), 2, 'grew from 3 to 5 today');
+  assert.strictEqual(todayDelta([{ ts: 10, value: 4 }], 5), 4, 'started today');
+  assert.strictEqual(todayDelta([{ ts: 1, value: 3 }], 5), 0, 'nothing today');
+  assert.strictEqual(todayDelta([{ ts: 1, value: 9 }, { ts: 10, value: 2 }], 5), 2, 'a total that went down started over');
+  const home2 = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-today-'));
+  const put2 = (rel: string, body: string) => {
+    fs.mkdirSync(path.dirname(path.join(home2, rel)), { recursive: true });
+    fs.writeFileSync(path.join(home2, rel), body);
+  };
+  const midnight = new Date(2026, 9, 5).getTime();
+  const noon = midnight + 12 * H;
+  // Claude: cost records carry no time of their own; the line before dates them (yesterday's, then today's).
+  const costState = (cost: number, added: number, removed: number) =>
+    JSON.stringify({ type: 'cost-state', sessionId: 's', totalCostUSD: cost, totalLinesAdded: added, totalLinesRemoved: removed });
+  put2('.claude/projects/-p/s2.jsonl', [
+    msg(midnight - 2 * H, 'y1', 1000, 1000),
+    costState(3, 100, 10),
+    msg(midnight + H, 't1', 100, 50, 2000),
+    costState(5.5, 160, 25),
+  ].join('\n'));
+  // Codex: running token totals in one session log, before and after midnight, and credits.
+  const tokenCount = (t: number, total: number, cached: number, extra: object = {}) =>
+    JSON.stringify({ timestamp: iso(t), type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { total_tokens: total, cached_input_tokens: cached } }, ...extra } });
+  put2('.codex/sessions/2026/10/05/rollout-c.jsonl', [
+    tokenCount(midnight - H, 1000, 400),
+    tokenCount(midnight + 2 * H, 3000, 1000, { rate_limits: { primary: { used_percent: 5, window_minutes: 300, resets_at: sec(noon + H) }, credits: { has_credits: true, unlimited: false, balance: '12.5' } } }),
+  ].join('\n'));
+  const day = await readUsage(home2, noon);
+  const claudeToday = day.find((u) => u.id === 'claude')!.today;
+  assert.deepStrictEqual(claudeToday, { tokens: 160, cacheRead: 2000, costUSD: 2.5, linesAdded: 60, linesRemoved: 15 }, "today's tokens, and what the session's cost and lines grew by");
+  const codexDay = day.find((u) => u.id === 'codex')!;
+  assert.deepStrictEqual(codexDay.today, { tokens: 1400, cacheRead: 600 }, "today's Codex tokens: the running total's growth since midnight");
+  assert.deepStrictEqual(codexDay.codexCredits, { balance: 12.5, unlimited: false });
+  fs.rmSync(home2, { recursive: true, force: true });
+  console.log("✓ today: tokens, cache share, Claude's cost and lines, Codex credits");
 
   fs.rmSync(home, { recursive: true, force: true });
   console.log('\nusage tests passed');

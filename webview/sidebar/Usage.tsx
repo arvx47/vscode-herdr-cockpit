@@ -1,4 +1,4 @@
-// The Usage section: each running agent's plan limits, session tokens or credits. Folds to one line of numbers.
+// The Usage section: each running agent's plan limits, session tokens or credits, and what it did today. Folds to one line of numbers.
 import type { ReactNode } from 'react';
 import type { UsageView } from '../../src/viewState';
 import { shortCount } from '../../src/format';
@@ -91,6 +91,26 @@ function UsageRow({ u }: { u: UsageView }) {
       </>
     );
   }
+  let today: ReactNode = null;
+  if (u.todayParts) {
+    let tip = `What ${u.name} did today on this machine, since midnight: tokens (input, output, cache writes and cache reads), and the share of input read from the prompt cache.`;
+    if (u.id === 'claude') {
+      tip += ' Cost is Claude Code\'s own tally at API prices (what it would cost without a plan), and lines are the ones it added and removed.';
+    }
+    today = (
+      <div className="ustat" title={tip}>
+        Today: {u.todayParts.join(' · ')}
+      </div>
+    );
+  }
+  let codexCredits: ReactNode = null;
+  if (u.creditsText) {
+    codexCredits = (
+      <div className="ustat" title="Codex credits on your account, used once a plan window runs out">
+        {u.creditsText}
+      </div>
+    );
+  }
   return (
     <div className="usage-row">
       <div className="avatar logo small">
@@ -109,8 +129,10 @@ function UsageRow({ u }: { u: UsageView }) {
           <Meter key={w.label} w={w} />
         ))}
         {block}
+        {today}
         {credits}
-        {!u.windows.length && !block && !credits && <div className="ustat">No usage recorded yet</div>}
+        {codexCredits}
+        {!u.windows.length && !block && !credits && !today && <div className="ustat">No usage recorded yet</div>}
         {u.canSetUpLimits && (
           <button className="link-btn" title="Claude Code shares plan limits only with a status line; set one up" onClick={() => post('setupClaudeUsage')}>
             <Icon name="graph" />

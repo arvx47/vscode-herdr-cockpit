@@ -49,11 +49,57 @@ export interface ProviderUsage {
   block?: { tokens: number; cacheRead: number; startsAt: number; endsAt: number; exact: boolean };
   /** Kiro: credits used, and the monthly allowance when the user set one. */
   credits?: { today: number; month: number; limit?: number };
+  /**
+   * Today's work (since local midnight): tokens (cache reads counted apart), and for Claude Code its own cost
+   * tally at API prices and lines it added and removed (from its transcripts' cost records).
+   */
+  today?: TodayUsage;
+  /** Codex credits beyond the plan's windows, when the account has them: a balance, or unlimited. */
+  codexCredits?: { balance?: number; unlimited: boolean };
   /** Claude only: plan limits need the opt-in status line. */
   canSetUpLimits?: boolean;
 }
 
 /** Where our Claude Code status line saves its input (see claudeStatusLineScript). */
+export interface TodayUsage {
+  /** Input, output and cache-write tokens. */
+  tokens: number;
+  /** Input tokens read from the prompt cache (much cheaper; most of an agent's input). */
+  cacheRead: number;
+  costUSD?: number;
+  linesAdded?: number;
+  linesRemoved?: number;
+}
+
+/** Local midnight before `now`. */
+const dayStart = (now: number) => {
+  const d = new Date(now);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
+
+/**
+ * How much a running total grew today: its last value today minus its last value before today (0 when it
+ * started today). A total that went down (a new session in the same file) counts from zero.
+ */
+export function todayDelta(points: readonly { ts: number; value: number }[], start: number): number {
+  let before = 0;
+  let last: number | undefined;
+  for (const p of points) {
+    if (p.ts < start) {
+      before = p.value;
+    } else {
+      last = p.value;
+    }
+  }
+  if (last === undefined) {
+    return 0;
+  }
+  if (last < before) {
+    return last;
+  }
+  return last - before;
+}
+
 export const claudeCaptureFile = (home: string) => path.join(home, '.herdr-cockpit', 'claude-usage.json');
 /** Where a status line installed before the rename (Herdr Hub) saves it: still read, so that setup keeps working. */
 export const legacyClaudeCaptureFile = (home: string) => path.join(home, `.${LEGACY_NAME}`, 'claude-usage.json');
@@ -157,12 +203,94 @@ export function codexLiveUsage(bin: string, timeoutMs = 10_000): Promise<Provide
             .filter((w) => w && typeof w.usedPercent === 'number')
             .map((w) => window(windowLabel(w.windowDurationMins ?? 0), w.usedPercent, w.resetsAt, now))
             .filter((w): w is UsageWindow => !!w);
-          finish({ id: 'codex', name: 'Codex', plan: typeof rl.planType === 'string' ? rl.planType : undefined, windows, asOf: now, live: true });
+          finish({ id: 'codex', name: 'Codex', plan: typeof rl.planType === 'string' ? rl.planType : undefined, windows, asOf: now, live: true, codexCredits: codexCredits(rl.credits) });
         }
       }
     });
     send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'herdr-cockpit', title: 'Herdr Cockpit', version: '1' } } });
   });
+}
+
+/** Codex's `credits` (logs: has_credits/balance; app-server: hasCredits/balance); undefined when it has none. */
+function codexCredits(c: any): { balance?: number; unlimited: boolean } | undefined {
+  if (!c || typeof c !== 'object') {
+    return undefined;
+  }
+  const unlimited = c.unlimited === true;
+  const has = c.has_credits === true || c.hasCredits === true;
+  let balance: number | undefined;
+  if (typeof c.balance === 'number') {
+    balance = c.balance;
+  } else if (typeof c.balance === 'string' && Number.isFinite(Number(c.balance))) {
+    balance = Number(c.balance);
+  }
+  if (!unlimited && !has && balance === undefined) {
+    return undefined;
+  }
+  return { balance, unlimited };
+}
+
+/** What was read of each Codex session log: complete lines up to `offset`, and its running token totals. */
+const codexLogs = new Map<string, { offset: number; size: number; mtimeMs: number; totals: { ts: number; tokens: number; cacheRead: number }[] }>();
+
+/** Today's tokens across Codex's session logs (each log's token_count totals only grow within the session). */
+async function codexToday(home: string, now: number): Promise<TodayUsage | undefined> {
+  const root = path.join(home, '.codex', 'sessions');
+  const start = dayStart(now);
+  const files = await recentFiles(root, '.jsonl', start, 3).catch(() => []);
+  const keep = new Set(files.map((f) => f.file));
+  for (const f of codexLogs.keys()) {
+    if (!keep.has(f)) {
+      codexLogs.delete(f);
+    }
+  }
+  const today: TodayUsage = { tokens: 0, cacheRead: 0 };
+  for (const { file } of files) {
+    let st: fs.Stats;
+    try {
+      st = await fs.promises.stat(file);
+    } catch {
+      continue;
+    }
+    let c = codexLogs.get(file);
+    if (!c || st.size < c.offset) {
+      c = { offset: 0, size: 0, mtimeMs: 0, totals: [] };
+    }
+    const cached = c;
+    if (cached.size !== st.size || cached.mtimeMs !== st.mtimeMs) {
+      try {
+        cached.offset = await readLinesFrom(file, cached.offset, (line) => {
+          if (!line.includes('"token_count"')) {
+            return;
+          }
+          let o: any;
+          try {
+            o = JSON.parse(line);
+          } catch {
+            return;
+          }
+          const t = o?.payload?.info?.total_token_usage;
+          const ts = Date.parse(o?.timestamp);
+          if (!t || !(ts > 0)) {
+            return;
+          }
+          const cacheRead = t.cached_input_tokens ?? 0;
+          cached.totals.push({ ts, tokens: (t.total_tokens ?? 0) - cacheRead, cacheRead });
+        });
+      } catch {
+        continue;
+      }
+      cached.size = st.size;
+      cached.mtimeMs = st.mtimeMs;
+      codexLogs.set(file, cached);
+    }
+    today.tokens += todayDelta(cached.totals.map((t) => ({ ts: t.ts, value: t.tokens })), start);
+    today.cacheRead += todayDelta(cached.totals.map((t) => ({ ts: t.ts, value: t.cacheRead })), start);
+  }
+  if (!today.tokens && !today.cacheRead) {
+    return undefined;
+  }
+  return today;
 }
 
 async function codexUsage(home: string, now = Date.now()): Promise<ProviderUsage | undefined> {
@@ -185,7 +313,7 @@ async function codexUsage(home: string, now = Date.now()): Promise<ProviderUsage
         .filter((w) => w && typeof w.window_minutes === 'number')
         .map((w) => window(windowLabel(w.window_minutes), w.used_percent, w.resets_at, now))
         .filter((w): w is UsageWindow => !!w);
-      return { id: 'codex', name: 'Codex', plan: typeof rl.plan_type === 'string' ? rl.plan_type : undefined, windows, asOf: Date.parse(o.timestamp) || undefined };
+      return { id: 'codex', name: 'Codex', plan: typeof rl.plan_type === 'string' ? rl.plan_type : undefined, windows, asOf: Date.parse(o.timestamp) || undefined, codexCredits: codexCredits(rl.credits) };
     }
   }
   return files.length ? { id: 'codex', name: 'Codex', windows: [] } : undefined;
@@ -201,8 +329,19 @@ interface ClaudeEntry {
   key: string;
 }
 
-/** What was read of each transcript: complete lines up to `offset`, and the usage entries in them. */
-const transcripts = new Map<string, { offset: number; size: number; mtimeMs: number; entries: ClaudeEntry[] }>();
+/** Claude Code's running cost tally for a session (a `cost-state` record), dated by the line before it. */
+interface CostPoint {
+  ts: number;
+  costUSD: number;
+  linesAdded: number;
+  linesRemoved: number;
+}
+
+/**
+ * What was read of each transcript: complete lines up to `offset`, the usage entries and cost records in them,
+ * and the last timestamp seen (cost records have none of their own; lines are appended in order).
+ */
+const transcripts = new Map<string, { offset: number; size: number; mtimeMs: number; entries: ClaudeEntry[]; costs: CostPoint[]; lastTs: number }>();
 
 /** Drops cached transcripts that are no longer recent (or were deleted). */
 function forgetTranscriptsExcept(files: string[]) {
@@ -239,20 +378,20 @@ function claudeEntry(line: string): ClaudeEntry | undefined {
  * grew is read from where the last read stopped (Claude Code only appends); a file that shrank is read again.
  * A last line that isn't whole yet (being written) is left for the next read.
  */
-async function claudeEntries(file: string): Promise<ClaudeEntry[]> {
+async function claudeEntries(file: string): Promise<{ entries: ClaudeEntry[]; costs: CostPoint[] }> {
   let st: fs.Stats;
   try {
     st = await fs.promises.stat(file);
   } catch {
     transcripts.delete(file);
-    return [];
+    return { entries: [], costs: [] };
   }
   let c = transcripts.get(file);
   if (c && c.size === st.size && c.mtimeMs === st.mtimeMs) {
-    return c.entries;
+    return c;
   }
   if (!c || st.size < c.offset) {
-    c = { offset: 0, size: 0, mtimeMs: 0, entries: [] };
+    c = { offset: 0, size: 0, mtimeMs: 0, entries: [], costs: [], lastTs: 0 };
   }
   const cached = c;
   try {
@@ -260,16 +399,48 @@ async function claudeEntries(file: string): Promise<ClaudeEntry[]> {
       const e = claudeEntry(line);
       if (e) {
         cached.entries.push(e);
+        cached.lastTs = e.ts;
+        return;
+      }
+      const cost = costPoint(line, cached.lastTs);
+      if (cost) {
+        cached.costs.push(cost);
+        return;
+      }
+      // Any other line with a timestamp dates the cost records after it.
+      const ts = /"timestamp":"([^"]+)"/.exec(line);
+      if (ts) {
+        const t = Date.parse(ts[1]);
+        if (t > 0) {
+          cached.lastTs = t;
+        }
       }
     });
   } catch {
     transcripts.delete(file);
-    return cached.entries;
+    return cached;
   }
   cached.size = st.size;
   cached.mtimeMs = st.mtimeMs;
   transcripts.set(file, cached);
-  return cached.entries;
+  return cached;
+}
+
+/** A `cost-state` line: the session's running cost and lines, dated `ts` (the line before it). */
+function costPoint(line: string, ts: number): CostPoint | undefined {
+  if (!line.includes('"cost-state"')) {
+    return undefined;
+  }
+  let o: any;
+  try {
+    o = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (o?.type !== 'cost-state' || typeof o.totalCostUSD !== 'number') {
+    return undefined;
+  }
+  return { ts, costUSD: o.totalCostUSD, linesAdded: o.totalLinesAdded ?? 0, linesRemoved: o.totalLinesRemoved ?? 0 };
 }
 
 /** Calls `onLine` for each complete JSONL line from byte `start`; returns the offset after the last one read. */
@@ -339,23 +510,37 @@ async function claudeUsage(home: string, now = Date.now()): Promise<ProviderUsag
     usage.canSetUpLimits = true;
   }
 
-  // Tokens in the current 5-hour block. A block is at most 5h old, so transcripts untouched for 10h can't matter.
-  // Each transcript is parsed once and then only for what was appended (claudeEntries): a busy session's file
-  // grows to many MB and this runs every minute.
-  const since = now - 10 * HOUR;
+  // Tokens in the current 5-hour block (at most 5h old, so transcripts untouched for 10h can't matter) and
+  // today's (since midnight). Each transcript is parsed once and then only for what was appended
+  // (claudeEntries): a busy session's file grows to many MB and this runs every minute.
+  const start = dayStart(now);
+  const since = Math.min(now - 10 * HOUR, start);
   const seen = new Set<string>();
   const entries: ClaudeEntry[] = [];
+  const today: TodayUsage = { tokens: 0, cacheRead: 0, costUSD: 0, linesAdded: 0, linesRemoved: 0 };
   const recent = await recentFiles(projects, '.jsonl', since, 4);
   for (const { file } of recent) {
-    for (const e of await claudeEntries(file)) {
+    const read = await claudeEntries(file);
+    for (const e of read.entries) {
       if (!(e.ts >= since)) continue;
       // Streaming writes the same message more than once.
       if (e.key !== ':' && seen.has(e.key)) continue;
       seen.add(e.key);
       entries.push(e);
+      if (e.ts >= start) {
+        today.tokens += e.tokens;
+        today.cacheRead += e.cacheRead;
+      }
     }
+    // Each session keeps a running tally: what it grew by today.
+    today.costUSD! += todayDelta(read.costs.map((c) => ({ ts: c.ts, value: c.costUSD })), start);
+    today.linesAdded! += todayDelta(read.costs.map((c) => ({ ts: c.ts, value: c.linesAdded })), start);
+    today.linesRemoved! += todayDelta(read.costs.map((c) => ({ ts: c.ts, value: c.linesRemoved })), start);
   }
   forgetTranscriptsExcept(recent.map((r) => r.file));
+  if (today.tokens || today.cacheRead || today.costUSD) {
+    usage.today = today;
+  }
   // Claude reports when the 5-hour session resets: count exactly that window. Otherwise estimate it.
   const fiveHour = usage.windows.find((w) => w.label === '5h' && w.resetsAt);
   if (fiveHour?.resetsAt) {
@@ -409,6 +594,19 @@ async function kiroUsage(home: string, now = Date.now(), monthlyLimit = 0): Prom
   };
 }
 
+/** Codex's limits (live when given, else its logs) with today's tokens from its logs. */
+async function codexWithToday(home: string, now: number, live?: ProviderUsage): Promise<ProviderUsage | undefined> {
+  const base = live ?? (await codexUsage(home, now));
+  if (!base) {
+    return undefined;
+  }
+  const today = await codexToday(home, now);
+  if (!today) {
+    return base;
+  }
+  return { ...base, today };
+}
+
 export interface UsageOptions {
   /** Live Codex numbers (from codexLiveUsage, fetched less often by the caller); win over Codex's logs. */
   codexLive?: ProviderUsage;
@@ -424,7 +622,7 @@ export async function readUsage(home: string, now = Date.now(), opts: UsageOptio
   const all = await Promise.all(
     [
       want('claude') ? claudeUsage(home, now) : undefined,
-      want('codex') ? (opts.codexLive ? Promise.resolve(opts.codexLive) : codexUsage(home, now)) : undefined,
+      want('codex') ? codexWithToday(home, now, opts.codexLive) : undefined,
       want('kiro') ? kiroUsage(home, now, opts.kiroMonthlyCredits) : undefined,
     ].map((p) => (p ?? Promise.resolve(undefined)).catch(() => undefined)),
   );

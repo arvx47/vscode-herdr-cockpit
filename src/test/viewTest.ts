@@ -8,7 +8,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../model';
 import type { Space } from '../model';
 import { ago, left } from '../format';
-import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, shortPath, spacesLayout, usageView } from '../viewState';
+import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, shortPath, spacesLayout, todayParts, usageView } from '../viewState';
 import type { PaneActivity } from '../activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
 
@@ -131,6 +131,15 @@ assert.deepStrictEqual([off.attention, off.needsYou, allNeedy.needsYou], [[], fa
 assert.strictEqual(buildViewState({ ...needy, needsYou: undefined }).needsYou, false, 'off by default, like the herdr.showNeedsYou setting');
 assert.ok(off.spaces.flatMap((x) => x.agents).every((a) => a.needs), 'with the section off, waiting agents are framed in their space');
 assert.ok(allNeedy.spaces.flatMap((x) => x.agents).every((a) => !a.needs), 'with it on, they are not');
+assert.ok(off.spaces.flatMap((x) => x.agents).every((a) => a.framed), 'agents needing you are framed in their space');
+const allWorking = (x: (typeof model.spaces)[number]) => {
+  const tabs = x.tabs.map((t) => ({ ...t, panes: t.panes.map((p) => (p.isAgent ? { ...p, status: 'working' as const } : p)) }));
+  return { ...x, tabs, agents: tabs.flatMap((t) => t.panes.filter((p) => p.isAgent)) };
+};
+const working = buildViewState({ ...needy, model: { ...model, spaces: model.spaces.map(allWorking) } });
+const workingAgents = working.spaces.flatMap((x) => x.agents);
+assert.ok(workingAgents.length > 0 && workingAgents.every((a) => a.framed && !a.needs), 'working agents are framed (blue) whether or not Needs you is on');
+assert.ok(buildViewState(inputs).spaces.flatMap((x) => x.agents).filter((a) => a.status === 'idle').every((a) => !a.framed), 'idle agents are not');
 assert.ok(waitingSpaces.size > 1);
 console.log('✓ Needs you lists only this window\'s agents, and can be turned off');
 console.log("✓ spaces open in this window are marked for the This window group");
@@ -264,4 +273,15 @@ const at: Record<string, number> = { a: 5, b: 9, c: 1, d: 3 };
 const ordered = orderByActivity([space('a', ['idle']), space('b', []), space('c', ['working']), space('d', ['blocked', 'idle']), space('e', ['done']), space('f', [])], (s) => at[s.id]);
 assert.deepStrictEqual(ordered.map((s) => s.id), ['d', 'c', 'b', 'a', 'e', 'f']);
 console.log('✓ space order: working / blocked first, then most recently active, then Herdr order');
+// The Usage section's Today line and Codex credits
+assert.deepStrictEqual(
+  todayParts({ id: 'claude', name: 'Claude Code', windows: [], today: { tokens: 200_000, cacheRead: 1_800_000, costUSD: 12.4, linesAdded: 1200, linesRemoved: 340 } }),
+  ['2.0M tokens', '90% from cache', '$12.40 at API prices', '+1200 −340 lines'],
+);
+assert.deepStrictEqual(todayParts({ id: 'codex', name: 'Codex', windows: [], today: { tokens: 1400, cacheRead: 0 } }), ['1k tokens'], 'no cache share, cost or lines: left out');
+assert.deepStrictEqual(todayParts({ id: 'codex', name: 'Codex', windows: [] }), []);
+assert.strictEqual(usageView({ id: 'codex', name: 'Codex', windows: [], codexCredits: { balance: 12.5, unlimited: false } }).creditsText, '12.5 credits left');
+assert.strictEqual(usageView({ id: 'codex', name: 'Codex', windows: [], codexCredits: { unlimited: true } }).creditsText, 'unlimited credits');
+console.log('✓ usage: the Today line and Codex credits');
+
 console.log('\nview tests passed');

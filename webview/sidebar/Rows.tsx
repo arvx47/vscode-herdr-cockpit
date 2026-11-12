@@ -135,8 +135,8 @@ export function AgentRow(props: RowProps) {
   const open = props.attention || props.expanded;
   const status = p.status ?? 'unknown';
   let cls = `agent st-${status}`;
-  if (p.needs && !props.attention) {
-    cls += ' needs';
+  if (p.framed && !props.attention) {
+    cls += ' framed';
   }
   let logoCls = 'avatar';
   if (p.agentKind) {

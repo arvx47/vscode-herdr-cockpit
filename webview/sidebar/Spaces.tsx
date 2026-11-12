@@ -247,10 +247,11 @@ function SpaceCard({ sp, ui, update, showShells }: { sp: SpaceView; ui: UiState;
             <span key={a.id} className={`dot st-${a.status ?? 'unknown'}`} title={`${a.name}: ${a.status}`} />
           ))}
         </span>
+        <IconButton icon="add" className="card-btn" title={`New tab in ${sp.label}: a shell or an agent`} onClick={() => post('newTab', { spaceId: sp.id })} />
         {!!sp.git && (
           <IconButton
             icon="git-branch-create"
-            className="worktree-btn"
+            className="card-btn"
             title={`New worktree of ${sp.label}: a new branch and checkout for one piece of work (a ticket), in a space of its own`}
             onClick={() => post('newWorktree', { spaceId: sp.id })}
           />
@@ -284,18 +285,6 @@ function SpaceCard({ sp, ui, update, showShells }: { sp: SpaceView; ui: UiState;
           ))}
           <ShellGroup sp={sp} ui={ui} update={update} />
           {!sp.agents.length && !sp.shells.length && <div className="empty-note">{empty}</div>}
-          <button
-            className="add-row"
-            data-nav=""
-            title={`New tab in ${sp.label}: a shell or an agent`}
-            onClick={(e) => {
-              e.stopPropagation();
-              post('newTab', { spaceId: sp.id });
-            }}
-          >
-            <Icon name="add" />
-            New tab
-          </button>
         </div>
       )}
     </section>

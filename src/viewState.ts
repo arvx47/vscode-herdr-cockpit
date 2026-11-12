@@ -55,6 +55,8 @@ export interface PaneView {
   spaceMounted: boolean;
   /** Blocked or done with the Needs you section off: framed in its space instead. */
   needs: boolean;
+  /** Framed in its status color in its space: working, or `needs`. */
+  framed: boolean;
 }
 
 export interface SpaceView {
@@ -107,6 +109,10 @@ export interface UsageView extends ProviderUsage {
   windows: (UsageWindow & { level: UsageLevel })[];
   /** The folded Usage heading's number: the 5-hour window, else the first one, credits or tokens. */
   summary: { text: string; level: UsageLevel };
+  /** The "Today" line, piece by piece: tokens, the share read from cache, cost at API prices, lines changed. */
+  todayParts?: string[];
+  /** Codex credits beyond the plan's windows ("12.5 credits left", "unlimited credits"). */
+  creditsText?: string;
 }
 
 /** How the Spaces list is split. */
@@ -225,7 +231,50 @@ export function usageView(u: ProviderUsage): UsageView {
   if (u.plan) {
     planName = PLAN_NAMES[u.plan] ?? u.plan.charAt(0).toUpperCase() + u.plan.slice(1);
   }
-  return { ...u, windows, summary, planName };
+  const view: UsageView = { ...u, windows, summary, planName };
+  const parts = todayParts(u);
+  if (parts.length) {
+    view.todayParts = parts;
+  }
+  if (u.codexCredits?.unlimited) {
+    view.creditsText = 'unlimited credits';
+  } else if (u.codexCredits?.balance !== undefined) {
+    view.creditsText = `${u.codexCredits.balance.toFixed(1)} credits left`;
+  }
+  return view;
+}
+
+/** Lines changed: exact up to 9,999 (a day's edits), short above. */
+function lineCount(n: number): string {
+  if (n < 10_000) {
+    return String(n);
+  }
+  return shortCount(n);
+}
+
+/** The pieces of a provider's "Today" line, in order; empty when it did nothing today. */
+export function todayParts(u: ProviderUsage): string[] {
+  const t = u.today;
+  if (!t) {
+    return [];
+  }
+  const parts: string[] = [];
+  const all = t.tokens + t.cacheRead;
+  if (all > 0) {
+    parts.push(`${shortCount(all)} tokens`);
+    // Most of an agent's input is re-read from the prompt cache, which costs about a tenth.
+    const cached = Math.round((t.cacheRead / all) * 100);
+    if (cached > 0) {
+      parts.push(`${cached}% from cache`);
+    }
+  }
+  if (t.costUSD && t.costUSD >= 0.005) {
+    parts.push(`$${t.costUSD.toFixed(2)} at API prices`);
+  }
+  if (t.linesAdded || t.linesRemoved) {
+    parts.push(`+${lineCount(t.linesAdded ?? 0)} −${lineCount(t.linesRemoved ?? 0)} lines`);
+  }
+  return parts;
 }
 
 /**
@@ -375,6 +424,7 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     spaceLabel: space.label,
     spaceMounted: i.mounted(space),
     needs: false,
+    framed: false,
   };
 }
 
@@ -398,6 +448,7 @@ function shellView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     spaceLabel: space.label,
     spaceMounted: i.mounted(space),
     needs: false,
+    framed: false,
   };
 }
 
@@ -435,11 +486,13 @@ export function buildViewState(i: ViewInputs): ViewState {
   });
   const rank: Partial<Record<AgentStatus, number>> = { blocked: 0, done: 1 };
   const needsYou = i.needsYou ?? false;
-  if (!needsYou) {
-    for (const s of spaces) {
-      for (const a of s.agents) {
+  for (const s of spaces) {
+    for (const a of s.agents) {
+      if (!needsYou) {
         a.needs = a.status === 'blocked' || a.status === 'done';
       }
+      // A working agent stands out in its status color too (blue), like one that's done (green).
+      a.framed = a.needs || a.status === 'working';
     }
   }
   let attention: PaneView[] = [];
