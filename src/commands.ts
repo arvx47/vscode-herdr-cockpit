@@ -209,7 +209,7 @@ export class Commands {
     return undefined;
   }
 
-  /** Right-click "Open/Attach in its own window" or "Add/Attach in this window": a space opens all its panes, a pane just itself. */
+  /** Right-click "Open in Its Own Window" / "Open in Its Space's Window" or "Add to This Window" / "Open in This Window": a space opens all its panes, a pane just itself. */
   private async placeIn(t: Target | undefined, place: Placement) {
     const it = this.itemOf(t);
     if (!it) {

@@ -296,8 +296,8 @@ export class WindowFlow {
   private async askPlacement(space: Space, pane?: Pane): Promise<Placement | undefined> {
     type Item = vscode.QuickPickItem & { place?: Placement; remember?: boolean };
     // Same words as the right-click menu: a pane is attached, a space is opened or added.
-    let own: Item = { label: "$(window) Attach in its space's window", description: space.cwd, place: 'window' };
-    let add: Item = { label: '$(terminal) Attach in this window', description: "adds the space's folder to this window", place: 'workspace' };
+    let own: Item = { label: "$(window) Open in its space's window", description: space.cwd, place: 'window' };
+    let add: Item = { label: '$(terminal) Open in this window', description: "adds the space's folder to this window", place: 'workspace' };
     if (!pane) {
       own = { label: '$(window) Open in its own window', description: space.cwd, place: 'window' };
       add = { label: '$(folder-library) Add to this window', description: 'next to the folders this window has', place: 'workspace' };

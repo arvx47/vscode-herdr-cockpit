@@ -622,7 +622,7 @@ export async function closeInHerdr(deps: ManageDeps, target: { space: Space; pan
   const name = paneName(tab, pane);
   const ok = await vscode.window.showWarningMessage(
     `Close "${name}" in Herdr?`,
-    { modal: true, detail: `${pane.isAgent ? 'The agent' : 'The shell and anything running in it'} will stop. Closing the VS Code tab instead only detaches.` },
+    { modal: true, detail: `${pane.isAgent ? 'The agent' : 'The shell and anything running in it'} will stop. Closing the VS Code tab instead keeps it running in Herdr.` },
     'Close',
   );
   if (!ok) return;

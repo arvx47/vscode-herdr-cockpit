@@ -115,7 +115,10 @@ put('.kiro/sessions/cli/a.json', JSON.stringify({ session_state: { conversation_
   fs.writeFileSync(script, claudeStatusLineScript(claudeCaptureFile(home)));
   const input = JSON.stringify({ cwd: '/secret/path', session_id: 's', rate_limits: { five_hour: { used_percentage: 42.6, resets_at: 1 }, seven_day: { used_percentage: 7, resets_at: 2 } } });
   const hasJq = (() => { try { execFileSync('sh', ['-c', 'command -v jq']); return true; } catch { return false; } })();
-  const printed = execFileSync('sh', [script], { input }).toString().trim();
+  // The default account: without the CLAUDE_CONFIG_DIR of whoever runs the tests (it picks another account's file).
+  const env = { ...process.env };
+  delete env.CLAUDE_CONFIG_DIR;
+  const printed = execFileSync('sh', [script], { input, env }).toString().trim();
   const saved = JSON.parse(fs.readFileSync(claudeCaptureFile(home), 'utf8'));
   if (hasJq) {
     assert.strictEqual(printed, '5h 42% · 7d 7%');

@@ -132,8 +132,8 @@
       To open the whole space, click <b>Open</b> on its card (spaces that aren't open in this window have it), or right-click it and pick
       <b>Switch to Space</b>. If another window already has the space, that window comes forward
       and opens it. Otherwise (with <code>herdr.windowMode</code> = <code>folder</code>, the default) you pick <b>Open in its own window</b> or
-      <b>Add to this window</b> (for a pane: <b>Attach in its space's window</b> or <b>Attach in this window</b>), once or always for this window;
-      right-click a space, or a pane whose space isn't in this window, for either one any time. A pane whose space is here offers <b>Attach Terminal</b>; one whose space isn't offers <b>Attach in Its Space's Window</b> / <b>Attach in This Window</b> instead. Switching mounts its folder (Explorer, Search and Source Control follow), focuses it in
+      <b>Add to this window</b> (for a pane: <b>Open in its space's window</b> or <b>Open in this window</b>), once or always for this window;
+      right-click a space, or a pane whose space isn't in this window, for either one any time. A pane whose space is here offers <b>Open Tab</b>; one whose space isn't offers <b>Open in Its Space's Window</b> / <b>Open in This Window</b> instead. Switching mounts its folder (Explorer, Search and Source Control follow), focuses it in
       Herdr, closes the previous space's terminal tabs and opens <b>every pane of the space as its own tab</b>: agents
       first (most urgent first), then shells. Set <code>herdr.autoAttach</code> to <code>agents</code> to open agents only, or <code>none</code> to open nothing.</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Chevron</dt>
@@ -372,7 +372,7 @@
     <li>Right-click opens the editor's terminal menu (with Find and Open Output). Copy a selection with ⌘C (or have it copied as you select with <code>herdr.copyOnSelect</code>); to make right-click paste, set <code>terminal.integrated.rightClickBehavior</code> to <code>paste</code>.</li>
     <li>A click without dragging goes to the program in the pane (Herdr 0.9.2 or newer), so buttons in mouse-aware programs such as Kiro still work.</li>
     <li>Herdr Cockpit draws these tabs from Herdr's live stream of the pane; there is no shell inside them, so every key goes straight to the agent or shell in Herdr.</li>
-    <li><b>Closing a tab with its X only detaches it</b> by default: the agent or shell keeps running in Herdr. Set <code>herdr.closeTabInHerdr</code> to <code>ask</code> to close it in Herdr too: an idle shell closes right away. For an agent, a shell that's running something, or a space's last tab (Herdr then closes the space), it asks first: <b>Keep Running</b> leaves it in Herdr. Switching spaces, and closing or reloading the window, never close anything in Herdr: those tabs only detach. To get a closed tab back, run <b>Herdr Cockpit: Reopen Closed Tab</b> (bind it to ⇧⌘T in place of Reopen Closed Editor: it still reopens files). A pane still running in Herdr is attached again; one that was closed comes back as a new shell or agent of the same kind in the same place, and Claude Code and Codex resume their conversation when Herdr knows its session.</li>
+    <li><b>Closing a tab with its X only closes the tab</b> by default: the agent or shell keeps running in Herdr. Set <code>herdr.closeTabInHerdr</code> to <code>ask</code> to close it in Herdr too: an idle shell closes right away. For an agent, a shell that's running something, or a space's last tab (Herdr then closes the space), it asks first: <b>Keep Running</b> leaves it in Herdr. Switching spaces, and closing or reloading the window, never close anything in Herdr: those tabs only detach. To get a closed tab back, run <b>Herdr Cockpit: Reopen Closed Tab</b> (bind it to ⇧⌘T in place of Reopen Closed Editor: it still reopens files). A pane still running in Herdr opens again; one that was closed comes back as a new shell or agent of the same kind in the same place, and Claude Code and Codex resume their conversation when Herdr knows its session.</li>
     <li>The terminal <b>+</b> creates a new tab in the current Herdr space, and <b>Split Terminal</b> on a Herdr tab splits that pane in Herdr (in the editor area; in the bottom panel a split makes a new Herdr tab). From the Command Palette, <b>New Herdr Tab…</b> (in the space of the Herdr tab you're in) and <b>Split Herdr Pane…</b> (next to it, in the same Herdr tab) ask whether to run a shell or an agent. A pane you close in Herdr closes its tab here.</li>
     <li><b>Renaming</b> a tab (right-click → Rename) renames the shell's pane in Herdr, or the agent (agent names become lowercase, like <code>reviewer-bot</code>). A pane renamed in Herdr renames its tab here within a few seconds.</li>
     <li>In the Cockpit window, tabs show only their name. Elsewhere VS Code adds the folder name after it; to hide that in every window, set <code>terminal.integrated.tabs.description</code> to <code>${task}</code> in your user settings.</li>
@@ -386,8 +386,8 @@
   <table>
     <tr><th>On</th><th>Actions</th></tr>
     <tr><td>Space</td><td><b>New Tab…</b> · <b>Switch to Space</b> · <b>Open in Its Own Window</b> / <b>Add to This Window</b> · <b>Unmount Space</b>: remove its folder from this window · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
-    <tr><td>Agent</td><td><b>Attach Terminal</b> (or, when its space isn't in this window, <b>Attach in Its Space's Window</b> / <b>Attach in This Window</b>) · <b>Prompt Agent…</b>: type a prompt and the agent gets it as if you typed it in its tab · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
-    <tr><td>Shell</td><td><b>Attach Terminal</b> (or the two placement choices, as for agents) · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
+    <tr><td>Agent</td><td><b>Open Tab</b> (or, when its space isn't in this window, <b>Open in Its Space's Window</b> / <b>Open in This Window</b>) · <b>Prompt Agent…</b>: type a prompt and the agent gets it as if you typed it in its tab · <b>Review Agent Changes</b> · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
+    <tr><td>Shell</td><td><b>Open Tab</b> (or the two placement choices, as for agents) · <b>Rename…</b> · <b>Close in Herdr…</b></td></tr>
   </table>
   <p class="note">From the Command Palette: <b>Go to Agent or Shell…</b> picks any pane of any space (agents waiting on you first), <b>Send to Agent…</b> sends a prompt about the open file or its selected lines (also in the editor's and the Explorer's right-click menu), and for troubleshooting <b>Show Raw Herdr Record</b> and <b>Show Raw Session Snapshot</b> show what Herdr reports, as JSON.</p>
 </section>
@@ -397,7 +397,7 @@
   <ul>
     <li><b>Status bar</b> (bottom left): <span class="codicon codicon-hubot"></span> agent count, then working <span class="codicon codicon-sync"></span>, blocked <span class="codicon codicon-warning"></span> and done <span class="codicon codicon-pass-filled"></span> counts. It turns yellow when something is blocked. Click it to jump to the agent that needs you. <span class="codicon codicon-debug-disconnect"></span> <b>Herdr</b> means Herdr isn't connected: click it for Start Herdr, Open Herdr TUI, Retry and Copy Diagnostics.</li>
     <li><b>Badge</b> on the sidebar icon: how many agents are blocked or done.</li>
-    <li><b>Notifications</b> when an agent becomes blocked or done, with <b>Attach</b> and (when done) <b>Review changes</b> buttons.</li>
+    <li><b>Notifications</b> when an agent becomes blocked or done, with <b>Open</b> and (when done) <b>Review changes</b> buttons.</li>
   </ul>
 </section>
 

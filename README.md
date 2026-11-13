@@ -74,7 +74,7 @@ All settings start with `herdr.`; the guide (`?` in the sidebar) lists them. Mos
 |---|---|
 | `herdr.terminalLocation` | `editor`, `editorSplit` (agents left, shells right) or `panel` |
 | `herdr.autoAttach` | Which panes open as tabs when switching spaces: `all`, `agents` or `none` |
-| `herdr.closeTabInHerdr` | Closing a tab's X closes it in Herdr: `never` (default: only detaches), `ask` (idle shells close at once; agents and busy shells ask), `always` |
+| `herdr.closeTabInHerdr` | Closing a tab's X closes it in Herdr: `never` (default: only the tab closes), `ask` (idle shells close at once; agents and busy shells ask), `always` |
 | `herdr.offerHubOnStartup` | Offer to open Herdr Cockpit when a window opens: `emptyWindows` (default), `allWindows`, `never` |
 | `herdr.startServer` | Start Herdr when the Cockpit window opens: `ask`, `always`, `never` |
 | `herdr.binaryPath`, `herdr.socketPath` | A herdr binary or socket (named session) Herdr Cockpit doesn't find itself |

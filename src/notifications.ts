@@ -55,9 +55,9 @@ export class Notifications implements vscode.Disposable {
       return;
     }
     const msg = `${MESSAGE_PREFIX}: ${agent.label} in ${space.label} is ${agent.status}`;
-    let actions = ['Attach'];
+    let actions = ['Open'];
     if (agent.status === 'done') {
-      actions = ['Review changes', 'Attach'];
+      actions = ['Review changes', 'Open'];
     }
     let pick: string | undefined;
     if (agent.status === 'blocked') {
@@ -74,7 +74,7 @@ export class Notifications implements vscode.Disposable {
       vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: ${agent.label} isn't in Herdr anymore.`);
       return;
     }
-    if (pick === 'Attach') {
+    if (pick === 'Open') {
       await this.deps.attachPane(now.space, now.pane);
     } else if (pick === 'Review changes') {
       await this.deps.review(now.space, now.pane);

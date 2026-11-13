@@ -636,7 +636,7 @@ export class HerdrPty implements vscode.Pseudoterminal {
     if (error) {
       why = `couldn't stream this pane: ${error}`;
     } else if (reason === 'detached') {
-      why = 'detached';
+      why = 'this tab stopped showing the pane';
     }
     this.deps.log(`built-in terminal ${this.paneId ?? '(new pane)'}: ${why}`);
     this.writer.fire(`${POSTLUDE}\r\n\x1b[2m[${EXTENSION_NAME}] ${why}. Close this tab, or click the pane in the sidebar to open it again.\x1b[0m\r\n`);
