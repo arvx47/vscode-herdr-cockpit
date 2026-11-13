@@ -1,8 +1,8 @@
 {
   "name": "herdr-cockpit",
-  "displayName": "Herdr Cockpit",
-  "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.3.31",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.3.38",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -47,7 +47,7 @@
       "activitybar": [
         {
           "id": "herdr",
-          "title": "Herdr Cockpit",
+          "title": "%viewContainer.herdr%",
           "icon": "media/herdr.svg"
         }
       ]
@@ -57,271 +57,265 @@
         {
           "type": "webview",
           "id": "herdr.spaces",
-          "name": "Spaces & Agents"
+          "name": "%view.herdr.spaces%"
         }
       ]
     },
     "commands": [
       {
         "command": "herdr.refresh",
-        "title": "Refresh",
-        "category": "Herdr Cockpit",
+        "title": "%command.refresh%",
+        "category": "%category%",
         "icon": "$(refresh)"
       },
       {
         "command": "herdr.switchSpace",
-        "title": "Switch to Space",
-        "category": "Herdr Cockpit",
+        "title": "%command.switchSpace%",
+        "category": "%category%",
         "icon": "$(arrow-right)"
       },
       {
         "command": "herdr.unmountSpace",
-        "title": "Unmount Space",
-        "category": "Herdr Cockpit",
+        "title": "%command.unmountSpace%",
+        "category": "%category%",
         "icon": "$(close)"
       },
       {
         "command": "herdr.openInOwnWindow",
-        "title": "Open in Its Own Window",
-        "category": "Herdr Cockpit",
+        "title": "%command.openInOwnWindow%",
+        "category": "%category%",
         "icon": "$(window)"
       },
       {
         "command": "herdr.addToWorkspace",
-        "title": "Add to This Window",
-        "category": "Herdr Cockpit",
+        "title": "%command.addToWorkspace%",
+        "category": "%category%",
         "icon": "$(folder-library)"
       },
       {
         "command": "herdr.attachInSpaceWindow",
-        "title": "Attach in Its Space's Window",
-        "category": "Herdr Cockpit",
+        "title": "%command.attachInSpaceWindow%",
+        "category": "%category%",
         "icon": "$(window)"
       },
       {
         "command": "herdr.attachInThisWindow",
-        "title": "Attach in This Window",
-        "category": "Herdr Cockpit",
+        "title": "%command.attachInThisWindow%",
+        "category": "%category%",
         "icon": "$(terminal)"
       },
       {
         "command": "herdr.askWhereToOpenSpaces",
-        "title": "Ask Where to Open Spaces Again (This Window)",
-        "category": "Herdr Cockpit"
+        "title": "%command.askWhereToOpenSpaces%",
+        "category": "%category%"
       },
       {
         "command": "herdr.attach",
-        "title": "Attach Terminal",
-        "category": "Herdr Cockpit",
+        "title": "%command.attach%",
+        "category": "%category%",
         "icon": "$(terminal)"
       },
       {
         "command": "herdr.reviewChanges",
-        "title": "Review Agent Changes",
-        "category": "Herdr Cockpit",
+        "title": "%command.reviewChanges%",
+        "category": "%category%",
         "icon": "$(diff)"
       },
       {
         "command": "herdr.focusAttention",
-        "title": "Jump to Agent Needing Attention",
-        "category": "Herdr Cockpit"
+        "title": "%command.focusAttention%",
+        "category": "%category%"
       },
       {
         "command": "herdr.goToPane",
-        "title": "Go to Agent or Shell…",
-        "category": "Herdr Cockpit"
+        "title": "%command.goToPane%",
+        "category": "%category%"
       },
       {
         "command": "herdr.promptAgent",
-        "title": "Prompt Agent…",
-        "category": "Herdr Cockpit",
+        "title": "%command.promptAgent%",
+        "category": "%category%",
         "icon": "$(comment)"
       },
       {
         "command": "herdr.sendToAgent",
-        "title": "Send to Agent…",
-        "category": "Herdr Cockpit",
+        "title": "%command.sendToAgent%",
+        "category": "%category%",
         "icon": "$(send)"
       },
       {
         "command": "herdr.openTui",
-        "title": "Open Herdr TUI",
-        "category": "Herdr Cockpit",
+        "title": "%command.openTui%",
+        "category": "%category%",
         "icon": "$(window)"
       },
       {
         "command": "herdr.setupHub",
-        "title": "Set Up Cockpit Window",
-        "category": "Herdr Cockpit"
+        "title": "%command.setupHub%",
+        "category": "%category%"
       },
       {
         "command": "herdr.toggleFollow",
-        "title": "Follow Herdr Focus",
-        "category": "Herdr Cockpit",
+        "title": "%command.toggleFollow%",
+        "category": "%category%",
         "toggled": "config.herdr.followMode"
       },
       {
         "command": "herdr.dumpSnapshot",
-        "title": "Show Raw Session Snapshot",
-        "category": "Herdr Cockpit"
+        "title": "%command.dumpSnapshot%",
+        "category": "%category%"
       },
       {
         "command": "herdr.toggleShellPanes",
-        "title": "Show Shell Panes",
-        "category": "Herdr Cockpit",
+        "title": "%command.toggleShellPanes%",
+        "category": "%category%",
         "icon": "$(terminal)",
         "toggled": "config.herdr.showShellPanes"
       },
       {
         "command": "herdr.openSettings",
-        "title": "Settings",
-        "category": "Herdr Cockpit",
+        "title": "%command.openSettings%",
+        "category": "%category%",
         "icon": "$(settings-gear)"
       },
       {
         "command": "herdr.showRaw",
-        "title": "Show Raw Herdr Record",
-        "category": "Herdr Cockpit",
+        "title": "%command.showRaw%",
+        "category": "%category%",
         "icon": "$(json)"
       },
       {
         "command": "herdr.openHelp",
-        "title": "How to Read the Sidebar",
-        "category": "Herdr Cockpit",
+        "title": "%command.openHelp%",
+        "category": "%category%",
         "icon": "$(question)"
       },
       {
         "command": "herdr.newTab",
-        "title": "New Tab…",
-        "category": "Herdr Cockpit",
+        "title": "%command.newTab%",
+        "category": "%category%",
         "icon": "$(add)"
       },
       {
         "command": "herdr.reopenClosedTab",
-        "title": "Reopen Closed Tab (Herdr Tabs and Editors)",
-        "category": "Herdr Cockpit"
+        "title": "%command.reopenClosedTab%",
+        "category": "%category%"
       },
       {
         "command": "herdr.rename",
-        "title": "Rename…",
-        "category": "Herdr Cockpit"
+        "title": "%command.rename%",
+        "category": "%category%"
       },
       {
         "command": "herdr.closeInHerdr",
-        "title": "Close in Herdr…",
-        "category": "Herdr Cockpit"
+        "title": "%command.closeInHerdr%",
+        "category": "%category%"
       },
       {
         "command": "herdr.newSpace",
-        "title": "New Space…",
-        "category": "Herdr Cockpit",
+        "title": "%command.newSpace%",
+        "category": "%category%",
         "icon": "$(add)"
       },
       {
         "command": "herdr.newSpaceHere",
-        "title": "New Space in This Window's Folder…",
-        "category": "Herdr Cockpit"
+        "title": "%command.newSpaceHere%",
+        "category": "%category%"
       },
       {
         "command": "herdr.newWorktree",
-        "title": "New Worktree…",
-        "category": "Herdr Cockpit",
+        "title": "%command.newWorktree%",
+        "category": "%category%",
         "icon": "$(git-branch-create)"
       },
       {
         "command": "herdr.setupClaudeUsage",
-        "title": "Show Claude Plan Limits in the Sidebar…",
-        "category": "Herdr Cockpit"
+        "title": "%command.setupClaudeUsage%",
+        "category": "%category%"
       },
       {
         "command": "herdr.setKiroCredits",
-        "title": "Set Kiro Monthly Credits…",
-        "category": "Herdr Cockpit"
+        "title": "%command.setKiroCredits%",
+        "category": "%category%"
       },
       {
         "command": "herdr.startServer",
-        "title": "Start Herdr",
-        "category": "Herdr Cockpit",
+        "title": "%command.startServer%",
+        "category": "%category%",
         "icon": "$(play)"
       },
       {
         "command": "herdr.copyDiagnostics",
-        "title": "Copy Diagnostics",
-        "category": "Herdr Cockpit"
+        "title": "%command.copyDiagnostics%",
+        "category": "%category%"
       },
       {
         "command": "herdr.connectionMenu",
-        "title": "Connection Options",
-        "category": "Herdr Cockpit"
+        "title": "%command.connectionMenu%",
+        "category": "%category%"
       },
       {
         "command": "herdr.openInstallDocs",
-        "title": "Install Herdr",
-        "category": "Herdr Cockpit"
+        "title": "%command.openInstallDocs%",
+        "category": "%category%"
       },
       {
         "command": "herdr.installPlugin",
-        "title": "Install the Herdr Plugin",
-        "category": "Herdr Cockpit"
-      },
-      {
-        "command": "herdr.terminal.newTab",
-        "title": "New Herdr Tab…",
-        "category": "Herdr Cockpit",
-        "icon": "$(add)"
+        "title": "%command.installPlugin%",
+        "category": "%category%"
       },
       {
         "command": "herdr.terminal.splitPane",
-        "title": "Split Herdr Pane…",
-        "category": "Herdr Cockpit",
+        "title": "%command.terminal.splitPane%",
+        "category": "%category%",
         "icon": "$(split-horizontal)"
       },
       {
         "command": "herdr.terminal.find",
-        "title": "Find in Terminal (Whole History)",
-        "category": "Herdr Cockpit",
+        "title": "%command.terminal.find%",
+        "category": "%category%",
         "icon": "$(search)"
       },
       {
         "command": "herdr.terminal.findNext",
-        "title": "Find Next in Terminal (Older)",
-        "category": "Herdr Cockpit"
+        "title": "%command.terminal.findNext%",
+        "category": "%category%"
       },
       {
         "command": "herdr.terminal.findPrevious",
-        "title": "Find Previous in Terminal (Newer)",
-        "category": "Herdr Cockpit"
+        "title": "%command.terminal.findPrevious%",
+        "category": "%category%"
       },
       {
         "command": "herdr.terminal.pageUp",
-        "title": "Terminal: Scroll Page Up",
-        "category": "Herdr Cockpit"
+        "title": "%command.terminal.pageUp%",
+        "category": "%category%"
       },
       {
         "command": "herdr.terminal.pageDown",
-        "title": "Terminal: Scroll Page Down",
-        "category": "Herdr Cockpit"
+        "title": "%command.terminal.pageDown%",
+        "category": "%category%"
       },
       {
         "command": "herdr.terminal.scrollToTop",
-        "title": "Terminal: Scroll to Top of History",
-        "category": "Herdr Cockpit"
+        "title": "%command.terminal.scrollToTop%",
+        "category": "%category%"
       },
       {
         "command": "herdr.terminal.scrollToBottom",
-        "title": "Terminal: Scroll to Bottom",
-        "category": "Herdr Cockpit"
+        "title": "%command.terminal.scrollToBottom%",
+        "category": "%category%"
       },
       {
         "command": "herdr.terminal.openOutput",
-        "title": "Open Terminal Output in Editor",
-        "category": "Herdr Cockpit",
+        "title": "%command.terminal.openOutput%",
+        "category": "%category%",
         "icon": "$(go-to-file)"
       },
       {
         "command": "herdr.openAgents",
-        "title": "Agents…",
-        "category": "Herdr Cockpit"
+        "title": "%command.openAgents%",
+        "category": "%category%"
       }
     ],
     "menus": {
@@ -463,12 +457,44 @@
           "when": "herdr.connected"
         },
         {
-          "command": "herdr.terminal.newTab",
+          "command": "herdr.terminal.splitPane",
+          "when": "herdr.connected && herdr.terminalActive"
+        },
+        {
+          "command": "herdr.switchSpace",
           "when": "herdr.connected"
         },
         {
-          "command": "herdr.terminal.splitPane",
-          "when": "herdr.connected && herdr.terminalActive"
+          "command": "herdr.newTab",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.newSpace",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.newSpaceHere",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.newWorktree",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.focusAttention",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.dumpSnapshot",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.showRaw",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.startServer",
+          "when": "!herdr.connected"
         }
       ],
       "webview/context": [
@@ -578,18 +604,18 @@
       ]
     },
     "configuration": {
-      "title": "Herdr Cockpit",
+      "title": "%configuration.title%",
       "properties": {
         "herdr.binaryPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the herdr binary. Empty = auto-detect (Homebrew, ~/.local/bin, PATH). Machine setting: ignored in workspace and folder settings, so a repository can't choose the program the extension runs.",
+          "description": "%setting.binaryPath.description%",
           "scope": "machine"
         },
         "herdr.socketPath": {
           "type": "string",
           "default": "",
-          "description": "Herdr socket path. Empty = HERDR_SOCKET_PATH, then ~/.config/herdr/herdr.sock. Machine setting: ignored in workspace and folder settings.",
+          "description": "%setting.socketPath.description%",
           "scope": "machine"
         },
         "herdr.startServer": {
@@ -602,11 +628,11 @@
           ],
           "default": "ask",
           "enumDescriptions": [
-            "Ask once when the Cockpit window opens and Herdr isn't running, then remember the answer.",
-            "Start Herdr in the background whenever the Cockpit window opens and it isn't running.",
-            "Never start Herdr automatically (the sidebar still offers a Start Herdr button)."
+            "%setting.startServer.enumDescriptions.ask%",
+            "%setting.startServer.enumDescriptions.always%",
+            "%setting.startServer.enumDescriptions.never%"
           ],
-          "description": "Whether the Herdr Cockpit window starts the Herdr server (in the background) when it isn't running."
+          "description": "%setting.startServer.description%"
         },
         "herdr.offerHubOnStartup": {
           "type": "string",
@@ -617,17 +643,17 @@
           ],
           "default": "emptyWindows",
           "enumDescriptions": [
-            "Ask in windows opened without a folder (a new window, or the editor's first launch).",
-            "Ask in every window that isn't the hub (the hub then opens in a new window).",
-            "Never ask."
+            "%setting.offerHubOnStartup.enumDescriptions.emptyWindows%",
+            "%setting.offerHubOnStartup.enumDescriptions.allWindows%",
+            "%setting.offerHubOnStartup.enumDescriptions.never%"
           ],
-          "description": "When a window opens, offer to open Herdr Cockpit (only when Herdr is installed and no Cockpit window is open)."
+          "description": "%setting.offerHubOnStartup.description%"
         },
         "herdr.followMode": {
           "scope": "machine",
           "type": "boolean",
           "default": false,
-          "description": "When you switch spaces in Herdr (e.g. in your Mac terminal), this window follows. Only active in a Cockpit window or after you've switched a space from VS Code."
+          "description": "%setting.followMode.description%"
         },
         "herdr.terminalLocation": {
           "type": "string",
@@ -638,16 +664,16 @@
           ],
           "default": "editor",
           "enumDescriptions": [
-            "Editor area, as tabs in the active group.",
-            "Editor area, agents in the left group and shells in the right one.",
-            "The terminal panel."
+            "%setting.terminalLocation.enumDescriptions.editor%",
+            "%setting.terminalLocation.enumDescriptions.editorSplit%",
+            "%setting.terminalLocation.enumDescriptions.panel%"
           ],
-          "description": "Where attached agent and shell terminals open."
+          "description": "%setting.terminalLocation.description%"
         },
         "herdr.revealInExplorer": {
           "type": "boolean",
           "default": false,
-          "description": "When switching to a space (also by opening one of its panes), reveal its folder in the Explorer, which opens and focuses the Explorer view. Off by default, so the side bar stays where it is."
+          "description": "%setting.revealInExplorer.description%"
         },
         "herdr.windowMode": {
           "type": "string",
@@ -656,21 +682,21 @@
             "workspace"
           ],
           "enumDescriptions": [
-            "Each space gets a window of its own, opened on its folder. Clicking a space or pane this window doesn't have brings forward the window that has it, or asks whether to open it in its own window or add it to this window.",
-            "Spaces are mounted as folders of one workspace, normally the Cockpit window (the behavior before this setting). A space another window already has still opens there."
+            "%setting.windowMode.enumDescriptions.folder%",
+            "%setting.windowMode.enumDescriptions.workspace%"
           ],
           "default": "folder",
-          "markdownDescription": "How spaces map to windows. In either mode, right-click a space for **Open in Its Own Window** or **Add to This Window**, or a pane whose space isn't in this window for **Attach in Its Space's Window** or **Attach in This Window**."
+          "markdownDescription": "%setting.windowMode.markdownDescription%"
         },
         "herdr.closeTerminalsOnSwitch": {
           "type": "boolean",
           "default": true,
-          "description": "Close attach terminals of other spaces when switching. Agents keep running in Herdr."
+          "description": "%setting.closeTerminalsOnSwitch.description%"
         },
         "herdr.restoreTabs": {
           "type": "boolean",
           "default": true,
-          "description": "When a window opens again, reopen the Herdr tabs it had when it was closed (panes that still exist in Herdr). A pane another window has stays there and shows read-only here."
+          "description": "%setting.restoreTabs.description%"
         },
         "herdr.closeTabInHerdr": {
           "scope": "machine",
@@ -682,11 +708,11 @@
           ],
           "default": "never",
           "enumDescriptions": [
-            "Close idle shells in Herdr right away; ask first for an agent, a shell running something, or a space's last tab.",
-            "Close in Herdr without asking (still asks for a space's last tab, which closes the space).",
-            "Closing a tab only detaches: the agent or shell keeps running in Herdr."
+            "%setting.closeTabInHerdr.enumDescriptions.ask%",
+            "%setting.closeTabInHerdr.enumDescriptions.always%",
+            "%setting.closeTabInHerdr.enumDescriptions.never%"
           ],
-          "description": "What closing a Herdr terminal tab yourself (its X) does in Herdr. Switching spaces and closing the window never close anything in Herdr."
+          "description": "%setting.closeTabInHerdr.description%"
         },
         "herdr.newWorktreeStartsWith": {
           "type": "string",
@@ -699,15 +725,15 @@
             "cursor"
           ],
           "enumDescriptions": [
-            "A shell in the new checkout.",
-            "Ask each time: a shell or an agent.",
-            "Claude Code.",
-            "Codex.",
-            "Kiro.",
-            "Cursor's agent."
+            "%setting.newWorktreeStartsWith.enumDescriptions.shell%",
+            "%setting.newWorktreeStartsWith.enumDescriptions.ask%",
+            "%setting.newWorktreeStartsWith.enumDescriptions.claude%",
+            "%setting.newWorktreeStartsWith.enumDescriptions.codex%",
+            "%setting.newWorktreeStartsWith.enumDescriptions.kiro%",
+            "%setting.newWorktreeStartsWith.enumDescriptions.cursor%"
           ],
           "default": "shell",
-          "description": "What a space made with New Worktree… starts with."
+          "description": "%setting.newWorktreeStartsWith.description%"
         },
         "herdr.autoAttach": {
           "type": "string",
@@ -717,24 +743,24 @@
             "none"
           ],
           "enumDescriptions": [
-            "Every pane: agents first (most urgent first), then shells in tab order.",
-            "Only the agents; shells stay in the sidebar until you click one.",
-            "Nothing: click a pane in the sidebar to open it."
+            "%setting.autoAttach.enumDescriptions.all%",
+            "%setting.autoAttach.enumDescriptions.agents%",
+            "%setting.autoAttach.enumDescriptions.none%"
           ],
           "default": "all",
-          "description": "Which of a space's panes open as terminal tabs when you switch to it. Replaces herdr.autoAttachOnSwitch and herdr.autoAttachShells, which are still read until this is set."
+          "description": "%setting.autoAttach.description%"
         },
         "herdr.autoAttachOnSwitch": {
           "type": "boolean",
           "default": true,
-          "description": "Open a space's panes as tabs when you switch to it.",
-          "deprecationMessage": "Replaced by herdr.autoAttach (false = \"none\"). Still read until herdr.autoAttach is set."
+          "description": "%setting.autoAttachOnSwitch.description%",
+          "deprecationMessage": "%setting.autoAttachOnSwitch.deprecationMessage%"
         },
         "herdr.autoAttachShells": {
           "type": "boolean",
           "default": true,
-          "description": "Open shell panes too, not only agents, when you switch to a space.",
-          "deprecationMessage": "Replaced by herdr.autoAttach (false = \"agents\"). Still read until herdr.autoAttach is set."
+          "description": "%setting.autoAttachShells.description%",
+          "deprecationMessage": "%setting.autoAttachShells.deprecationMessage%"
         },
         "herdr.agentNames": {
           "type": "string",
@@ -743,11 +769,11 @@
             "herdr"
           ],
           "enumDescriptions": [
-            "An agent you haven't named shows its terminal title, e.g. Claude Code's session name. Default titles (\"Claude Code\") and folder paths are skipped.",
-            "Only Herdr's names: \"Claude\", \"Claude 2\", or a name you chose."
+            "%setting.agentNames.enumDescriptions.title%",
+            "%setting.agentNames.enumDescriptions.herdr%"
           ],
           "default": "title",
-          "description": "How agent tabs and sidebar rows are named."
+          "description": "%setting.agentNames.description%"
         },
         "herdr.notifyOn": {
           "type": "array",
@@ -764,17 +790,17 @@
             "blocked",
             "done"
           ],
-          "description": "Agent states that trigger a VS Code notification."
+          "description": "%setting.notifyOn.description%"
         },
         "herdr.copyOnSelect": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "In a Herdr tab, copy text to the clipboard as soon as you select it (drag, double-click a word, triple-click a line), like the Herdr TUI. Off: the selection stays highlighted and **⌘C** (Ctrl+Shift+C on Windows and Linux) copies it."
+          "markdownDescription": "%setting.copyOnSelect.markdownDescription%"
         },
         "herdr.notifyOnTakeover": {
           "type": "boolean",
           "default": false,
-          "description": "Notify when another client (a Cockpit window in another editor, or `herdr attach`) takes over a pane this window shows. The tab keeps showing the pane read-only; type in it to take it back."
+          "description": "%setting.notifyOnTakeover.description%"
         },
         "herdr.agents": {
           "type": "object",
@@ -784,23 +810,23 @@
             "type": "string"
           },
           "order": 0,
-          "markdownDescription": "The agents listed when you open a tab, split, space or worktree, one row each (it starts as Claude, Codex, Kiro and Cursor). **Item**: its name in the list, the sidebar and its tabs; **Value**: the agent, then any variables for its panes (`~` is your home folder). Rename a row, delete one to take it off the list, or add one: a second Claude Code account with its own settings folder, what an alias like `claude-work=\"CLAUDE_CONFIG_DIR=~/.claude-work claude\"` does (`Claude (work)` → `claude CLAUDE_CONFIG_DIR=~/.claude-work`; a new, empty folder makes Claude ask you to sign in), or another Codex account (`Codex (work)` → `codex CODEX_HOME=~/.codex-work`). Each agent's rows are listed together; every other agent Herdr can start is under **More agents…**. Reset it to get the starting list back. User settings only."
+          "markdownDescription": "%setting.agents.markdownDescription%"
         },
         "herdr.kiroMonthlyCredits": {
           "type": "number",
           "default": 0,
           "minimum": 0,
-          "description": "Your Kiro plan's monthly credit allowance (Kiro shows it in /usage). Kiro doesn't expose it to other tools, so enter it here to see a usage bar in the sidebar. 0 = unknown."
+          "description": "%setting.kiroMonthlyCredits.description%"
         },
         "herdr.showShellPanes": {
           "type": "boolean",
           "default": true,
-          "description": "Show plain shell panes under each space (Herdr's own agent list hides them)."
+          "description": "%setting.showShellPanes.description%"
         },
         "herdr.showNeedsYou": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Show the **Needs you** section at the top of the sidebar: blocked and done agents of the spaces open in this window (or with a tab open here). Off: no section; those agents are highlighted in their space instead."
+          "markdownDescription": "%setting.showNeedsYou.markdownDescription%"
         },
         "herdr.spaceOrder": {
           "type": "string",
@@ -809,11 +835,11 @@
             "herdr"
           ],
           "enumDescriptions": [
-            "Spaces with an agent working or waiting on you first, then the most recently active (an agent changed state, or you switched to it).",
-            "The order the spaces have in Herdr."
+            "%setting.spaceOrder.enumDescriptions.activity%",
+            "%setting.spaceOrder.enumDescriptions.herdr%"
           ],
           "default": "herdr",
-          "description": "How the sidebar orders spaces. Herdr's own order by default."
+          "description": "%setting.spaceOrder.description%"
         },
         "herdr.agentProfiles": {
           "type": [
@@ -821,8 +847,8 @@
             "array"
           ],
           "scope": "machine",
-          "deprecationMessage": "Moved into Herdr: Agents (herdr.agents), automatically.",
-          "markdownDeprecationMessage": "Moved into **Herdr: Agents** (`herdr.agents`), automatically."
+          "deprecationMessage": "%setting.agentProfiles.deprecationMessage%",
+          "markdownDeprecationMessage": "%setting.agentProfiles.markdownDeprecationMessage%"
         }
       }
     },
@@ -830,12 +856,12 @@
       "profiles": [
         {
           "id": "herdr.shell",
-          "title": "Herdr Shell",
+          "title": "%terminalProfile.herdr.shell%",
           "icon": "terminal"
         },
         {
           "id": "herdr.agent.claude",
-          "title": "Herdr: Claude",
+          "title": "%terminalProfile.herdr.agent.claude%",
           "icon": {
             "light": "media/agent-logos/claude-color.svg",
             "dark": "media/agent-logos/claude-color.svg"
@@ -843,7 +869,7 @@
         },
         {
           "id": "herdr.agent.codex",
-          "title": "Herdr: Codex",
+          "title": "%terminalProfile.herdr.agent.codex%",
           "icon": {
             "light": "media/agent-logos/codex-color.svg",
             "dark": "media/agent-logos/codex-color.svg"
@@ -851,7 +877,7 @@
         },
         {
           "id": "herdr.agent.kiro",
-          "title": "Herdr: Kiro",
+          "title": "%terminalProfile.herdr.agent.kiro%",
           "icon": {
             "light": "media/agent-logos/kiro-color.svg",
             "dark": "media/agent-logos/kiro-color.svg"
@@ -859,7 +885,7 @@
         },
         {
           "id": "herdr.agent.cursor",
-          "title": "Herdr: Cursor",
+          "title": "%terminalProfile.herdr.agent.cursor%",
           "icon": {
             "light": "media/agent-logos/cursor-light.svg",
             "dark": "media/agent-logos/cursor-dark.svg"
@@ -867,7 +893,7 @@
         },
         {
           "id": "herdr.agent.other",
-          "title": "Herdr: Other Agent…",
+          "title": "%terminalProfile.herdr.agent.other%",
           "icon": "hubot"
         }
       ]
@@ -875,13 +901,13 @@
     "walkthroughs": [
       {
         "id": "getStarted",
-        "title": "Get started with Herdr Cockpit",
-        "description": "Bring your Herdr spaces, agents and shells into this window.",
+        "title": "%walkthrough.getStarted.title%",
+        "description": "%walkthrough.getStarted.description%",
         "steps": [
           {
             "id": "start",
-            "title": "Connect to Herdr",
-            "description": "The sidebar connects to your running Herdr server.\n[Start Herdr](command:herdr.startServer)",
+            "title": "%walkthrough.getStarted.start.title%",
+            "description": "%walkthrough.getStarted.start.description%",
             "media": {
               "markdown": "media/walkthrough/start.md"
             },
@@ -891,8 +917,8 @@
           },
           {
             "id": "hub",
-            "title": "Open the Cockpit window",
-            "description": "A dedicated window whose first folder never changes, so switching spaces never restarts extensions.\n[Set Up Cockpit Window](command:herdr.setupHub)",
+            "title": "%walkthrough.getStarted.hub.title%",
+            "description": "%walkthrough.getStarted.hub.description%",
             "media": {
               "markdown": "media/walkthrough/hub.md"
             },
@@ -902,8 +928,8 @@
           },
           {
             "id": "sidebar",
-            "title": "Find the sidebar",
-            "description": "Spaces, agents and shells, live from Herdr.\n[Show the Sidebar](command:herdr.spaces.focus)",
+            "title": "%walkthrough.getStarted.sidebar.title%",
+            "description": "%walkthrough.getStarted.sidebar.description%",
             "media": {
               "markdown": "media/walkthrough/sidebar.md"
             },
@@ -913,8 +939,8 @@
           },
           {
             "id": "plugin",
-            "title": "Install the Herdr plugin",
-            "description": "Jump from Herdr in your terminal to this editor, and open files from any pane.\n[Install Plugin](command:herdr.installPlugin)",
+            "title": "%walkthrough.getStarted.plugin.title%",
+            "description": "%walkthrough.getStarted.plugin.description%",
             "media": {
               "markdown": "media/walkthrough/plugin.md"
             },
@@ -924,8 +950,8 @@
           },
           {
             "id": "usage",
-            "title": "See your plan limits",
-            "description": "Claude Code, Codex and Kiro usage in the sidebar.\n[Show Plan Limits](command:herdr.setupClaudeUsage)",
+            "title": "%walkthrough.getStarted.usage.title%",
+            "description": "%walkthrough.getStarted.usage.description%",
             "media": {
               "markdown": "media/walkthrough/usage.md"
             },
@@ -935,8 +961,8 @@
           },
           {
             "id": "guide",
-            "title": "Read the guide",
-            "description": "What every color, icon and button means.\n[Open the Guide](command:herdr.openHelp)",
+            "title": "%walkthrough.getStarted.guide.title%",
+            "description": "%walkthrough.getStarted.guide.description%",
             "media": {
               "markdown": "media/walkthrough/guide.md"
             },

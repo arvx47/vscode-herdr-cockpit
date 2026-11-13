@@ -2,6 +2,7 @@
 // the reconnecting / protocol banner, and the versions line at the bottom.
 import type { ReactNode } from 'react';
 import type { ViewState } from '../../src/viewState';
+import { EXTENSION_NAME } from '../../src/brand';
 import { post } from './host';
 import { Icon } from './ui';
 
@@ -87,7 +88,7 @@ export function Disconnected({ state }: { state: ViewState }) {
       title: "Herdr isn't installed",
       text: (
         <>
-          Herdr Cockpit shows and controls a Herdr server, and needs the <code>herdr</code> command.
+          {EXTENSION_NAME} shows and controls a Herdr server, and needs the <code>herdr</code> command.
         </>
       ),
       buttons: (
@@ -135,7 +136,7 @@ export function Disconnected({ state }: { state: ViewState }) {
       title: "This Herdr version isn't compatible",
       text: (
         <>
-          Herdr {c.version || '?'} speaks protocol {c.protocol ?? '?'}; Herdr Cockpit expects {c.expectedProtocol}. Update Herdr (<code>herdr update</code>) or Herdr
+          Herdr {c.version || '?'} speaks protocol {c.protocol ?? '?'}; {EXTENSION_NAME} expects {c.expectedProtocol}. Update Herdr (<code>herdr update</code>) or Herdr
           Cockpit.
         </>
       ),
@@ -182,9 +183,9 @@ export function Banner({ state }: { state: ViewState }) {
   }
   if (c.kind === 'connected' && c.protocol && c.protocol !== c.expectedProtocol) {
     return (
-      <div className="banner warn" title={`Herdr Cockpit was built against protocol ${c.expectedProtocol}`}>
+      <div className="banner warn" title={`${EXTENSION_NAME} was built against protocol ${c.expectedProtocol}`}>
         <Icon name="warning" />
-        Herdr {c.version || ''} uses protocol {c.protocol}; some details may be missing. Update Herdr Cockpit.
+        Herdr {c.version || ''} uses protocol {c.protocol}; some details may be missing. Update {EXTENSION_NAME}.
       </div>
     );
   }
@@ -199,7 +200,7 @@ export function Versions({ state }: { state: ViewState }) {
   }
   return (
     <div className="versions">
-      Herdr Cockpit v{v.cockpit}
+      {EXTENSION_NAME} v{v.cockpit}
       {v.herdr && ` · Herdr ${v.herdr}`}
     </div>
   );

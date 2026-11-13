@@ -1,6 +1,7 @@
 // Creating, renaming and closing Herdr spaces and tabs from VS Code: the quick picks, input boxes
 // and confirmations around src/herdrActions.ts. Every new pane opens straight away in a terminal tab.
 import * as vscode from 'vscode';
+import { MESSAGE_PREFIX } from './brand';
 import * as os from 'os';
 import * as path from 'path';
 import { AGENT_KINDS, AGENT_NAME, agentName, agentTitle, HerdrActions, resumeArgs } from './herdrActions';
@@ -209,7 +210,7 @@ export function startAgent(deps: ManageDeps, paneId: string, kind: string, where
         await deps.actions.startAgent(paneId, kind, agentId ?? agentName(kind, deps.agentNames()), args);
       } catch (e) {
         deps.log(`agent.start ${kind} in ${paneId}: ${err(e)}`);
-        vscode.window.showErrorMessage(`Herdr: couldn't start ${name}: ${err(e)}`);
+        vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't start ${name}: ${err(e)}`);
       }
     },
   );
@@ -239,7 +240,7 @@ export async function newTab(deps: ManageDeps, space: Space, what?: What) {
     });
     await openCreated(deps, pane.pane_id, what, space.label);
   } catch (e) {
-    vscode.window.showErrorMessage(`Herdr: couldn't create a tab in ${space.label}: ${err(e)}`);
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't create a tab in ${space.label}: ${err(e)}`);
   }
 }
 
@@ -257,7 +258,7 @@ export async function splitPane(deps: ManageDeps, space: Space, pane: Pane) {
     }
     await openCreated(deps, created.pane_id, what, space.label);
   } catch (e) {
-    vscode.window.showErrorMessage(`Herdr: couldn't split ${name}: ${err(e)}`);
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't split ${name}: ${err(e)}`);
   }
 }
 
@@ -365,7 +366,7 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
       startAgent(deps, paneId, closed.agentKind, where, { name, args: resumeArgs(closed.agentKind, closed.session), profile });
     }
   } catch (e) {
-    vscode.window.showErrorMessage(`Herdr: couldn't reopen the tab in ${where}: ${err(e)}`);
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't reopen the tab in ${where}: ${err(e)}`);
   }
 }
 
@@ -411,7 +412,7 @@ async function createAndOpen(deps: ManageDeps, label: string, what: What, create
     }
     await openCreated(deps, pane.pane_id, what, label);
   } catch (e) {
-    vscode.window.showErrorMessage(`Herdr: couldn't create the space: ${err(e)}`);
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't create the space: ${err(e)}`);
   }
 }
 
@@ -431,7 +432,7 @@ function repoSpaces(deps: ManageDeps): Space[] {
 async function pickRepo(deps: ManageDeps): Promise<Space | undefined> {
   const repos = repoSpaces(deps);
   if (!repos.length) {
-    vscode.window.showInformationMessage('Herdr: no space is a git repository yet. Create a space on your repo\'s folder first (the + next to Spaces).');
+    vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: no space is a git repository yet. Create a space on your repo's folder first (the + next to Spaces).`);
     return undefined;
   }
   const here = repos.filter((s) => deps.isOpenHere(s));
@@ -473,7 +474,7 @@ export async function newWorktree(deps: ManageDeps, from?: Space) {
   if (from) {
     repo = repoSpace(deps.spaces(), from);
     if (!repo) {
-      vscode.window.showWarningMessage(`Herdr: "${from.label}" is a worktree whose repository has no space here. Open the repository's own space first.`);
+      vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: "${from.label}" is a worktree whose repository has no space here. Open the repository's own space first.`);
       return;
     }
   } else {
@@ -556,7 +557,7 @@ export async function rename(deps: ManageDeps, target: { space: Space; pane?: Pa
   if (!pane) {
     const label = await vscode.window.showInputBox({ title: 'Rename space', value: space.label, validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
     if (!label?.trim()) return;
-    await deps.actions.renameSpace(space.id, label.trim()).catch((e) => vscode.window.showErrorMessage(`Herdr: ${err(e)}`));
+    await deps.actions.renameSpace(space.id, label.trim()).catch((e) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`));
     return;
   }
   const tab = space.tabs.find((t) => t.id === pane.tabId);
@@ -577,7 +578,7 @@ export async function rename(deps: ManageDeps, target: { space: Space; pane?: Pa
     const updated = await deps.findPane(pane.id);
     if (updated) await deps.renameTerminal(pane.id, tabName(updated.space.tabs.find((t) => t.id === pane.tabId), updated.pane));
   } catch (e) {
-    vscode.window.showErrorMessage(`Herdr: ${err(e)}`);
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`);
   }
 }
 
@@ -607,13 +608,13 @@ export async function closeInHerdr(deps: ManageDeps, target: { space: Space; pan
     try {
       await deps.actions.closeSpace(space.id);
     } catch (e: any) {
-      if (e?.code !== 'workspace_group_close_required') return void vscode.window.showErrorMessage(`Herdr: ${err(e)}`);
+      if (e?.code !== 'workspace_group_close_required') return void vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`);
       const all = await vscode.window.showWarningMessage(
         `"${space.label}" has worktree spaces.`,
         { modal: true, detail: 'Herdr closes a space together with its worktree spaces. Their worktree folders stay on disk.' },
         'Close All',
       );
-      if (all) await deps.actions.closeSpace(space.id, true).catch((e2) => vscode.window.showErrorMessage(`Herdr: ${err(e2)}`));
+      if (all) await deps.actions.closeSpace(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
     }
     return;
   }
@@ -627,7 +628,7 @@ export async function closeInHerdr(deps: ManageDeps, target: { space: Space; pan
   if (!ok) return;
   const only = !tab || tab.panes.length <= 1;
   await (only && tab ? deps.actions.closeTab(tab.id) : deps.actions.closePane(pane.id)).catch((e) =>
-    vscode.window.showErrorMessage(`Herdr: ${err(e)}`),
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`),
   );
 }
 
@@ -641,6 +642,6 @@ async function removeWorktree(deps: ManageDeps, space: Space) {
       { modal: true, detail: `${err(e)}\n\nDelete it anyway? Uncommitted changes in ${space.cwd} will be lost.` },
       'Delete Anyway',
     );
-    if (force) await deps.actions.removeWorktree(space.id, true).catch((e2) => vscode.window.showErrorMessage(`Herdr: ${err(e2)}`));
+    if (force) await deps.actions.removeWorktree(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
   }
 }

@@ -6,7 +6,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { claudeStatusLineScript, hasCapture, readUsage, shQuote, wrapStatusLine } from '../usage';
+import { claudeAccountKey, claudeStatusLineScript, hasCapture, readUsage, shQuote, wrapStatusLine } from '../usage';
 
 const shells = [...new Map(['/bin/sh', '/bin/dash', '/usr/bin/dash'].filter((s) => fs.existsSync(s)).map((s) => [fs.realpathSync(s), s])).values()];
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-sh-'));
@@ -75,6 +75,14 @@ for (const sh of shells) {
   fs.rmSync(capture, { force: true });
   execFileSync(sh, [script], { input: JSON.stringify({ cwd: '/secret/path' }), env: { PATH: noJq } });
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(capture, 'utf8')), { rate_limits: {} });
+  // Another Claude Code account (CLAUDE_CONFIG_DIR): its own file, named like claudeAccountKey() names it.
+  const second = path.join(dir, `claude-usage-${claudeAccountKey(path.join(root, 'a b', '.claude second'), root)}.json`);
+  execFileSync(sh, [script], { input, env: { PATH: noJq, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'a b', '.claude second') + '/' } });
+  assert.strictEqual(JSON.parse(fs.readFileSync(second, 'utf8')).rate_limits.five_hour.used_percentage, 42.6, `${sh}: another account's file`);
+  fs.rmSync(second);
+  fs.rmSync(capture, { force: true });
+  execFileSync(sh, [script], { input, env: { PATH: noJq, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, '.claude') } });
+  assert.ok(fs.existsSync(capture), `${sh}: CLAUDE_CONFIG_DIR=~/.claude is the default account`);
 }
 console.log(`✓ status line saves only rate_limits, privately (${modes.map((m) => m[0]).join(', ')})`);
 

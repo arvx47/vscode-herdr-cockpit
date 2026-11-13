@@ -1,5 +1,6 @@
 // The wording of notifications built from plain values (extension.ts shows them), so it's unit-tested. No vscode imports.
 import * as path from 'path';
+import { EXTENSION_NAME } from './brand';
 import type { DownReason } from './connection';
 
 /** One line per reason Herdr is unreachable (status bar, menus). */
@@ -7,7 +8,7 @@ export const DOWN_TEXT: Record<DownReason, string> = {
   'not-installed': "Herdr isn't installed.",
   'not-running': "Herdr isn't running.",
   crashed: 'Herdr stopped unexpectedly.',
-  incompatible: "This Herdr version isn't compatible with Herdr Cockpit.",
+  incompatible: `This Herdr version isn't compatible with ${EXTENSION_NAME}.`,
   unreachable: "Herdr is running but isn't answering.",
 };
 

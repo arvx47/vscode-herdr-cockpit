@@ -2,7 +2,9 @@
 // Herdr going away, and panes another client took over. The wording is notices.ts (unit-tested). Moved out of
 // extension.ts's activate().
 import * as vscode from 'vscode';
+import { MESSAGE_PREFIX } from './brand';
 import { Model, Pane, Space, findPane } from './model';
+import { sleep } from './format';
 import type { Conn } from './herdrSync';
 import { claimNotification } from './hubFiles';
 import { lostNotice, takenOverNotice } from './notices';
@@ -46,13 +48,13 @@ export class Notifications implements vscode.Disposable {
       wait = NOTIFY_STEP_MS;
     }
     if (wait) {
-      await new Promise((r) => setTimeout(r, wait));
+      await sleep(wait);
     }
     const change = [this.deps.socketPath(), agent.id, agent.status, agent.raw.agent?.state_change_seq ?? Math.floor(Date.now() / 60_000)].join('\n');
     if (!claimNotification(change)) {
       return;
     }
-    const msg = `Herdr: ${agent.label} in ${space.label} is ${agent.status}`;
+    const msg = `${MESSAGE_PREFIX}: ${agent.label} in ${space.label} is ${agent.status}`;
     let actions = ['Attach'];
     if (agent.status === 'done') {
       actions = ['Review changes', 'Attach'];
@@ -69,7 +71,7 @@ export class Notifications implements vscode.Disposable {
     // The click can come minutes later: act on the agent as Herdr has it now (it may have moved or closed).
     const now = findPane(this.deps.model(), agent.id);
     if (!now) {
-      vscode.window.showInformationMessage(`Herdr: ${agent.label} isn't in Herdr anymore.`);
+      vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: ${agent.label} isn't in Herdr anymore.`);
       return;
     }
     if (pick === 'Attach') {

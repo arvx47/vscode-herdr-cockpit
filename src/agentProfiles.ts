@@ -4,8 +4,8 @@
 // CLAUDE_CONFIG_DIR=~/.claude-work`, what an alias such as `claude-work="CLAUDE_CONFIG_DIR=~/.claude-work claude"`
 // does). Herdr gives a new pane the row's variables (tab.create / pane.split / workspace.create take `env`), then
 // starts the agent in it. No vscode imports (test/agentProfilesTest.ts).
-import * as path from 'path';
 import { agentSlug, agentTitle } from './herdrActions';
+import { expandHome } from './herdrClient';
 
 export interface AgentProfile {
   /** As the pickers show it, e.g. "Claude (work)". */
@@ -30,15 +30,12 @@ export const DEFAULT_AGENTS: Record<string, string> = { Claude: 'claude', Codex:
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/** `~` and `~/…` become the home folder (Herdr doesn't expand them in `env`, a shell would). */
-function expandHome(value: string, home: string): string {
-  if (value === '~') {
-    return home;
+/** An entry's agent kind, Claude when it doesn't say. */
+function kindOf(kind: unknown): string {
+  if (typeof kind === 'string' && kind.trim()) {
+    return kind.trim();
   }
-  if (value.startsWith('~/')) {
-    return path.join(home, value.slice(2));
-  }
-  return value;
+  return 'claude';
 }
 
 /** Profile entries ({name, kind, env, args}) as profiles, and what's wrong with entries left out (to log). */
@@ -65,10 +62,7 @@ export function readAgentProfiles(raw: unknown, home: string): { profiles: Agent
       problems.push(`${where}: "${name}" is the same as an earlier profile`);
       return;
     }
-    let kind = 'claude';
-    if (typeof e.kind === 'string' && e.kind.trim()) {
-      kind = e.kind.trim();
-    }
+    const kind = kindOf(e.kind);
     const env: Record<string, string> = {};
     if (e.env && typeof e.env === 'object' && !Array.isArray(e.env)) {
       for (const [k, v] of Object.entries(e.env as Record<string, unknown>)) {
@@ -193,18 +187,14 @@ export function startingTable(agents: unknown, oldProfiles: unknown, defaults: R
 }
 
 /** The old list format as table rows (name → "agent NAME=value …"), to save it in the format the Settings page edits. */
-export function profileTable(list: unknown[]): Record<string, string> {
+function profileTable(list: unknown[]): Record<string, string> {
   const table: Record<string, string> = {};
   for (const entry of list) {
     const e = entry as { name?: unknown; kind?: unknown; env?: unknown } | null;
     if (!e || typeof e.name !== 'string' || !e.name.trim()) {
       continue;
     }
-    let kind = 'claude';
-    if (typeof e.kind === 'string' && e.kind.trim()) {
-      kind = e.kind.trim();
-    }
-    const parts = [kind];
+    const parts = [kindOf(e.kind)];
     if (e.env && typeof e.env === 'object') {
       for (const [k, v] of Object.entries(e.env as Record<string, unknown>)) {
         if (typeof v === 'string' && !/\s/.test(v)) {

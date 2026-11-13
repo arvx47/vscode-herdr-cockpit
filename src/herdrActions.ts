@@ -3,6 +3,7 @@
 // doesn't jump. No vscode imports (tested against the mock server).
 
 import type { HerdrClient } from './herdrClient';
+import { sleep } from './format';
 import type {
   AgentInfo,
   AgentRenameParams,
@@ -102,7 +103,6 @@ export function resumeArgs(kind: string | undefined, session: AgentSessionInfo |
 const AGENT_START_TIMEOUT_MS = 60_000;
 /** A pane Herdr just created isn't at its prompt yet ("agent_pane_busy"); retry this long. */
 const PANE_READY_TIMEOUT_MS = 15_000;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Requester = Pick<HerdrClient, 'request'>;
 

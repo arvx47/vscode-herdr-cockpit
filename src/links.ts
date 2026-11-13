@@ -2,14 +2,18 @@
 // between windows of one editor through ~/.herdr-cockpit/pending-link.json. Moved out of extension.ts's
 // activate(); what a link does with a space or pane goes back through LinkDeps.
 import * as vscode from 'vscode';
+import { EXTENSION_NAME } from './brand';
 import * as fs from 'fs';
 import * as os from 'os';
 import { errorText, sessionSocketPath } from './herdrClient';
-import { allPanes, Model, Pane, Space } from './model';
+import { allPanes, findPane, Model, Pane, Space } from './model';
 import { sessionOfSocket } from './connection';
 import { ensureHubWorkspace, hubDir, hubOpen, isInsideRoots, LinkRequest, parseLink, takePendingLink, writePendingLink } from './hubFiles';
 import { fileLinkRoots } from './linkRoots';
 import { SHELL_PROFILE_TITLE } from './profiles';
+
+/** The button that opens the Cockpit window for a link. */
+const OPEN_COCKPIT = `Open ${EXTENSION_NAME}`;
 
 /** Only task terminals get a description; others show just their name. */
 export const HUB_TAB_DESCRIPTION = '${task}';
@@ -76,18 +80,18 @@ export class Links implements vscode.Disposable {
     try {
       req = parseLink(uri.path, uri.query);
     } catch (e) {
-      vscode.window.showWarningMessage(`Herdr Cockpit: can't open this link: ${errorText(e)}.`);
+      vscode.window.showWarningMessage(`${EXTENSION_NAME}: can't open this link: ${errorText(e)}.`);
       return;
     }
     if (!this.deps.isHubWindow()) {
       // Any web page can open a link: without a Cockpit window open, ask before creating and opening one.
       if (!hubOpen(this.scheme)) {
         const pick = await vscode.window.showInformationMessage(
-          'A link asks Herdr Cockpit to show something in Herdr. Open the Herdr Cockpit window for it?',
+          `A link asks ${EXTENSION_NAME} to show something in Herdr. Open the ${EXTENSION_NAME} window for it?`,
           { modal: true },
-          'Open Herdr Cockpit',
+          OPEN_COCKPIT,
         );
-        if (pick !== 'Open Herdr Cockpit') {
+        if (pick !== OPEN_COCKPIT) {
           return;
         }
       }
@@ -109,7 +113,7 @@ export class Links implements vscode.Disposable {
       }
       // Modal: switching changes herdr.socketPath for every window.
       const pick = await vscode.window.showWarningMessage(
-        `This link is for the Herdr session "${req.session}", but Herdr Cockpit is connected to ${connected}.`,
+        `This link is for the Herdr session "${req.session}", but ${EXTENSION_NAME} is connected to ${connected}.`,
         { modal: true, detail: 'Switching changes the herdr.socketPath setting, so every window connects to that session.' },
         `Switch to "${req.session}"`,
       );
@@ -142,7 +146,7 @@ export class Links implements vscode.Disposable {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(req.path)).then(undefined, () => undefined);
       if (!doc) {
-        vscode.window.showWarningMessage(`Herdr Cockpit: can't open ${req.path}.`);
+        vscode.window.showWarningMessage(`${EXTENSION_NAME}: can't open ${req.path}.`);
         return;
       }
       const pos = new vscode.Position(Math.max(0, (req.line ?? 1) - 1), Math.max(0, (req.col ?? 1) - 1));
@@ -158,7 +162,7 @@ export class Links implements vscode.Disposable {
     const now = d.model();
     let hit: { space: Space; pane: Pane } | undefined;
     if (req.pane) {
-      hit = allPanes(now).find(({ pane }) => pane.id === req.pane);
+      hit = findPane(now, req.pane);
     }
     let sp = hit?.space ?? now?.spaces.find((s) => s.id === req.space);
     if (!sp && req.label) {
@@ -167,7 +171,7 @@ export class Links implements vscode.Disposable {
     vscode.commands.executeCommand('herdr.spaces.focus').then(undefined, () => {});
     if (!sp) {
       if (req.space || req.label || req.pane) {
-        vscode.window.showWarningMessage(`Herdr Cockpit: that space or pane isn't in Herdr anymore.`);
+        vscode.window.showWarningMessage(`${EXTENSION_NAME}: that space or pane isn't in Herdr anymore.`);
       }
       return;
     }

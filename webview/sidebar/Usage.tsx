@@ -94,7 +94,7 @@ function UsageRow({ u }: { u: UsageView }) {
   let today: ReactNode = null;
   if (u.todayLines) {
     let tip = `What ${u.name} did today on this machine, since midnight: tokens (input, output, cache writes and cache reads), and the share of input read from the prompt cache.`;
-    if (u.id === 'claude') {
+    if ((u.kind ?? u.id) === 'claude') {
       tip += " The cost is Claude Code's own tally at API prices: what today's use would cost paid per token, without a plan. On a plan it's a measure of use, not a bill. Lines of code are the ones it added and removed.";
     }
     today = (
@@ -118,7 +118,7 @@ function UsageRow({ u }: { u: UsageView }) {
   return (
     <div className="usage-row">
       <div className="avatar logo small">
-        <AgentLogo kind={u.id} fallback={u.name} />
+        <AgentLogo kind={u.kind ?? u.id} fallback={u.name} />
       </div>
       <div className="main">
         <div className="line1">
@@ -138,9 +138,9 @@ function UsageRow({ u }: { u: UsageView }) {
         {codexCredits}
         {!u.windows.length && !block && !credits && !today && <div className="ustat">No usage recorded yet</div>}
         {u.canSetUpLimits && (
-          <button className="link-btn" title="Claude Code shares plan limits only with a status line; set one up" onClick={() => post('setupClaudeUsage')}>
+          <button className="link-btn" title="Claude Code shares plan limits only with a status line; set one up" onClick={() => post('setupClaudeUsage', { account: u.account ?? '' })}>
             <Icon name="graph" />
-            Show plan limits…
+            Set up plan limits…
           </button>
         )}
       </div>
@@ -161,7 +161,7 @@ export function UsageSection({ usage, ui, update }: { usage: UsageView[]; ui: Ui
           <span className="usums">
             {usage.map((u) => (
               <span key={u.id} className={`usum lvl-${u.summary.level}`} title={u.name}>
-                <AgentLogo kind={u.id} fallback={u.name} />
+                <AgentLogo kind={u.kind ?? u.id} fallback={u.name} />
                 {u.summary.text}
               </span>
             ))}

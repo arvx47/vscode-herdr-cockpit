@@ -7,6 +7,7 @@
 // apart, so they make new tabs. In the Cockpit window "Herdr Shell" is the default profile, so a plain "+" does
 // this; elsewhere the profiles are in the dropdown.
 import * as vscode from 'vscode';
+import { MESSAGE_PREFIX } from './brand';
 import * as path from 'path';
 import { agentTitle } from './herdrActions';
 import { ManageDeps, pickAgent, startAgent } from './manage';
@@ -15,6 +16,7 @@ import type { Space } from './model';
 import type { HerdrPty } from './builtinTerminal';
 import { herdrTabName, shellTabName } from './viewState';
 import { errorText } from './herdrClient';
+import { sleep } from './format';
 
 /** Must match package.json contributes.terminal.profiles. */
 export const SHELL_PROFILE_TITLE = 'Herdr Shell';
@@ -52,7 +54,7 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
   const fallback = (reason: string): vscode.TerminalProfile => {
     if (!warned) {
       warned = true;
-      void vscode.window.showWarningMessage(`Herdr: ${reason} "+" opens local shells until it's back.`, 'Start Herdr').then(async (pick) => {
+      void vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: ${reason} "+" opens local shells until it's back.`, 'Start Herdr').then(async (pick) => {
         if (!pick) {
           return;
         }
@@ -94,7 +96,7 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
     const env = profile && { env: profile.env };
 
     const pty: HerdrPty = deps.newPty(async () => {
-      await new Promise((r) => setTimeout(r, PLACEMENT_MS));
+      await sleep(PLACEMENT_MS);
       const split = !!splitOf && vscode.window.tabGroups.all.length > groupsBefore;
       let paneId: string;
       let name: string;
@@ -122,7 +124,7 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
       deps.log(`profile ${p.id}: ${split ? `split ${splitOf} ->` : 'new tab'} ${paneId} in ${space.label}`);
       let term = opened.get(pty);
       for (let i = 0; !term && i < 20; i++) {
-        await new Promise((r) => setTimeout(r, 50));
+        await sleep(50);
         term = opened.get(pty);
       }
       opened.delete(pty);

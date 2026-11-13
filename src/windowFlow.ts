@@ -2,6 +2,7 @@
 // mounts the space's folder (folders.ts) and opens its panes as tabs (terminals.ts). Moved out of extension.ts's
 // activate().
 import * as vscode from 'vscode';
+import { EXTENSION_NAME, MESSAGE_PREFIX } from './brand';
 import * as fs from 'fs';
 import { errorText, HerdrClient } from './herdrClient';
 import { attachOrder, findPane, Model, Pane, Space } from './model';
@@ -138,14 +139,14 @@ export class WindowFlow {
   }
 
   private warnNoCwd(space: Space) {
-    void vscode.window.showWarningMessage(`Herdr: no working directory known for space "${space.label}".`);
+    void vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: no working directory known for space "${space.label}".`);
   }
 
   private async ensureMounted(space: Space, pin = false): Promise<boolean> {
     const r = await mountSpace(space, pin);
     if (r === 'no-window') {
       const pick = await vscode.window.showWarningMessage(
-        'Herdr: open a folder or the Herdr Cockpit window first, so spaces can be mounted next to it.',
+        `${MESSAGE_PREFIX}: open a folder or the ${EXTENSION_NAME} window first, so spaces can be mounted next to it.`,
         'Set up Cockpit window',
       );
       if (pick) {
@@ -158,7 +159,7 @@ export class WindowFlow {
       return false;
     }
     if (r === 'failed') {
-      vscode.window.showErrorMessage(`Herdr: VS Code refused to mount ${space.cwd}.`);
+      vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: VS Code refused to mount ${space.cwd}.`);
       return false;
     }
     await this.deps.state.update(MANAGED_KEY, true);
@@ -191,7 +192,7 @@ export class WindowFlow {
       why = 'This window is an untitled workspace.';
     }
     const pick = await vscode.window.showInformationMessage(
-      `${why} Open the Herdr Cockpit window instead?`,
+      `${why} Open the ${EXTENSION_NAME} window instead?`,
       { modal: true, detail: "The Cockpit window's first folder never changes, so switching spaces there never restarts your extensions. This window remembers your choice." },
       'Open Cockpit Window',
       'Use This Window',
@@ -247,7 +248,7 @@ export class WindowFlow {
     }
     this.handOver(space, pane, target);
     if (win && !win.focus) {
-      vscode.window.showInformationMessage(`Herdr: "${space.label}" is open in another window (an untitled workspace). Switch to it from the Window menu.`);
+      vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: "${space.label}" is open in another window (an untitled workspace). Switch to it from the Window menu.`);
       return;
     }
     const uri = vscode.Uri.file(win?.focus ?? cwd);
@@ -283,7 +284,7 @@ export class WindowFlow {
     try {
       file = spacesWorkspaceFile(folders, settings);
     } catch (e) {
-      vscode.window.showErrorMessage(`Herdr: could not write a workspace file for this window: ${errorText(e)}`);
+      vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: could not write a workspace file for this window: ${errorText(e)}`);
       return;
     }
     this.handOver(space, pane, space.cwd);
@@ -405,7 +406,7 @@ export class WindowFlow {
       const model = this.deps.model();
       const now = model?.spaces.find((s) => s.id === space.id);
       if (!now) {
-        vscode.window.showInformationMessage(`Herdr: "${space.label}" isn't in Herdr anymore.`);
+        vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: "${space.label}" isn't in Herdr anymore.`);
         return false;
       }
       space = now;

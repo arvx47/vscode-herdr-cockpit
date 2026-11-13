@@ -24,7 +24,7 @@
       The Cockpit window is made for Herdr: its first folder never changes, so switching spaces never restarts your extensions (see <a href="#follow">the Cockpit window</a>).</li>
     <li><b>Make sure Herdr runs.</b> If it doesn't, the sidebar offers <b>Start Herdr</b> (see <a href="#offline">When Herdr isn't running</a>).</li>
     <li><b>Click an agent or shell in a space.</b> Its space's folder opens in the window and that pane opens as a terminal tab (right-click the space and pick <b>Switch to Space</b> to open all of them).</li>
-    <li><b>Optional:</b> the <a href="#plugin">Herdr plugin</a> jumps here from Herdr in your terminal, and <b>Show plan limits…</b> in <a href="#usage">Usage</a> adds Claude Code's limits.</li>
+    <li><b>Optional:</b> the <a href="#plugin">Herdr plugin</a> jumps here from Herdr in your terminal, and <b>Set up plan limits…</b> in <a href="#usage">Usage</a> adds Claude Code's limits.</li>
   </ol>
   <p>The same steps are in the <b>Get started with Herdr Cockpit</b> walkthrough (Command Palette: <b>Welcome: Open Walkthrough…</b>).</p>
   <p><button class="btn secondary" data-cmd="setupHub">Set up Cockpit window</button> <button class="btn secondary" data-cmd="installPlugin">Install the Herdr plugin</button></p>
@@ -332,7 +332,7 @@
       (such as "Current week (Fable)") aren't shared outside Claude Code, so they're not shown. <b>This session</b> counts the tokens
       Claude Code used on this machine in the current 5-hour session (input, output and cache writes; hover for cache reads). Without plan
       limits the session window is estimated from your first message (<b>5-hour block (est.)</b>). Claude Code shares its plan-limit
-      percentages only with a status line, so the bars appear after you click <b>Show plan limits…</b>: Herdr adds a small
+      percentages only with a status line, so the bars appear after you click <b>Set up plan limits…</b>: Herdr adds a small
       status line to <code>~/.claude/settings.json</code> (backed up first; it shows "5h 42% · 7d 18%" under the Claude prompt and
       hides some of Claude Code's footer hints). It works for claude.ai Pro and Max plans; numbers appear after the next
       Claude reply. To undo, remove <code>statusLine</code> from that file. If you already have a status line (yours, or one another
@@ -340,11 +340,14 @@
       percentages and passes everything on unchanged, so your status line looks the same (the settings file is backed up first;
       <b>Copy New Command</b> lets you paste it yourself). When another app set the status line up (Herdr names it), <b>Use
       Herdr's Instead</b> replaces it with Herdr's, if you don't use that app anymore. Once plan limits show, the button leaves the
-      Usage section; to check or repair the setup later (say another app rewrote the status line), use <b>⋯ → Show Claude Plan
-      Limits in the Sidebar…</b>.
+      Usage section; to check or repair the setup later (say another app rewrote the status line), use <b>⋯ → Set Up Claude Plan
+      Limits…</b>: it lists your Claude Code accounts, each saying whether its limits are on and what picking it does.
       <b>Today</b> covers everything Claude Code did on this machine since midnight: tokens (cache reads included) and the share read
       from the prompt cache (most of an agent's input, at about a tenth of the price), the cost as Claude Code tallies it at API
-      prices (what it would cost without a plan, so on a plan it's a measure of use, not a bill), and the lines it added and removed.</dd>
+      prices (what it would cost without a plan, so on a plan it's a measure of use, not a bill), and the lines it added and removed.
+      <b>More than one Claude Code account:</b> each row of <a href="#agents">the agent list</a> that sets its own
+      <code>CLAUDE_CONFIG_DIR</code> gets its own card, named after the row, with its own tokens and plan limits. Its
+      <b>Set up plan limits…</b> sets up the status line in that account's folder (<code>&lt;that folder&gt;/settings.json</code>).</dd>
     <dt>Kiro</dt>
     <dd>Credits used today and this month, from Kiro's session files (Kiro CLI on this machine). Kiro doesn't share your plan's
       allowance with other tools, so click <b>Set monthly credits…</b> once and enter the number from Kiro's <code>/usage</code>
@@ -512,7 +515,7 @@
       and agents with a Herdr integration resume.</dd>
     <dt>No git line under a space</dt><dd>The folder isn't a git repository, or the window isn't trusted (<b>Manage Workspace Trust</b> in the Command Palette).</dd>
     <dt>An agent is missing from Usage</dt><dd>Usage lists only Claude Code, Codex and Kiro, and only while one of their panes is open in Herdr.</dd>
-    <dt>Claude Code shows no bars</dt><dd>Click <b>Show plan limits…</b>. Bars need a claude.ai Pro or Max plan and appear after Claude's next reply.</dd>
+    <dt>Claude Code shows no bars</dt><dd>Click <b>Set up plan limits…</b>. Bars need a claude.ai Pro or Max plan and appear after Claude's next reply.</dd>
     <dt>Codex shows "as of …" instead of "live"</dt><dd>The live check couldn't reach Codex (not installed where VS Code looks, or logged out); the numbers come from its logs instead.</dd>
     <dt>Something looks wrong</dt><dd>Command Palette → <b>Herdr Cockpit: Show Raw Herdr Record</b> (pick the pane) or <b>Show Raw Session Snapshot</b>. The <b>Herdr Cockpit</b> output panel logs connections and follow-mode switches.</dd>
   </dl>

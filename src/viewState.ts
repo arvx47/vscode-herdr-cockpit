@@ -3,14 +3,16 @@
 // The webview (webview/sidebar, React) only renders this; it never talks to Herdr.
 // No vscode imports (tested standalone).
 
-import * as os from 'os';
 import type { PaneActivity } from './activity';
 import type { ProviderUsage, UsageWindow } from './usage';
 import type { DownReason } from './connection';
 import type { GitInfo } from './gitInfo';
 import type { AgentStatus, Model, Pane, Space, Tab } from './model';
-import { repoSpace } from './model';
+import { emptyCounts, repoSpace } from './model';
 import { agentTitle } from './herdrActions';
+import { tildePath } from './herdrClient';
+import { TAB_PREFIX } from './brand';
+import { AgentProfile, profileOfAgent } from './agentProfiles';
 import { shortCount } from './format';
 
 export interface PaneView {
@@ -185,9 +187,7 @@ export function orderByActivity(spaces: Space[], lastActive: (s: Space) => numbe
     .map((x) => x.s);
 }
 
-const home = os.homedir();
-const tilde = (p?: string) => (p && home && (p === home || p.startsWith(home + '/')) ? '~' + p.slice(home.length) : p);
-const emptyCounts = (): Record<AgentStatus, number> => ({ idle: 0, working: 0, blocked: 0, done: 0, unknown: 0 });
+const tilde = (p?: string) => (p ? tildePath(p) : p);
 /** The tab's label when it says something the name doesn't: not a bare number, not the name in other case. */
 function meaningfulTab(tab: Tab | undefined, name: string): string | undefined {
   if (!tab || /^\d+$/.test(tab.label) || tab.label.toLowerCase() === name.toLowerCase()) {
@@ -206,7 +206,7 @@ function ownCwd(p: Pane, space: Space): string | undefined {
 
 const PLAN_NAMES: Record<string, string> = { team: 'Business', pro: 'Pro', plus: 'Plus', enterprise: 'Enterprise', edu: 'Edu', free: 'Free' };
 
-export function usageLevel(pct: number): UsageLevel {
+function usageLevel(pct: number): UsageLevel {
   if (pct >= 85) {
     return 'high';
   }
@@ -319,50 +319,58 @@ export function setAgentNames(mode: AgentNames): void {
   agentNames = mode;
 }
 
-/** The renamed and customized rows of herdr.agents as name pairs: their agents' Herdr name ("claude-work") → the profile's ("Claude (work)"). */
-let profileNames: { slug: string; name: string }[] = [];
-export function setProfileNames(profiles: readonly { slug: string; name: string }[]): void {
-  profileNames = profiles.map((p) => ({ slug: p.slug, name: p.name }));
+/** The renamed and customized rows of herdr.agents: their agents ("claude-work", "claude-work-2") show the row's name. */
+let profileRows: readonly AgentProfile[] = [];
+export function setProfileNames(profiles: readonly AgentProfile[]): void {
+  profileRows = profiles;
 }
 
-/** A profile's agent by the profile's name: "claude-work" → "Claude (work)", "claude-work-2" → "Claude (work) 2". */
-function profileAgentName(agentName: string | null | undefined): string | undefined {
-  if (!agentName) {
+/**
+ * A profile's agent by the profile's name and number: "claude-work" → ["Claude (work)"], "claude-work-2" →
+ * ["Claude (work)", "2"]. Like the kind ("Claude") for a plain agent, it's what shows without a session name.
+ */
+function profileAgentName(agentName: string | null | undefined): [string, string?] | undefined {
+  const p = profileOfAgent(profileRows, agentName ?? undefined);
+  if (!p || !agentName) {
     return undefined;
   }
-  for (const p of profileNames) {
-    if (agentName === p.slug) {
-      return p.name;
-    }
-    if (agentName.startsWith(`${p.slug}-`) && /^\d+$/.test(agentName.slice(p.slug.length + 1))) {
-      return `${p.name} ${agentName.slice(p.slug.length + 1)}`;
-    }
+  if (agentName === p.slug) {
+    return [p.name];
   }
-  return undefined;
+  return [p.name, agentName.slice(p.slug.length + 1)];
 }
 
 export function paneName(tab: Tab | undefined, p: Pane): string {
   if (p.isAgent) {
     const a = p.raw.agent;
     if (a?.display_agent) return a.display_agent;
+    const kind = p.agentKind;
+    const kindTitle = kind ? agentTitle(kind) : p.label;
+    // Names we generate ("claude", "claude-2", or a row's "claude-work-2") read better as "Claude", "Claude 2",
+    // "Claude (work) 2"; any other name was chosen by someone and wins.
+    let title = kindTitle;
+    let number: string | undefined;
     const fromProfile = profileAgentName(a?.name);
     if (fromProfile) {
-      return fromProfile;
+      title = fromProfile[0];
+      number = fromProfile[1];
+    } else {
+      const generated = a?.name && kind ? new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-(\\d+))?$`).exec(a.name) : null;
+      if (a?.name && !generated) return a.name;
+      number = generated?.[1];
     }
-    const kind = p.agentKind;
-    // Names we generate ("claude", "claude-2") read better as "Claude", "Claude 2".
-    const generated = a?.name && kind ? new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-(\\d+))?$`).exec(a.name) : null;
-    if (a?.name && !generated) return a.name;
-    const title = kind ? agentTitle(kind) : p.label;
     // Claude Code titles its terminal with the session name. Skip default titles ("Claude Code")
     // and "kiro: ~/path"-style ones, which say nothing the space doesn't.
     const session = p.terminalTitle?.trim();
-    const useless = !session || session === title || session === 'Claude Code' || /^[~/]/.test(session) ||
+    const useless = !session || session === title || session === kindTitle || session === 'Claude Code' || /^[~/]/.test(session) ||
       (!!kind && session.toLowerCase().startsWith(kind.toLowerCase() + ':'));
     if (agentNames === 'title' && !useless) {
       return session;
     }
-    return generated?.[1] ? `${title} ${generated[1]}` : title;
+    if (number) {
+      return `${title} ${number}`;
+    }
+    return title;
   }
   if (p.raw.pane?.label) return p.raw.pane.label;
   if (!tab) return 'shell';
@@ -407,7 +415,7 @@ export function shellTabName(tabLabel: string): string {
 }
 
 /** What every Herdr tab's name starts with, so they stand apart from the editor's own terminals. */
-export const TAB_PREFIX = 'Herdr:';
+export { TAB_PREFIX };
 
 /** A Herdr tab's name from a pane's name: "Herdr: Fix login", "Herdr: Tab 2". */
 export function herdrTabName(name: string): string {
@@ -543,7 +551,8 @@ export function buildViewState(i: ViewInputs): ViewState {
     needsYou,
     spaces,
     layout: spacesLayout(spaces, i.thisWindow),
-    usage: i.usage.filter((u) => running.has(u.id)).map(usageView),
+    // By agent kind: every Claude Code account's card shows while a Claude agent runs.
+    usage: i.usage.filter((u) => running.has(u.kind ?? u.id)).map(usageView),
     versions: i.versions,
     thisWindow: i.thisWindow,
   };

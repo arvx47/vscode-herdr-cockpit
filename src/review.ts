@@ -4,6 +4,7 @@
 // the main branch: merge-base <-> working tree, committed and uncommitted together.
 // Uses VS Code's built-in git extension, which only runs git in trusted windows.
 import * as vscode from 'vscode';
+import { MESSAGE_PREFIX } from './brand';
 import * as path from 'path';
 
 // Subset of the vscode.git API (extensions/git/src/api/git.d.ts) we rely on.
@@ -98,18 +99,18 @@ function unique(changes: Change[]): Change[] {
  */
 export async function reviewChanges(cwd: string | undefined, label: string, opts: { worktree?: boolean } = {}) {
   if (!cwd) {
-    vscode.window.showWarningMessage(`Herdr: no working directory known for ${label}.`);
+    vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: no working directory known for ${label}.`);
     return;
   }
   const git = await gitApi();
   if (!git) {
-    vscode.window.showErrorMessage('Herdr: the built-in Git extension is disabled.');
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: the built-in Git extension is disabled.`);
     return;
   }
   const uri = vscode.Uri.file(cwd);
   const repo = git.getRepository(uri) ?? (await git.openRepository?.(uri)) ?? null;
   if (!repo) {
-    vscode.window.showInformationMessage(`Herdr: ${cwd} is not inside a git repository.`);
+    vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: ${cwd} is not inside a git repository.`);
     return;
   }
   await repo.status();
@@ -134,7 +135,7 @@ export async function reviewChanges(cwd: string | undefined, label: string, opts
       base = start;
     }
     if (changes.length === 0) {
-      vscode.window.showInformationMessage(`Herdr: no uncommitted changes in ${path.basename(repo.rootUri.fsPath)}.`);
+      vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: no uncommitted changes in ${path.basename(repo.rootUri.fsPath)}.`);
       return;
     }
 

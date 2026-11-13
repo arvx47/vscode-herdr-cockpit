@@ -11,6 +11,7 @@
 // note on its bottom row saying who has it, and the first keystroke takes control back (that keystroke isn't
 // sent: it could answer an agent's question).
 import * as vscode from 'vscode';
+import { EXTENSION_NAME } from './brand';
 import { errorText } from './herdrClient';
 import { HerdrStream, isTakenOver, StreamMode } from './herdrStream';
 import { FindController } from './termFindController';
@@ -638,7 +639,7 @@ export class HerdrPty implements vscode.Pseudoterminal {
       why = 'detached';
     }
     this.deps.log(`built-in terminal ${this.paneId ?? '(new pane)'}: ${why}`);
-    this.writer.fire(`${POSTLUDE}\r\n\x1b[2m[Herdr Cockpit] ${why}. Close this tab, or click the pane in the sidebar to open it again.\x1b[0m\r\n`);
+    this.writer.fire(`${POSTLUDE}\r\n\x1b[2m[${EXTENSION_NAME}] ${why}. Close this tab, or click the pane in the sidebar to open it again.\x1b[0m\r\n`);
     this.deps.onEnded();
   }
 

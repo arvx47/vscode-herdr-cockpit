@@ -44,3 +44,8 @@ export function shortCount(n: number): string {
   }
   return `${n}`;
 }
+
+/** Wait this many milliseconds. */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -8,6 +8,8 @@ export interface PanelAction {
   command: string;
   spaceId?: string;
   paneId?: string;
+  /** A Claude Code account's key (a usage card's Set up plan limits…). */
+  account?: string;
 }
 
 export class HerdrPanel implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -42,7 +44,7 @@ export class HerdrPanel implements vscode.WebviewViewProvider, vscode.Disposable
       view.webview.onDidReceiveMessage((m) => {
         if (m?.type === 'ready') this.flush(true);
         else if (m?.type === 'cmd' && typeof m.command === 'string')
-          this.onAction({ command: m.command, spaceId: m.spaceId, paneId: m.paneId });
+          this.onAction({ command: m.command, spaceId: m.spaceId, paneId: m.paneId, account: typeof m.account === 'string' ? m.account : undefined });
       }),
       view.onDidChangeVisibility(() => {
         if (view.visible) this.flush(true);

@@ -19,7 +19,8 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { findTool } from './tools';
-import { LEGACY_NAME } from './hubFiles';
+import { EXTENSION_NAME } from './brand';
+import { hubDir, LEGACY_NAME } from './hubFiles';
 
 export interface UsageWindow {
   /** "5h", "7d", ... */
@@ -32,8 +33,12 @@ export interface UsageWindow {
 }
 
 export interface ProviderUsage {
-  /** Agent kind, as Herdr names it: "claude", "codex", "kiro". */
+  /** Agent kind, as Herdr names it: "claude", "codex", "kiro"; another Claude Code account adds its key ("claude:claude-work"). */
   id: string;
+  /** The agent kind, for the logo (id says it too, except for another account). */
+  kind?: string;
+  /** Another Claude Code account: its settings folder's key (claudeAccountKey()), for its own Set up plan limits… */
+  account?: string;
   name: string;
   plan?: string;
   /** Plan limits, as % used. */
@@ -58,6 +63,11 @@ export interface ProviderUsage {
   codexCredits?: { balance?: number; unlimited: boolean };
   /** Claude only: plan limits need the opt-in status line. */
   canSetUpLimits?: boolean;
+}
+
+/** Our Claude Code status-line script (claudeStatusLineScript()), one for every account. */
+export function claudeStatusLineFile(home: string): string {
+  return path.join(hubDir(home), 'claude-statusline.sh');
 }
 
 /** Where our Claude Code status line saves its input (see claudeStatusLineScript). */
@@ -100,7 +110,7 @@ export function todayDelta(points: readonly { ts: number; value: number }[], sta
   return last - before;
 }
 
-export const claudeCaptureFile = (home: string) => path.join(home, '.herdr-cockpit', 'claude-usage.json');
+export const claudeCaptureFile = (home: string) => path.join(hubDir(home), 'claude-usage.json');
 /** Where a status line installed before the rename (Herdr Hub) saves it: still read, so that setup keeps working. */
 export const legacyClaudeCaptureFile = (home: string) => path.join(home, `.${LEGACY_NAME}`, 'claude-usage.json');
 
@@ -207,7 +217,7 @@ export function codexLiveUsage(bin: string, timeoutMs = 10_000): Promise<Provide
         }
       }
     });
-    send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'herdr-cockpit', title: 'Herdr Cockpit', version: '1' } } });
+    send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'herdr-cockpit', title: EXTENSION_NAME, version: '1' } } });
   });
 }
 
@@ -492,14 +502,53 @@ export function currentBlock(entries: { ts: number; tokens: number; cacheRead: n
   return block && block.endsAt > now ? block : undefined;
 }
 
-async function claudeUsage(home: string, now = Date.now()): Promise<ProviderUsage | undefined> {
-  const projects = path.join(home, '.claude', 'projects');
-  if (!(await exists(path.join(home, '.claude')))) return;
-  const usage: ProviderUsage = { id: 'claude', name: 'Claude Code', windows: [] };
+/** A Claude Code account to read: its settings folder (~/.claude, or another one's CLAUDE_CONFIG_DIR) and its card's name. */
+export interface ClaudeAccount {
+  configDir: string;
+  name: string;
+}
 
-  // Plan limits, if the opt-in status line has saved them (the newer of the current and pre-rename captures).
-  const captures = await Promise.all([claudeCaptureFile(home), legacyClaudeCaptureFile(home)].map(async (f) => ({ f, at: await mtime(f) })));
-  const capture = captures.filter((c) => c.at > 0).sort((a, b) => b.at - a.at)[0]?.f ?? claudeCaptureFile(home);
+/**
+ * The key of a Claude Code settings folder: "" for the default ~/.claude, else its folder name with anything but
+ * letters, digits, . _ - made "_" (~/.claude-work → ".claude-work"). The status-line script works it out the same
+ * way from CLAUDE_CONFIG_DIR, to save each account's plan limits in its own file.
+ */
+export function claudeAccountKey(configDir: string, home: string): string {
+  if (path.resolve(configDir) === path.join(home, '.claude')) {
+    return '';
+  }
+  return path.basename(path.resolve(configDir)).replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
+/** Where the status line saves an account's plan limits: claude-usage.json for the default, claude-usage-<key>.json for another. */
+export function claudeAccountCaptureFile(home: string, key: string): string {
+  if (!key) {
+    return claudeCaptureFile(home);
+  }
+  return path.join(hubDir(home), `claude-usage-${key}.json`);
+}
+
+async function claudeUsage(home: string, now = Date.now(), account: ClaudeAccount = { configDir: path.join(home, '.claude'), name: 'Claude Code' }): Promise<ProviderUsage | undefined> {
+  const projects = path.join(account.configDir, 'projects');
+  if (!(await exists(account.configDir))) return;
+  const key = claudeAccountKey(account.configDir, home);
+  let id = 'claude';
+  if (key) {
+    id = `claude:${key}`;
+  }
+  const usage: ProviderUsage = { id, kind: 'claude', name: account.name, windows: [] };
+  if (key) {
+    usage.account = key;
+  }
+
+  // Plan limits, if the opt-in status line has saved them: the default account's from the newer of the current
+  // and pre-rename captures, another account's from its own file.
+  let candidates = [claudeCaptureFile(home), legacyClaudeCaptureFile(home)];
+  if (key) {
+    candidates = [claudeAccountCaptureFile(home, key)];
+  }
+  const captures = await Promise.all(candidates.map(async (f) => ({ f, at: await mtime(f) })));
+  const capture = captures.filter((c) => c.at > 0).sort((a, b) => b.at - a.at)[0]?.f ?? candidates[0];
   try {
     const rl = JSON.parse(await fs.promises.readFile(capture, 'utf8'))?.rate_limits ?? {};
     usage.windows = [window('5h', rl.five_hour?.used_percentage, rl.five_hour?.resets_at, now), window('7d', rl.seven_day?.used_percentage, rl.seven_day?.resets_at, now)].filter(
@@ -614,6 +663,8 @@ export interface UsageOptions {
   only?: Set<string>;
   /** Kiro monthly credit allowance; 0 = unknown. */
   kiroMonthlyCredits?: number;
+  /** The Claude Code accounts to show, a card each (default: just ~/.claude, as "Claude Code"). */
+  claudeAccounts?: ClaudeAccount[];
 }
 
 /** Usage of each agent with data, in a stable order. Agents outside `only` aren't read at all. */
@@ -621,7 +672,7 @@ export async function readUsage(home: string, now = Date.now(), opts: UsageOptio
   const want = (id: string) => !opts.only || opts.only.has(id);
   const all = await Promise.all(
     [
-      want('claude') ? claudeUsage(home, now) : undefined,
+      ...(want('claude') ? (opts.claudeAccounts ?? [undefined]).map((a) => claudeUsage(home, now, a)) : []),
       want('codex') ? codexWithToday(home, now, opts.codexLive) : undefined,
       want('kiro') ? kiroUsage(home, now, opts.kiroMonthlyCredits) : undefined,
     ].map((p) => (p ?? Promise.resolve(undefined)).catch(() => undefined)),
@@ -656,7 +707,7 @@ export function hasCapture(command: string, script: string): boolean {
 export function claudeStatusLineScript(captureFile: string): string {
   // String.raw: the backslashes are the shell's and sed's. No `${` in the script (that would be interpolation).
   return String.raw`#!/bin/sh
-# Installed by Herdr Cockpit (VS Code). Claude Code shares plan usage (rate_limits) only with a status
+# Installed by ${EXTENSION_NAME} (VS Code). Claude Code shares plan usage (rate_limits) only with a status
 # line command: this saves it for the Herdr sidebar and prints it. Remove "statusLine" from
 # ~/.claude/settings.json to turn it off. With --pass it prints its input unchanged instead, to sit in
 # front of your own status line command: sh this-script --pass | { your command; }
@@ -666,6 +717,13 @@ if [ "$1" = "--pass" ]; then
   pass=1
 fi
 f=${shQuote(captureFile)}
+# Another Claude Code account (Claude runs with CLAUDE_CONFIG_DIR, and so does this) saves to its own file:
+# claude-usage-<folder name>.json next to the default one (claudeAccountKey() in usage.ts works it out the same way).
+d=${'$'}{CLAUDE_CONFIG_DIR%/}
+if [ -n "$d" ] && [ "$d" != "$HOME/.claude" ]; then
+  k=$(printf '%s' "${'$'}{d##*/}" | tr -c 'A-Za-z0-9._-' '_')
+  f="${'$'}{f%/*}/claude-usage-$k.json"
+fi
 t="$f.$$.tmp"
 input=$(cat)
 if command -v jq >/dev/null 2>&1; then

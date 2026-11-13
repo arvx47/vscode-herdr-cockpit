@@ -28,12 +28,20 @@ export function errorText(e: unknown): string {
 }
 
 /** `~` and `~/…` are the home folder; anything else (including `~user/…`) is left as it is. */
-export function expandHome(p: string): string {
+export function expandHome(p: string, home = os.homedir()): string {
   if (p === '~') {
-    return os.homedir();
+    return home;
   }
   if (p.startsWith('~/')) {
-    return path.join(os.homedir(), p.slice(2));
+    return path.join(home, p.slice(2));
+  }
+  return p;
+}
+
+/** The other way: a path in the home folder written with `~` (as dialogs and the sidebar show it). */
+export function tildePath(p: string, home = os.homedir()): string {
+  if (home && (p === home || p.startsWith(home + path.sep))) {
+    return `~${p.slice(home.length)}`;
   }
   return p;
 }

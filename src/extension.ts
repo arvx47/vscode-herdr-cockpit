@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
+import { EXTENSION_NAME, MESSAGE_PREFIX } from './brand';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { errorText, HerdrClient, resolveSocketPath } from './herdrClient';
+import { errorText, expandHome, HerdrClient, resolveSocketPath } from './herdrClient';
+import { sleep } from './format';
 import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } from './model';
 import type { PaneProcessInfoResult } from './herdrTypes';
 import { HerdrPanel, PanelAction } from './panel';
@@ -31,7 +33,7 @@ import { Commands, Target } from './commands';
 import { agentSlug, HerdrActions } from './herdrActions';
 import { closedTab, ManageDeps } from './manage';
 import { registerProfiles, SHELL_PROFILE_TITLE } from './profiles';
-import { codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './usage';
+import { ClaudeAccount, codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './usage';
 
 const REVEALED_KEY = 'herdr.hubViewRevealed';
 /** Webview action -> command id. */
@@ -60,13 +62,12 @@ const PANEL_COMMANDS: Record<string, string> = {
 
 export function activate(ctx: vscode.ExtensionContext) {
   const cfg = () => vscode.workspace.getConfiguration('herdr');
-  const log = vscode.window.createOutputChannel('Herdr Cockpit');
+  const log = vscode.window.createOutputChannel(EXTENSION_NAME);
   // The integration test (src/test/vscode) reads the log from the console.
   if (process.env.HERDR_HUB_TEST_SESSION) {
     const append = log.appendLine.bind(log);
     log.appendLine = (line: string) => (console.log(`[herdr-cockpit log] ${line}`), append(line));
   }
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   /** A .catch() handler that logs instead of leaving an unhandled rejection. */
   const logError = (what: string) => (e: unknown) => log.appendLine(`${what}: ${errorText(e)}`);
   const client = new HerdrClient(() => resolveSocketPath(cfg().get<string>('socketPath')));
@@ -87,7 +88,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   /** The sidebar lists only the spaces open in this window. */
   const panel = new HerdrPanel(ctx.extensionUri, (a: PanelAction) => {
     const id = PANEL_COMMANDS[a.command];
-    if (id) vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId } satisfies Target);
+    if (id) vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId, account: a.account } satisfies Target);
   });
   const activity = new ActivityWatcher(client);
   const logoUri = (f: string) => vscode.Uri.joinPath(ctx.extensionUri, 'media', 'agent-logos', `${f}.svg`);
@@ -288,7 +289,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (hit.pane.isAgent) {
       // Herdr agent names are identifiers (they're also CLI targets).
       const slug = agentSlug(label);
-      if (!slug) return void vscode.window.showWarningMessage(`Herdr: agent names use lowercase letters, digits, - and _; "${label}" stays a VS Code tab name only.`);
+      if (!slug) return void vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: agent names use lowercase letters, digits, - and _; "${label}" stays a VS Code tab name only.`);
       await manage.actions.renameAgent(paneId, slug);
     } else await manage.actions.renamePane(paneId, label);
     log.appendLine(`renamed ${paneId} in Herdr: "${label}" (tab renamed)`);
@@ -304,7 +305,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     // Pane (and possibly space) ids change when Herdr restarts; fall back to the name.
     const sp = model?.spaces.find((s) => s.id === lost.id) ?? model?.spaces.find((s) => s.label === lost.label);
     if (sp) await flow.switchTo(sp);
-    else vscode.window.showWarningMessage(`Herdr: "${lost.label}" isn't in Herdr anymore.`);
+    else vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: "${lost.label}" isn't in Herdr anymore.`);
   }
 
   /** Start the headless server in the background (it outlives VS Code), then connect. */
@@ -331,7 +332,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
     if (!r.ok) {
       log.appendLine(`start herdr failed: ${r.error}`);
-      const pick = await vscode.window.showErrorMessage(`Herdr: couldn't start the server. ${r.error ?? ''}`, 'Show Log');
+      const pick = await vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't start the server. ${r.error ?? ''}`, 'Show Log');
       if (pick) vscode.window.showTextDocument(vscode.Uri.file(logFile));
       return false;
     }
@@ -350,7 +351,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       return;
     }
     const pick = await vscode.window.showInformationMessage(
-      "Herdr isn't running. Start it in the background whenever the Herdr Cockpit window opens?",
+      `Herdr isn't running. Start it in the background whenever the ${EXTENSION_NAME} window opens?`,
       'Always Start Herdr',
       'Not Now',
       'Never',
@@ -455,7 +456,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       codexLive = { at: Date.now(), data: await codexLiveUsage(codexBinary(os.homedir())) };
       if (!codexLive.data) log.appendLine('usage: live Codex limits unavailable; using its session logs');
     }
-    const opts = { codexLive: codexLive.data, only, kiroMonthlyCredits: cfg().get<number>('kiroMonthlyCredits', 0) };
+    const opts = { codexLive: codexLive.data, only, kiroMonthlyCredits: cfg().get<number>('kiroMonthlyCredits', 0), claudeAccounts: claudeAccounts() };
     const next = await readUsage(os.homedir(), Date.now(), opts).catch((e) => {
       log.appendLine(`usage: ${errorText(e)}`);
       return usage;
@@ -464,7 +465,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       usage = next;
       scheduleRender();
     }
-    // Once Claude's plan limits are captured, the Usage section drops its Show plan limits… button: the view's ⋯
+    // Once Claude's plan limits are captured, the Usage section drops its Set up plan limits… button: the view's ⋯
     // menu offers it instead (to check or repair the setup, e.g. after another app rewrote the status line).
     // Unchanged while no Claude agent runs (its usage isn't read then).
     const claude = next.find((u) => u.id === 'claude');
@@ -585,7 +586,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       .filter(Boolean)
       .join('  ');
     status.backgroundColor = blocked ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
-    status.tooltip = `Herdr: ${agents.length} agents, ${working} working, ${blocked} blocked, ${done} done.\nClick to jump to the one that needs you.`;
+    status.tooltip = `${MESSAGE_PREFIX}: ${agents.length} agents, ${working} working, ${blocked} blocked, ${done} done.\nClick to jump to the one that needs you.`;
     status.command = 'herdr.focusAttention';
     panel.badge = blocked + done ? { value: blocked + done, tooltip: `${blocked} blocked, ${done} done` } : undefined;
   }
@@ -637,6 +638,24 @@ export function activate(ctx: vscode.ExtensionContext) {
     return profiles;
   }
   agentProfiles();
+  /**
+   * The Claude Code accounts with a usage card: the default one (~/.claude, named after its first row without
+   * CLAUDE_CONFIG_DIR), then one per other CLAUDE_CONFIG_DIR in the list (named after its first row).
+   */
+  function claudeAccounts(): ClaudeAccount[] {
+    const home = os.homedir();
+    const claude = agentProfiles().filter((p) => p.kind === 'claude');
+    const defaultDir = path.join(home, '.claude');
+    const named = claude.find((p) => !p.env.CLAUDE_CONFIG_DIR || path.resolve(p.env.CLAUDE_CONFIG_DIR) === defaultDir);
+    const accounts: ClaudeAccount[] = [{ configDir: defaultDir, name: named?.name ?? 'Claude Code' }];
+    for (const p of claude) {
+      const dir = p.env.CLAUDE_CONFIG_DIR;
+      if (dir && !accounts.some((a) => a.configDir === path.resolve(dir))) {
+        accounts.push({ configDir: path.resolve(dir), name: p.name });
+      }
+    }
+    return accounts;
+  }
   const starting = startingAgentTable();
   if (starting) {
     void saveStartingAgents(starting).catch(logError('agents'));
@@ -733,6 +752,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     review,
     ownFolders,
     agentIcon,
+    claudeAccounts: () => claudeAccounts(),
   });
 
   ctx.subscriptions.push(
@@ -792,6 +812,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         if (model) {
           syncNames(model);
         }
+        pollUsage(); // the Claude Code accounts may have changed
       }
       if (e.affectsConfiguration('herdr.socketPath')) {
         // Another session: watch its socket folder, take its events instead of the old one's, and connect now.
@@ -861,10 +882,7 @@ export function activate(ctx: vscode.ExtensionContext) {
           findFileRefs(context.line)
             .slice(0, 50)
             .map(async (ref): Promise<FileLink | undefined> => {
-              let p = ref.path;
-              if (p.startsWith('~/')) {
-                p = path.join(os.homedir(), p.slice(2));
-              }
+              const p = expandHome(ref.path);
               let candidates = bases.map((base) => path.resolve(base, p));
               if (path.isAbsolute(p)) {
                 candidates = [p];
@@ -973,14 +991,15 @@ export function activate(ctx: vscode.ExtensionContext) {
       hubOpenElsewhere: hubOpen(scheme),
     });
     if (!offer) return;
+    const OPEN_HERE = `Open ${EXTENSION_NAME}`;
     const pick = await vscode.window.showInformationMessage(
-      'Working with agents? Open Herdr Cockpit here to see your Herdr spaces, agents and shells.',
-      'Open Herdr Cockpit',
+      `Working with agents? Open ${EXTENSION_NAME} here to see your Herdr spaces, agents and shells.`,
+      OPEN_HERE,
       'Not Now',
       "Don't Ask Again",
     );
     // An empty window becomes the hub; one with your project keeps it and the hub opens in a new window.
-    if (pick === 'Open Herdr Cockpit') await links.openHub(hasFolder);
+    if (pick === OPEN_HERE) await links.openHub(hasFolder);
     else if (pick === "Don't Ask Again") await cfg().update('offerHubOnStartup', 'never', vscode.ConfigurationTarget.Global);
   }
 }

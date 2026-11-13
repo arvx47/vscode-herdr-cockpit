@@ -286,13 +286,21 @@ console.log('✓ usage: the Today line and Codex credits');
 
 // An agent started from a profile shows under the profile's name (tab and sidebar)
 {
-  setProfileNames([{ slug: 'claude-work', name: 'Claude (work)' }]);
+  setProfileNames([{ slug: 'claude-work', name: 'Claude (work)', kind: 'claude', env: {}, args: [], plain: false }]);
   const agent = (name: string) => ({ isAgent: true, agentKind: 'claude', label: 'x', raw: { agent: { name } } }) as any;
   assert.strictEqual(paneName(undefined, agent('claude-work')), 'Claude (work)');
   assert.strictEqual(paneName(undefined, agent('claude-work-2')), 'Claude (work) 2');
   assert.notStrictEqual(paneName(undefined, agent('claude')), 'Claude (work)', 'a plain Claude keeps its own name');
+  // Like a plain agent, the session name shows once Claude Code has one; the row's name is the fallback.
+  const titled = (name: string, terminalTitle: string) => ({ ...agent(name), terminalTitle }) as any;
+  assert.strictEqual(paneName(undefined, titled('claude-work', 'Fix the login bug')), 'Fix the login bug');
+  assert.strictEqual(paneName(undefined, titled('claude-work-2', 'Claude Code')), 'Claude (work) 2', 'a default title is no session name');
+  assert.strictEqual(paneName(undefined, titled('claude-work', 'Claude (work)')), 'Claude (work)');
+  setAgentNames('herdr');
+  assert.strictEqual(paneName(undefined, titled('claude-work', 'Fix the login bug')), 'Claude (work)', 'herdr.agentNames: herdr keeps the row name');
+  setAgentNames('title');
   setProfileNames([]);
-  console.log("✓ a profile's agents named after the profile");
+  console.log("✓ a profile's agents: the session name, else the profile's name");
 }
 
 console.log('\nview tests passed');

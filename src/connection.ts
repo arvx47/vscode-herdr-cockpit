@@ -15,6 +15,7 @@ import { execFile, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { expandHome } from './herdrClient';
+import { sleep } from './format';
 import { HERDR_PROTOCOL } from './herdrTypes';
 import { findTool } from './tools';
 
@@ -191,7 +192,7 @@ export async function startServer(bin: string, env: NodeJS.ProcessEnv, logFile: 
 async function waitForOtherStart(bin: string, env: NodeJS.ProcessEnv, lockFile: string, timeoutMs: number): Promise<StartResult> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 300));
+    await sleep(300);
     if ((await serverStatus(bin, env))?.running) {
       return { ok: true, already: true };
     }
@@ -220,7 +221,7 @@ async function spawnServer(bin: string, env: NodeJS.ProcessEnv, logFile: string,
 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 300));
+    await sleep(300);
     if (exited !== undefined) {
       // It may have exited because a server for this session came up meanwhile (started elsewhere): that's fine.
       if ((await serverStatus(bin, env))?.running) {

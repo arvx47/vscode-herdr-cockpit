@@ -32,6 +32,7 @@ import {
   spacesWorkspaceFile,
   writeWindowRecord,
 } from '../hubFiles';
+import { EXTENSION_NAME } from '../brand';
 import { findTool, toolDirs } from '../tools';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-hub-'));
@@ -249,4 +250,18 @@ assert.strictEqual(claimNotification(change, home, old), true, 'claims older tha
 console.log('✓ notification claims');
 
 fs.rmSync(home, { recursive: true, force: true });
+// The name in code is the one people see in the editor: package.json's displayName, written in package.nls.json.
+{
+  const root = path.join(__dirname, '..', '..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const nls = JSON.parse(fs.readFileSync(path.join(root, 'package.nls.json'), 'utf8'));
+  assert.strictEqual(pkg.displayName, '%displayName%');
+  assert.strictEqual(EXTENSION_NAME, nls.displayName);
+  // Every %key% package.json uses has its text, and every text is used.
+  const used = new Set([...JSON.stringify(pkg).matchAll(/"%([^%"]+)%"/g)].map((m) => m[1]));
+  assert.deepStrictEqual([...used].filter((k) => !(k in nls)), [], 'keys without a text in package.nls.json');
+  assert.deepStrictEqual(Object.keys(nls).filter((k) => !used.has(k)), [], 'texts in package.nls.json nothing uses');
+  console.log('✓ EXTENSION_NAME matches package.nls.json, and every package.json text is there');
+}
+
 console.log('\nhub tests passed');

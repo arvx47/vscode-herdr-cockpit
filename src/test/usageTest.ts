@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { claudeCaptureFile, claudeStatusLineScript, codexLiveUsage, currentBlock, legacyClaudeCaptureFile, readUsage, todayDelta } from '../usage';
+import { claudeAccountKey, claudeCaptureFile, claudeStatusLineScript, codexLiveUsage, currentBlock, legacyClaudeCaptureFile, readUsage, todayDelta } from '../usage';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-'));
 const put = (rel: string, body: string) => {
@@ -96,6 +96,17 @@ put('.kiro/sessions/cli/a.json', JSON.stringify({ session_state: { conversation_
   const live = { id: 'codex', name: 'Codex', windows: [{ label: '5h', usedPercent: 3 }], live: true };
   assert.strictEqual((await readUsage(home, now, { codexLive: live })).find((u) => u.id === 'codex'), live, 'live Codex numbers win over logs');
   assert.deepStrictEqual((await readUsage(home, now, { only: new Set(['kiro']) })).map((u) => u.id), ['kiro'], 'agents not running are not read');
+  // A second Claude Code account (CLAUDE_CONFIG_DIR=~/.claude-second): its own card, from its own folder and capture.
+  assert.strictEqual(claudeAccountKey(path.join(home, '.claude'), home), '');
+  assert.strictEqual(claudeAccountKey(path.join(home, '.claude-second'), home), '.claude-second');
+  put('.claude-second/projects/-p/s.jsonl', msg(now - 20 * 60_000, 'n1', 300, 30));
+  put('.herdr-cockpit/claude-usage-.claude-second.json', JSON.stringify({ rate_limits: { five_hour: { used_percentage: 9, resets_at: sec(now + H) } } }));
+  const accounts = [{ configDir: path.join(home, '.claude'), name: 'Claude (main)' }, { configDir: path.join(home, '.claude-second'), name: 'Claude (second)' }];
+  const two = await readUsage(home, now, { only: new Set(['claude']), claudeAccounts: accounts });
+  assert.deepStrictEqual(two.map((u) => [u.id, u.kind, u.account, u.name]), [['claude', 'claude', undefined, 'Claude (main)'], ['claude:.claude-second', 'claude', '.claude-second', 'Claude (second)']]);
+  assert.strictEqual(two[1].windows[0].usedPercent, 9, "the second account's own plan limits");
+  assert.notDeepStrictEqual(two[1].windows, two[0].windows);
+  console.log('✓ one card per Claude Code account');
   assert.strictEqual(currentBlock([{ ts: now - 6 * H, tokens: 1, cacheRead: 0 }], now), undefined, 'no current block after 5h idle');
   console.log('✓ claude without capture offers setup');
 

@@ -3,6 +3,7 @@
 // Closing the tab only detaches; the process keeps running in Herdr.
 import * as vscode from 'vscode';
 import type { Pane } from './model';
+import { sleep } from './format';
 import { BuiltinDeps, HerdrPty, PtyOptions } from './builtinTerminal';
 import { matchTabs, nextMove } from './tabMatch';
 
@@ -230,7 +231,7 @@ export class AttachTerminals implements vscode.Disposable {
         this.tabPane.set(active, paneId);
         return true;
       }
-      await new Promise((r) => setTimeout(r, 25));
+      await sleep(25);
     }
     return false;
   }

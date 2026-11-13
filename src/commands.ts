@@ -1,6 +1,7 @@
 // The Herdr commands (Command Palette, sidebar actions, context menus, keybindings) and the pickers they share.
 // Moved out of extension.ts's activate(); what they act on comes in through CommandDeps.
 import * as vscode from 'vscode';
+import { EXTENSION_NAME, MESSAGE_PREFIX } from './brand';
 import * as fs from 'fs';
 import * as os from 'os';
 import { errorText, HerdrClient } from './herdrClient';
@@ -17,7 +18,8 @@ import { binaryFound, serverStatus } from './connection';
 import { HERDR_PROTOCOL } from './herdrTypes';
 import { showHelp } from './help';
 import { closeInHerdr, ManageDeps, newSpace, newTab, newWorktree, rename, reopenTab, splitPane } from './manage';
-import { setUpClaudeUsage } from './usageSetup';
+import { pickClaudeAccount, setUpClaudeUsage } from './usageSetup';
+import { ClaudeAccount, claudeAccountKey } from './usage';
 import { DOWN_TEXT, fileReference } from './notices';
 import { MANAGED_KEY, PLACE_KEY, THIS_WINDOW_KEY, WindowFlow } from './windowFlow';
 
@@ -32,7 +34,7 @@ function shellQuote(s: string): string {
 }
 
 /** What a command acts on: from the webview, its context menu, or nothing (then ask). */
-export type Target = { spaceId?: string; paneId?: string };
+export type Target = { spaceId?: string; paneId?: string; account?: string };
 
 export interface CommandDeps {
   ctx: vscode.ExtensionContext;
@@ -63,6 +65,8 @@ export interface CommandDeps {
   /** This window's own folders (not the Cockpit's, nor the ones we mount). */
   ownFolders(): readonly vscode.WorkspaceFolder[];
   agentIcon(kind?: string): vscode.Uri | { light: vscode.Uri; dark: vscode.Uri } | undefined;
+  /** The Claude Code accounts with a usage card (the default one first). */
+  claudeAccounts(): ClaudeAccount[];
 }
 
 export class Commands {
@@ -87,7 +91,7 @@ export class Commands {
       return undefined;
     }
     if (!model?.spaces.length) {
-      vscode.window.showWarningMessage('Herdr: no spaces yet. Create one with the + next to Spaces.');
+      vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: no spaces yet. Create one with the + next to Spaces.`);
       return undefined;
     }
     const pick = await vscode.window.showQuickPick(
@@ -125,9 +129,9 @@ export class Commands {
     const model = d.model();
     const all = allPanes(model).filter(({ pane }) => pane.isAgent || (!agentsOnly && d.showShells()));
     if (!all.length) {
-      let none = 'Herdr: no panes yet.';
+      let none = `${MESSAGE_PREFIX}: no panes yet.`;
       if (agentsOnly) {
-        none = 'Herdr: no agents running.';
+        none = `${MESSAGE_PREFIX}: no agents running.`;
       }
       vscode.window.showInformationMessage(none);
       return undefined;
@@ -184,11 +188,11 @@ export class Commands {
     const name = paneName(hit.space.tabs.find((t) => t.id === hit.pane.tabId), hit.pane);
     try {
       await d.manage.actions.promptAgent(hit.pane.id, text);
-      vscode.window.setStatusBarMessage(`Herdr: sent to ${name}`, 3000);
+      vscode.window.setStatusBarMessage(`${MESSAGE_PREFIX}: sent to ${name}`, 3000);
       d.log(`prompted ${hit.pane.id} (${text.length} characters)`);
       void d.kick();
     } catch (e) {
-      vscode.window.showErrorMessage(`Herdr: couldn't send to ${name}: ${errorText(e)}`);
+      vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't send to ${name}: ${errorText(e)}`);
     }
   }
 
@@ -239,7 +243,7 @@ export class Commands {
       vscode.commands.registerCommand('herdr.copyDiagnostics', async () => {
         const st = await serverStatus(d.binary(), d.herdrEnvNow());
         const text = [
-          `Herdr Cockpit ${d.ctx.extension.packageJSON.version} · VS Code ${vscode.version} · ${process.platform}`,
+          `${EXTENSION_NAME} ${d.ctx.extension.packageJSON.version} · VS Code ${vscode.version} · ${process.platform}`,
           `connection: ${JSON.stringify(d.sync.conn)}`,
           `binary: ${d.binary()} (${binaryFound(d.binary()) ? 'found' : 'NOT FOUND'})`,
           `socket: ${d.socketPath()}${d.cfg().get<string>('socketPath') ? ' (herdr.socketPath)' : ''} (${fs.existsSync(d.socketPath()) ? 'exists' : 'missing'})`,
@@ -247,7 +251,7 @@ export class Commands {
           `expected protocol: ${HERDR_PROTOCOL}`,
         ].join('\n');
         await vscode.env.clipboard.writeText(text);
-        vscode.window.showInformationMessage('Herdr Cockpit: diagnostics copied to the clipboard.');
+        vscode.window.showInformationMessage(`${EXTENSION_NAME}: diagnostics copied to the clipboard.`);
       }),
       vscode.commands.registerCommand('herdr.connectionMenu', async () => {
         if (d.isConnected()) return vscode.commands.executeCommand('herdr.focusAttention');
@@ -280,7 +284,7 @@ export class Commands {
         // From the "This window" card or the Command Palette: pick one of the spaces not open here.
         const others = (d.model()?.spaces ?? []).filter((s) => !d.flow.isOpenHere(s));
         if (!others.length) {
-          vscode.window.showInformationMessage('Herdr: every space is already open in this window.');
+          vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: every space is already open in this window.`);
           return;
         }
         const pick = await vscode.window.showQuickPick(
@@ -315,7 +319,7 @@ export class Commands {
         // Both remembered answers: "Always…" (herdr.windowMode folder) and "Use This Window" (workspace).
         await d.ctx.workspaceState.update(PLACE_KEY, undefined);
         await d.ctx.workspaceState.update(THIS_WINDOW_KEY, undefined);
-        vscode.window.setStatusBarMessage('Herdr: this window will ask where to open spaces again', 2500);
+        vscode.window.setStatusBarMessage(`${MESSAGE_PREFIX}: this window will ask where to open spaces again`, 2500);
       }),
       vscode.commands.registerCommand('herdr.unmountSpace', async (t?: Target) => {
         const sp = await spaceFrom(t);
@@ -364,7 +368,7 @@ export class Commands {
           editor = await vscode.window.showTextDocument(uri, { preview: true, preserveFocus: true });
         }
         if (!editor) {
-          vscode.window.showInformationMessage('Herdr: open a file first.');
+          vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: open a file first.`);
           return;
         }
         const hit = await agentFrom(undefined, 'Send to which agent?');
@@ -408,8 +412,19 @@ export class Commands {
         await d.cfg().update('kiroMonthlyCredits', Number(v) || 0, vscode.ConfigurationTarget.Global);
         d.pollUsage();
       }),
-      vscode.commands.registerCommand('herdr.setupClaudeUsage', async () => {
-        if (await setUpClaudeUsage(os.homedir(), (m) => d.log(m))) d.pollUsage();
+      // From a usage card: that account (its settings folder); from the menu or palette: pick one, each saying where
+      // it stands and what picking it does.
+      vscode.commands.registerCommand('herdr.setupClaudeUsage', async (t?: Target) => {
+        let account: ClaudeAccount | undefined;
+        if (t?.account !== undefined) {
+          account = d.claudeAccounts().find((a) => claudeAccountKey(a.configDir, os.homedir()) === t.account);
+        } else {
+          account = await pickClaudeAccount(os.homedir(), d.claudeAccounts());
+          if (!account) {
+            return;
+          }
+        }
+        if (await setUpClaudeUsage(os.homedir(), (m) => d.log(m), account)) d.pollUsage();
       }),
       vscode.commands.registerCommand('herdr.newSpace', () => newSpace(d.manage)),
       // The agent list is one setting the Settings page edits as a table: open it there.
@@ -429,16 +444,10 @@ export class Commands {
         if (sp) await newTab(d.manage, sp);
       }),
       // From the Command Palette: they act on the Herdr tab you're in.
-      vscode.commands.registerCommand('herdr.terminal.newTab', async () => {
-        const sp = await targetSpace();
-        if (sp) {
-          await newTab(d.manage, sp);
-        }
-      }),
       vscode.commands.registerCommand('herdr.terminal.splitPane', async () => {
         const hit = paneOf({ paneId: d.terms.paneOf(vscode.window.activeTerminal)?.paneId });
         if (!hit) {
-          vscode.window.showInformationMessage('Herdr: click into a Herdr terminal tab first, then split it.');
+          vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: click into a Herdr terminal tab first, then split it.`);
           return;
         }
         await splitPane(d.manage, hit.space, hit.pane);
@@ -477,7 +486,7 @@ export class Commands {
         // Blocked agents first, then done ones; again from one of them goes to the next, and around.
         const waiting = needingAttention(d.model());
         if (!waiting.length) {
-          vscode.window.showInformationMessage('Herdr: no agent needs attention right now.');
+          vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: no agent needs attention right now.`);
           return;
         }
         const current = d.terms.paneOf(vscode.window.activeTerminal)?.paneId;
@@ -518,7 +527,7 @@ export class Commands {
           const doc = await vscode.workspace.openTextDocument({ language: 'json', content: JSON.stringify(raw, null, 2) });
           vscode.window.showTextDocument(doc);
         } catch (e) {
-          vscode.window.showErrorMessage(`Herdr: ${errorText(e)}`);
+          vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${errorText(e)}`);
         }
       }),
     ];

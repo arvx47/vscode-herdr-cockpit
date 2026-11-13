@@ -12,8 +12,8 @@ declare function acquireVsCodeApi(): VsCodeApi;
 const vscode = acquireVsCodeApi();
 
 /** Run a Herdr Cockpit action (a key of PANEL_COMMANDS in src/extension.ts) for a space or pane. */
-export function post(command: string, target: { spaceId?: string; paneId?: string } = {}) {
-  vscode.postMessage({ type: 'cmd', command, spaceId: target.spaceId, paneId: target.paneId });
+export function post(command: string, target: { spaceId?: string; paneId?: string; account?: string } = {}) {
+  vscode.postMessage({ type: 'cmd', command, spaceId: target.spaceId, paneId: target.paneId, account: target.account });
 }
 
 export function ready() {

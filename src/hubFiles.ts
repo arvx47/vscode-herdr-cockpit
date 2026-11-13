@@ -17,6 +17,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { EXTENSION_NAME } from './brand';
 
 /** Bump when the link format changes incompatibly; the plugin compares it with what it speaks. */
 export const LINK_VERSION = 1;
@@ -36,7 +37,7 @@ export function ensureHubWorkspace(settings: Record<string, unknown>, home?: str
   if (!fs.existsSync(readme))
     fs.writeFileSync(
       readme,
-      '# Herdr Cockpit\n\nThis folder stays as the first workspace folder so the editor never restarts extensions when you switch Herdr spaces.\nSpaces are mounted below it as `⬢ <name>` folders.\n',
+      '# ' + EXTENSION_NAME + '\n\nThis folder stays as the first workspace folder so the editor never restarts extensions when you switch Herdr spaces.\nSpaces are mounted below it as `⬢ <name>` folders.\n',
     );
   const file = hubWorkspaceFile(home);
   if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify({ folders: [{ path: '.', name: '· herdr cockpit' }], settings }, null, 2));
@@ -399,7 +400,7 @@ export function parseLink(linkPath: string, query: string): LinkRequest {
   const action = linkPath.replace(/^\/+|\/+$/g, '');
   const q = new URLSearchParams(query);
   const v = Number(q.get('v') ?? LINK_VERSION);
-  if (v > LINK_VERSION) throw new Error(`the link needs a newer Herdr Cockpit (link version ${v}, this one understands ${LINK_VERSION})`);
+  if (v > LINK_VERSION) throw new Error(`the link needs a newer ${EXTENSION_NAME} (link version ${v}, this one understands ${LINK_VERSION})`);
   const id = (k: string) => {
     const x = q.get(k);
     if (x === null || x === '') return undefined;

@@ -71,7 +71,7 @@ const tokensOf = (...maps: (Record<string, string> | undefined)[]): Record<strin
   return out;
 };
 
-const emptyCounts = (): Record<AgentStatus, number> => ({ idle: 0, working: 0, blocked: 0, done: 0, unknown: 0 });
+export const emptyCounts = (): Record<AgentStatus, number> => ({ idle: 0, working: 0, blocked: 0, done: 0, unknown: 0 });
 
 const PRIORITY: Record<AgentStatus, number> = { blocked: 4, done: 3, working: 2, idle: 1, unknown: 0 };
 export const rollup = (ss: (AgentStatus | undefined)[]): AgentStatus | undefined =>
