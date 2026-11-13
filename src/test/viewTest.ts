@@ -8,7 +8,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../model';
 import type { Space } from '../model';
 import { ago, left } from '../format';
-import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, shortPath, spacesLayout, todayLines, usageView } from '../viewState';
+import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, todayLines, usageView } from '../viewState';
 import type { PaneActivity } from '../activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
 
@@ -283,5 +283,16 @@ assert.deepStrictEqual(todayLines({ id: 'codex', name: 'Codex', windows: [] }), 
 assert.strictEqual(usageView({ id: 'codex', name: 'Codex', windows: [], codexCredits: { balance: 12.5, unlimited: false } }).creditsText, '12.5 credits left');
 assert.strictEqual(usageView({ id: 'codex', name: 'Codex', windows: [], codexCredits: { unlimited: true } }).creditsText, 'unlimited credits');
 console.log('✓ usage: the Today line and Codex credits');
+
+// An agent started from a profile shows under the profile's name (tab and sidebar)
+{
+  setProfileNames([{ slug: 'claude-work', name: 'Claude (work)' }]);
+  const agent = (name: string) => ({ isAgent: true, agentKind: 'claude', label: 'x', raw: { agent: { name } } }) as any;
+  assert.strictEqual(paneName(undefined, agent('claude-work')), 'Claude (work)');
+  assert.strictEqual(paneName(undefined, agent('claude-work-2')), 'Claude (work) 2');
+  assert.notStrictEqual(paneName(undefined, agent('claude')), 'Claude (work)', 'a plain Claude keeps its own name');
+  setProfileNames([]);
+  console.log("✓ a profile's agents named after the profile");
+}
 
 console.log('\nview tests passed');

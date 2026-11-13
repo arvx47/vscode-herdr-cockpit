@@ -10,10 +10,13 @@ import { repoSpace } from './model';
 import type { Pane, Space } from './model';
 import { paneName, tabName } from './viewState';
 import { branchFromInput, branchProblem } from './branchName';
+import { AgentProfile, profileOfAgent } from './agentProfiles';
 
-/** What a new tab runs: a plain shell, or an agent kind ("claude", "codex", ...). */
+/** What a new tab runs: a plain shell, or an agent kind ("claude", "codex", ...), maybe with a profile's environment. */
 export interface What {
   kind?: string;
+  /** A row of herdr.agents that isn't the plain agent: the pane gets its variables, the agent its name. */
+  profile?: AgentProfile;
   /** Herdr tab label; empty = Herdr numbers the tab ("Tab 7"). */
   label?: string;
 }
@@ -35,10 +38,10 @@ export interface ManageDeps {
   isOpenHere(space: Space): boolean;
   /** Agent names in use (agent names must be unique). */
   agentNames(): string[];
-  /** Agents listed first when choosing (setting herdr.agents). */
-  agents(): string[];
   /** The agent kinds the running Herdr knows (its agent manifests); empty when it couldn't say. */
   herdrAgentKinds(): Promise<string[]>;
+  /** herdr.agents: the agent list's rows (plain agents, renamed ones, ones with their own environment), in order. */
+  agentProfiles(): AgentProfile[];
   renameTerminal(paneId: string, name: string): Promise<void>;
   /** Herdr is connected, offering to start it if not. */
   ensureConnected(): Promise<boolean>;
@@ -60,16 +63,22 @@ async function knownKinds(deps: ManageDeps): Promise<string[]> {
 
 /** "Shell", "Shell with a name…", then agents with their logos. Undefined if cancelled. */
 async function pickWhat(deps: ManageDeps, title: string): Promise<What | undefined> {
-  type Item = vscode.QuickPickItem & { what?: What; more?: boolean; named?: boolean };
+  type Item = vscode.QuickPickItem & { what?: What; more?: boolean; named?: boolean; addProfile?: boolean };
   const known = await knownKinds(deps);
-  const favorites = deps.agents().filter((k) => known.includes(k));
-  const agentItem = (kind: string): Item => ({ label: agentTitle(kind), description: kind, iconPath: deps.agentIcon(kind) ?? new vscode.ThemeIcon('hubot'), what: { kind } });
+  // The rows of herdr.agents, each agent's together (in the order its first row comes).
+  const shown: string[] = [];
+  for (const p of deps.agentProfiles()) {
+    if (!shown.includes(p.kind)) {
+      shown.push(p.kind);
+    }
+  }
   const items: Item[] = [
     { label: 'Shell', iconPath: new vscode.ThemeIcon('terminal'), what: {} },
     { label: 'Shell with a name…', iconPath: new vscode.ThemeIcon('edit'), named: true },
     { label: 'Agents', kind: vscode.QuickPickItemKind.Separator },
-    ...favorites.map(agentItem),
+    ...agentItems(deps, shown),
     { label: 'More agents…', iconPath: new vscode.ThemeIcon('ellipsis'), more: true },
+    ADD_PROFILE_ITEM,
   ];
   const pick = await vscode.window.showQuickPick(items, { title, placeHolder: 'What should the new tab run?' });
   if (!pick) return;
@@ -78,27 +87,117 @@ async function pickWhat(deps: ManageDeps, title: string): Promise<What | undefin
     return label?.trim() ? { label: label.trim() } : undefined;
   }
   if (pick.more) {
-    const kind = await pickAgent(deps, title, favorites, known);
-    return kind ? { kind } : undefined;
+    return pickAgent(deps, title, shown, known);
+  }
+  if (pick.addProfile) {
+    return openProfileSettings();
   }
   return pick.what;
 }
 
-/** Any agent Herdr can start, except `skip`. Undefined if cancelled. */
-export async function pickAgent(deps: ManageDeps, title: string, skip: string[] = [], known?: string[]): Promise<string | undefined> {
+/** A profile in a picker: its name, and which agent and variables it uses. */
+function profileItem(deps: ManageDeps, p: AgentProfile): vscode.QuickPickItem & { what: What } {
+  if (p.plain) {
+    return { label: p.name, description: p.kind, iconPath: deps.agentIcon(p.kind) ?? new vscode.ThemeIcon('hubot'), what: { kind: p.kind } };
+  }
+  let description = agentTitle(p.kind);
+  const vars = Object.keys(p.env);
+  if (vars.length) {
+    description += ` · ${vars.join(', ')}`;
+  }
+  return { label: p.name, description, iconPath: deps.agentIcon(p.kind) ?? new vscode.ThemeIcon('hubot'), what: { kind: p.kind, profile: p } };
+}
+
+/** Last in the agent lists: opens the Settings page at herdr.agents, where each entry of the list is one table row. */
+const ADD_PROFILE_ITEM = {
+  label: 'Add or rename agents…',
+  description: 'e.g. another Claude Code account',
+  iconPath: new vscode.ThemeIcon('add'),
+  addProfile: true,
+};
+
+/** Opens the setting (no pane is made this time; the change shows in the list next time). */
+async function openProfileSettings(): Promise<undefined> {
+  await vscode.commands.executeCommand('herdr.openAgents');
+  return undefined;
+}
+
+/**
+ * Each agent's entries together, in herdr.agents' order ("Claude", then "Claude (work)"); an agent without a row
+ * (More agents…) is listed plain.
+ */
+function agentItems(deps: ManageDeps, kinds: readonly string[]): (vscode.QuickPickItem & { what: What })[] {
+  const rows = deps.agentProfiles();
+  const items: (vscode.QuickPickItem & { what: What })[] = [];
+  for (const kind of kinds) {
+    const own = rows.filter((x) => x.kind === kind);
+    if (!own.length) {
+      items.push({ label: agentTitle(kind), description: kind, iconPath: deps.agentIcon(kind) ?? new vscode.ThemeIcon('hubot'), what: { kind } });
+    }
+    for (const p of own) {
+      items.push(profileItem(deps, p));
+    }
+  }
+  return items;
+}
+
+/** Any agent Herdr can start (or one herdr.agents names), each with its rows, except `skip`. Undefined if cancelled. */
+export async function pickAgent(deps: ManageDeps, title: string, skip: string[] = [], known?: string[]): Promise<What | undefined> {
   known ??= await knownKinds(deps);
-  const items = known
-    .filter((k) => !skip.includes(k))
-    .map((agent) => ({ label: agentTitle(agent), description: agent, iconPath: deps.agentIcon(agent) ?? new vscode.ThemeIcon('hubot'), agent }));
-  return (await vscode.window.showQuickPick(items, { title, placeHolder: 'Agent to start' }))?.agent;
+  const kinds: string[] = [];
+  for (const p of deps.agentProfiles()) {
+    if (!kinds.includes(p.kind)) {
+      kinds.push(p.kind);
+    }
+  }
+  for (const k of known) {
+    if (!kinds.includes(k)) {
+      kinds.push(k);
+    }
+  }
+  const items: (vscode.QuickPickItem & { what?: What; addProfile?: boolean })[] = [
+    ...agentItems(
+      deps,
+      kinds.filter((k) => !skip.includes(k)),
+    ),
+    ADD_PROFILE_ITEM,
+  ];
+  const pick = await vscode.window.showQuickPick(items, { title, placeHolder: 'Agent to start' });
+  if (pick?.addProfile) {
+    return openProfileSettings();
+  }
+  return pick?.what;
+}
+
+/** The tab label for what a new pane runs: a shell's chosen name, a profile's name, or the agent's. */
+function tabLabelFor(what: What): string | undefined {
+  if (what.label) {
+    return what.label;
+  }
+  if (what.profile) {
+    return what.profile.name;
+  }
+  if (what.kind) {
+    return agentTitle(what.kind);
+  }
+  return undefined;
 }
 
 /**
  * Start an agent in a fresh pane, in the background: the tab is already open, so you watch it
  * launch. Herdr waits until the agent is ready for input.
  */
-export function startAgent(deps: ManageDeps, paneId: string, kind: string, where: string, opts: { name?: string; args?: string[] } = {}) {
-  const name = agentTitle(kind);
+export function startAgent(deps: ManageDeps, paneId: string, kind: string, where: string, opts: { name?: string; args?: string[]; profile?: AgentProfile } = {}) {
+  let name = agentTitle(kind);
+  // A profile's agents are named after it ("claude-work", "claude-work-2"), so they can be told apart and
+  // a closed one restarted with the same variables.
+  let agentId = opts.name;
+  let args = opts.args;
+  if (opts.profile) {
+    name = opts.profile.name;
+    agentId ??= agentName(opts.profile.slug, deps.agentNames());
+    args = [...opts.profile.args, ...(opts.args ?? [])];
+  }
   let verb = 'Starting';
   if (opts.args?.length) {
     verb = 'Resuming';
@@ -107,7 +206,7 @@ export function startAgent(deps: ManageDeps, paneId: string, kind: string, where
     { location: vscode.ProgressLocation.Notification, title: `${verb} ${name} in ${where}…` },
     async () => {
       try {
-        await deps.actions.startAgent(paneId, kind, opts.name ?? agentName(kind, deps.agentNames()), opts.args);
+        await deps.actions.startAgent(paneId, kind, agentId ?? agentName(kind, deps.agentNames()), args);
       } catch (e) {
         deps.log(`agent.start ${kind} in ${paneId}: ${err(e)}`);
         vscode.window.showErrorMessage(`Herdr: couldn't start ${name}: ${err(e)}`);
@@ -124,7 +223,7 @@ async function openCreated(deps: ManageDeps, paneId: string, what: What, where: 
     return;
   }
   await deps.attach(hit.space, hit.pane, what.kind);
-  if (what.kind) startAgent(deps, hit.pane.id, what.kind, where);
+  if (what.kind) startAgent(deps, hit.pane.id, what.kind, where, { profile: what.profile });
 }
 
 export async function newTab(deps: ManageDeps, space: Space, what?: What) {
@@ -135,7 +234,8 @@ export async function newTab(deps: ManageDeps, space: Space, what?: What) {
     const { pane } = await deps.actions.createTab({
       workspace_id: space.id,
       cwd: space.cwd,
-      label: what.label ?? (what.kind ? agentTitle(what.kind) : undefined),
+      label: tabLabelFor(what),
+      ...(what.profile && { env: what.profile.env }),
     });
     await openCreated(deps, pane.pane_id, what, space.label);
   } catch (e) {
@@ -150,7 +250,7 @@ export async function splitPane(deps: ManageDeps, space: Space, pane: Pane) {
   const what = await pickWhat(deps, `Split ${name} (${space.label})`);
   if (!what) return;
   try {
-    const created = await deps.actions.splitPane({ target_pane_id: pane.id, direction: 'right', cwd: pane.cwd ?? space.cwd });
+    const created = await deps.actions.splitPane({ target_pane_id: pane.id, direction: 'right', cwd: pane.cwd ?? space.cwd, ...(what.profile && { env: what.profile.env }) });
     // "Shell with a name…" names the new pane (its Herdr tab keeps its name).
     if (what.label) {
       await deps.actions.renamePane(created.pane_id, what.label).catch(() => undefined);
@@ -224,10 +324,16 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
   const space = spaces.find((s) => s.id === closed.space.id) ?? spaces.find((s) => s.label === closed.space.label && s.cwd === closed.space.cwd);
   const where = space?.label ?? closed.space.label;
   const cwd = closed.cwd ?? closed.space.cwd;
+  // An agent started from a profile comes back with its variables (recognized by its name).
+  let profile: AgentProfile | undefined;
+  if (closed.agentKind) {
+    profile = profileOfAgent(deps.agentProfiles(), closed.agentName);
+  }
+  const env = profile && { env: profile.env };
   try {
     let paneId: string;
     if (!space) {
-      const r = await deps.actions.createSpace({ cwd: closed.space.cwd ?? cwd, label: closed.space.label });
+      const r = await deps.actions.createSpace({ cwd: closed.space.cwd ?? cwd, label: closed.space.label, ...env });
       paneId = r.pane.pane_id;
       if (closed.tabLabel) {
         await deps.actions.renameTab(r.tab.tab_id, closed.tabLabel).catch(() => undefined);
@@ -236,9 +342,9 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
       // The last snapshot may still list the closed pane itself.
       const sibling = space.tabs.find((t) => t.id === closed.tabId)?.panes.find((p) => p.id !== closed.paneId);
       if (sibling) {
-        paneId = (await deps.actions.splitPane({ target_pane_id: sibling.id, direction: 'right', cwd })).pane_id;
+        paneId = (await deps.actions.splitPane({ target_pane_id: sibling.id, direction: 'right', cwd, ...env })).pane_id;
       } else {
-        paneId = (await deps.actions.createTab({ workspace_id: space.id, cwd, label: closed.tabLabel })).pane.pane_id;
+        paneId = (await deps.actions.createTab({ workspace_id: space.id, cwd, label: closed.tabLabel, ...env })).pane.pane_id;
       }
     }
     if (closed.paneLabel) {
@@ -256,7 +362,7 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
       if (!name || taken.includes(name)) {
         name = agentName(closed.agentKind, taken);
       }
-      startAgent(deps, paneId, closed.agentKind, where, { name, args: resumeArgs(closed.agentKind, closed.session) });
+      startAgent(deps, paneId, closed.agentKind, where, { name, args: resumeArgs(closed.agentKind, closed.session), profile });
     }
   } catch (e) {
     vscode.window.showErrorMessage(`Herdr: couldn't reopen the tab in ${where}: ${err(e)}`);
@@ -288,7 +394,7 @@ export async function newSpace(deps: ManageDeps, folder?: string) {
   const label = name.trim();
   const what = await pickWhat(deps, `Start in "${label}"`);
   if (!what) return;
-  await createAndOpen(deps, label, what, () => deps.actions.createSpace({ cwd: dir, label }));
+  await createAndOpen(deps, label, what, () => deps.actions.createSpace({ cwd: dir, label, ...(what.profile && { env: what.profile.env }) }));
 }
 
 /** Create a space, name its first tab after what runs in it, and open it like any new pane. */
@@ -301,7 +407,7 @@ async function createAndOpen(deps: ManageDeps, label: string, what: What, create
     if (what.label || what.kind) {
       // Name the first tab after what runs in it, like a new tab.
       const hit = await deps.findPane(pane.pane_id);
-      if (hit) await deps.actions.renameTab(hit.pane.tabId, what.label ?? agentTitle(what.kind!)).catch(() => undefined);
+      if (hit) await deps.actions.renameTab(hit.pane.tabId, tabLabelFor(what)!).catch(() => undefined);
     }
     await openCreated(deps, pane.pane_id, what, label);
   } catch (e) {
@@ -393,11 +499,21 @@ export async function newWorktree(deps: ManageDeps, from?: Space) {
   const what = await worktreeStart(deps, branch);
   if (!what) return;
   const repoId = repo.id;
-  await createAndOpen(deps, branch, what, () => {
+  await createAndOpen(deps, branch, what, async () => {
+    let created: Awaited<ReturnType<HerdrActions['createWorktreeSpace']>>;
     if (base) {
-      return deps.actions.createWorktreeSpace({ workspace_id: repoId, branch, label: branch, base });
+      created = await deps.actions.createWorktreeSpace({ workspace_id: repoId, branch, label: branch, base });
+    } else {
+      created = await deps.actions.createWorktreeSpace({ workspace_id: repoId, branch, label: branch });
     }
-    return deps.actions.createWorktreeSpace({ workspace_id: repoId, branch, label: branch });
+    if (!what.profile) {
+      return created;
+    }
+    // worktree.create takes no variables: the profile's agent gets a tab of its own that has them, in place
+    // of the plain first one (closed only once the new tab exists, or Herdr would close the space with it).
+    const tab = await deps.actions.createTab({ workspace_id: created.workspace.workspace_id, cwd: created.worktree.path, env: what.profile.env });
+    await deps.actions.closePane(created.pane.pane_id).catch(() => undefined);
+    return tab;
   });
 }
 

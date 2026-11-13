@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { agentTitle } from './herdrActions';
 import { ManageDeps, pickAgent, startAgent } from './manage';
+import type { AgentProfile } from './agentProfiles';
 import type { Space } from './model';
 import type { HerdrPty } from './builtinTerminal';
 import { herdrTabName, shellTabName } from './viewState';
@@ -67,15 +68,30 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
   const opened = new WeakMap<HerdrPty, vscode.Terminal>();
 
   const provide = async (p: (typeof PROFILES)[number]): Promise<vscode.TerminalProfile> => {
-    const kind = p.pick ? await pickAgent(deps, 'New agent tab') : p.kind;
-    if (p.pick && !kind) return localShell();
+    // "Other Agent…" lists herdr.agents rows too: a row with variables gives them to the pane.
+    let kind = p.kind;
+    let profile: AgentProfile | undefined;
+    if (p.pick) {
+      const what = await pickAgent(deps, 'New agent tab');
+      if (!what?.kind) {
+        return localShell();
+      }
+      kind = what.kind;
+      profile = what.profile;
+    }
     const space = await deps.targetSpace();
     if (!space) return fallback("isn't running, or no space was chosen.");
     // The tab being split, if this turns out to be a split: the active Herdr tab of the same space.
     const parent = deps.paneOf(vscode.window.activeTerminal);
     const splitOf = parent?.spaceId === space.id ? parent.paneId : undefined;
     const groupsBefore = vscode.window.tabGroups.all.length;
-    const title = kind ? agentTitle(kind) : SHELL_PROFILE_TITLE;
+    let title = SHELL_PROFILE_TITLE;
+    if (profile) {
+      title = profile.name;
+    } else if (kind) {
+      title = agentTitle(kind);
+    }
+    const env = profile && { env: profile.env };
 
     const pty: HerdrPty = deps.newPty(async () => {
       await new Promise((r) => setTimeout(r, PLACEMENT_MS));
@@ -87,14 +103,14 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
         // label (a split) or its Herdr tab's (a new tab).
         let agentLabel: string | undefined;
         if (kind) {
-          agentLabel = agentTitle(kind);
+          agentLabel = title;
         }
         if (split) {
-          const pane = await deps.actions.splitPane({ target_pane_id: splitOf, direction: 'right', cwd: space.cwd });
+          const pane = await deps.actions.splitPane({ target_pane_id: splitOf, direction: 'right', cwd: space.cwd, ...env });
           paneId = pane.pane_id;
           name = agentLabel ?? pane.label ?? title;
         } else {
-          const { tab, pane } = await deps.actions.createTab({ workspace_id: space.id, cwd: space.cwd, label: agentLabel });
+          const { tab, pane } = await deps.actions.createTab({ workspace_id: space.id, cwd: space.cwd, label: agentLabel, ...env });
           paneId = pane.pane_id;
           name = agentLabel ?? shellTabName(tab.label);
         }
@@ -111,7 +127,7 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
       }
       opened.delete(pty);
       if (term) deps.adopt(paneId, space.id, term, pty, herdrTabName(name));
-      if (kind) startAgent(deps, paneId, kind, space.label);
+      if (kind) startAgent(deps, paneId, kind, space.label, { profile });
       return paneId;
     });
     // No shell process in the tab, so extensions that type into new terminals (Python Environments'

@@ -412,6 +412,8 @@ export class Commands {
         if (await setUpClaudeUsage(os.homedir(), (m) => d.log(m))) d.pollUsage();
       }),
       vscode.commands.registerCommand('herdr.newSpace', () => newSpace(d.manage)),
+      // The agent list is one setting the Settings page edits as a table: open it there.
+      vscode.commands.registerCommand('herdr.openAgents', () => vscode.commands.executeCommand('workbench.action.openSettings', 'herdr.agents')),
       // From a space card (its repo), or the Command Palette / a key (the repo open in this window, else ask).
       vscode.commands.registerCommand('herdr.newWorktree', async (t?: Target) => {
         await newWorktree(d.manage, itemOf(t)?.space);

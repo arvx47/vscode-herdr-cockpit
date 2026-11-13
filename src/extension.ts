@@ -9,7 +9,8 @@ import type { PaneProcessInfoResult } from './herdrTypes';
 import { HerdrPanel, PanelAction } from './panel';
 import { HerdrSync } from './herdrSync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './activity';
-import { AgentNames, buildViewState, paneName, setAgentNames, TAB_PREFIX, tabName, ViewConnection } from './viewState';
+import { AgentNames, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection } from './viewState';
+import { AgentProfile, readAgentList, startingTable } from './agentProfiles';
 import { agentLogo } from './agentLogos';
 import { gitInfo, mainBranch } from './gitInfo';
 import { isMounted, PREFIX } from './folders';
@@ -598,6 +599,48 @@ export function activate(ctx: vscode.ExtensionContext) {
   const paneOf = (t?: Target): { space: Space; pane: Pane } | undefined => findPane(model, t?.paneId);
   // ---------- create / rename / close ----------
   /** Herdr's agent manifests, asked once per connection (they change only with a Herdr update). */
+  /** The starting list was written into the user settings (startingTable()): from then on the table is the list. */
+  const AGENT_LIST_SAVED_KEY = 'herdr.agentListSaved';
+  /**
+   * The list to write into the user settings, when it's due: the first time (with what older versions saved moved
+   * in), or after you reset the setting. Undefined when the user settings already hold the list.
+   */
+  function startingAgentTable(): Record<string, string> | undefined {
+    const agents = cfg().inspect<unknown>('agents')?.globalValue;
+    const oldProfiles = cfg().inspect<unknown>('agentProfiles')?.globalValue;
+    const saved = ctx.globalState.get<boolean>(AGENT_LIST_SAVED_KEY, false);
+    if (saved && agents && typeof agents === 'object' && !Array.isArray(agents) && oldProfiles === undefined) {
+      return undefined;
+    }
+    return startingTable(agents, oldProfiles);
+  }
+  /** Write the starting list (startingAgentTable()) into the user settings, so the Settings page shows every row as yours. */
+  async function saveStartingAgents(table: Record<string, string>) {
+    await cfg().update('agents', table, vscode.ConfigurationTarget.Global);
+    if (cfg().inspect<unknown>('agentProfiles')?.globalValue !== undefined) {
+      await cfg().update('agentProfiles', undefined, vscode.ConfigurationTarget.Global);
+    }
+    await ctx.globalState.update(AGENT_LIST_SAVED_KEY, true);
+    log.appendLine(`agents: the list is in your user settings now (${Object.keys(table).join(', ')})`);
+  }
+  /** herdr.agents (the agent list's rows), read when it changes (problems logged once each time). */
+  let profiles: AgentProfile[] | undefined;
+  function agentProfiles(): AgentProfile[] {
+    if (!profiles) {
+      const read = readAgentList(startingAgentTable() ?? cfg().inspect<unknown>('agents')?.globalValue, os.homedir());
+      for (const problem of read.problems) {
+        log.appendLine(problem);
+      }
+      setProfileNames(read.profiles.filter((p) => !p.plain));
+      profiles = read.profiles;
+    }
+    return profiles;
+  }
+  agentProfiles();
+  const starting = startingAgentTable();
+  if (starting) {
+    void saveStartingAgents(starting).catch(logError('agents'));
+  }
   let agentKindsCache: { version?: string; kinds: Promise<string[]> } | undefined;
   function herdrAgentKinds(): Promise<string[]> {
     const version = sync.conn.kind === 'connected' ? sync.conn.version : undefined;
@@ -637,8 +680,8 @@ export function activate(ctx: vscode.ExtensionContext) {
     },
     isOpenHere: (space) => flow.isOpenHere(space),
     agentNames: () => model?.spaces.flatMap((s) => s.agents.map((a) => a.raw.agent?.name).filter((n): n is string => !!n)) ?? [],
-    agents: () => cfg().get<string[]>('agents', ['claude', 'codex', 'kiro', 'cursor']),
     herdrAgentKinds: () => herdrAgentKinds(),
+    agentProfiles: () => agentProfiles(),
     renameTerminal: async (paneId, name) => terms.rename(paneId, name),
     ensureConnected: () => ensureConnected(),
     log: (m) => log.appendLine(m),
@@ -734,6 +777,18 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (!e.affectsConfiguration('herdr')) return;
       if (e.affectsConfiguration('herdr.agentNames')) {
         setAgentNames(cfg().get<AgentNames>('agentNames', 'title'));
+        if (model) {
+          syncNames(model);
+        }
+      }
+      if (e.affectsConfiguration('herdr.agents') || e.affectsConfiguration('herdr.agentProfiles')) {
+        // Reset in the Settings page: write the starting list again, so its rows are back as yours.
+        const again = startingAgentTable();
+        if (again) {
+          void saveStartingAgents(again).catch(logError('agents'));
+        }
+        profiles = undefined;
+        agentProfiles();
         if (model) {
           syncNames(model);
         }

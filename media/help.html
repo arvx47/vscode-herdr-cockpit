@@ -186,9 +186,19 @@
       open in this window, else asks which. Close the space with <b>Close in Herdr…</b> when the work is done: that also offers
       to delete the worktree.</dd>
     <dt><span class="codicon codicon-add"></span> New tab (the <span class="codicon codicon-add"></span> on a space's name line, folded or not, or right-click a space)</dt>
-    <dd>Choose <b>Shell</b>, <b>Shell with a name…</b> or an agent. The agents listed first come from the
-      <code>herdr.agents</code> setting; <b>More agents…</b> lists every agent Herdr can start. The tab opens right away;
+    <dd>Choose <b>Shell</b>, <b>Shell with a name…</b> or an agent. The agents listed come from the
+      table <b>Herdr: Agents</b> (below); <b>More agents…</b> lists every other agent Herdr can start. The tab opens right away;
       an agent starts in it in the background (a notification shows progress).</dd>
+    <dt>The agent list: renaming, another Claude Code account, and the like</dt>
+    <dd>The agents listed when you open a pane come from one table, <b>Herdr: Agents</b>: <b>⋯ → Agents…</b>, or <b>Add or
+      rename agents…</b> at the bottom of the list, opens it. Each row is one entry: its name, and as its value the agent
+      followed by any variables for its panes. It starts as Claude, Codex, Kiro and Cursor, written into your settings so every row is yours: rename one
+      right in the table (<code>Claude (personal)</code> → <code>claude</code>), or delete it to take it off the list (reset the
+      setting to get the starting list back). Add a second Claude Code account with its own settings folder, what an
+      alias like <code>claude-work="CLAUDE_CONFIG_DIR=~/.claude-work claude"</code> does: <code>Claude (work)</code> →
+      <code>claude CLAUDE_CONFIG_DIR=~/.claude-work</code> (a new, empty folder makes Claude ask you to sign in), or another
+      Codex account: <code>Codex (work)</code> → <code>codex CODEX_HOME=~/.codex-work</code>. Each agent's rows are listed together; agents you start from a renamed row or one with variables show
+      under its name in the sidebar, and Reopen Closed Tab brings them back with the same variables.</dd>
     <dt>The terminal's <span class="codicon codicon-add"></span> and <b>Split Terminal</b> buttons</dt>
     <dd>In the Cockpit window, a plain <b>+</b> creates a Herdr shell tab in the current space: the space of the terminal
       you're in, else the space mounted in the window, else the one focused in Herdr. Its <span class="codicon codicon-chevron-down"></span>

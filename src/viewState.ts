@@ -319,10 +319,36 @@ export function setAgentNames(mode: AgentNames): void {
   agentNames = mode;
 }
 
+/** The renamed and customized rows of herdr.agents as name pairs: their agents' Herdr name ("claude-work") → the profile's ("Claude (work)"). */
+let profileNames: { slug: string; name: string }[] = [];
+export function setProfileNames(profiles: readonly { slug: string; name: string }[]): void {
+  profileNames = profiles.map((p) => ({ slug: p.slug, name: p.name }));
+}
+
+/** A profile's agent by the profile's name: "claude-work" → "Claude (work)", "claude-work-2" → "Claude (work) 2". */
+function profileAgentName(agentName: string | null | undefined): string | undefined {
+  if (!agentName) {
+    return undefined;
+  }
+  for (const p of profileNames) {
+    if (agentName === p.slug) {
+      return p.name;
+    }
+    if (agentName.startsWith(`${p.slug}-`) && /^\d+$/.test(agentName.slice(p.slug.length + 1))) {
+      return `${p.name} ${agentName.slice(p.slug.length + 1)}`;
+    }
+  }
+  return undefined;
+}
+
 export function paneName(tab: Tab | undefined, p: Pane): string {
   if (p.isAgent) {
     const a = p.raw.agent;
     if (a?.display_agent) return a.display_agent;
+    const fromProfile = profileAgentName(a?.name);
+    if (fromProfile) {
+      return fromProfile;
+    }
     const kind = p.agentKind;
     // Names we generate ("claude", "claude-2") read better as "Claude", "Claude 2".
     const generated = a?.name && kind ? new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-(\\d+))?$`).exec(a.name) : null;

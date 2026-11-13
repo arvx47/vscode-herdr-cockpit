@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "Herdr Cockpit",
   "description": "Your Herdr agents and spaces in one VS Code window: files, git, diffs and all your extensions next to the agents, with Claude Code, Codex and Kiro usage in one place. No extra Herdr plugins or windows.",
-  "version": "0.3.21",
+  "version": "0.3.31",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -317,6 +317,11 @@
         "title": "Open Terminal Output in Editor",
         "category": "Herdr Cockpit",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "herdr.openAgents",
+        "title": "Agents…",
+        "category": "Herdr Cockpit"
       }
     ],
     "menus": {
@@ -360,6 +365,11 @@
           "command": "herdr.openSettings",
           "when": "view == herdr.spaces",
           "group": "3_tools@2"
+        },
+        {
+          "command": "herdr.openAgents",
+          "when": "view == herdr.spaces",
+          "group": "4_usage@0"
         },
         {
           "command": "herdr.setupClaudeUsage",
@@ -767,17 +777,14 @@
           "description": "Notify when another client (a Cockpit window in another editor, or `herdr attach`) takes over a pane this window shows. The tab keeps showing the pane read-only; type in it to take it back."
         },
         "herdr.agents": {
-          "type": "array",
-          "items": {
+          "type": "object",
+          "scope": "machine",
+          "default": {},
+          "additionalProperties": {
             "type": "string"
           },
-          "default": [
-            "claude",
-            "codex",
-            "kiro",
-            "cursor"
-          ],
-          "description": "Agents offered first when creating a tab or space (Herdr agent kinds, e.g. claude, codex, kiro, cursor, gemini, copilot, opencode, amp). The rest are under \"More agents…\"."
+          "order": 0,
+          "markdownDescription": "The agents listed when you open a tab, split, space or worktree, one row each (it starts as Claude, Codex, Kiro and Cursor). **Item**: its name in the list, the sidebar and its tabs; **Value**: the agent, then any variables for its panes (`~` is your home folder). Rename a row, delete one to take it off the list, or add one: a second Claude Code account with its own settings folder, what an alias like `claude-work=\"CLAUDE_CONFIG_DIR=~/.claude-work claude\"` does (`Claude (work)` → `claude CLAUDE_CONFIG_DIR=~/.claude-work`; a new, empty folder makes Claude ask you to sign in), or another Codex account (`Codex (work)` → `codex CODEX_HOME=~/.codex-work`). Each agent's rows are listed together; every other agent Herdr can start is under **More agents…**. Reset it to get the starting list back. User settings only."
         },
         "herdr.kiroMonthlyCredits": {
           "type": "number",
@@ -807,6 +814,15 @@
           ],
           "default": "herdr",
           "description": "How the sidebar orders spaces. Herdr's own order by default."
+        },
+        "herdr.agentProfiles": {
+          "type": [
+            "object",
+            "array"
+          ],
+          "scope": "machine",
+          "deprecationMessage": "Moved into Herdr: Agents (herdr.agents), automatically.",
+          "markdownDeprecationMessage": "Moved into **Herdr: Agents** (`herdr.agents`), automatically."
         }
       }
     },
@@ -1012,7 +1028,7 @@
     "gen:icons": "node scripts/gen-agent-icons.mjs",
     "codicons": "node scripts/copy-codicons.mjs",
     "pretest": "tsc -p .",
-    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/usageScriptTest.js && node out/test/connectionTest.js && node out/test/syncTest.js && node out/test/tabMatchTest.js && node out/test/noticesTest.js && node out/test/placementTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/termFindTest.js && node out/test/gitTest.js",
+    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/usageScriptTest.js && node out/test/connectionTest.js && node out/test/syncTest.js && node out/test/tabMatchTest.js && node out/test/noticesTest.js && node out/test/agentProfilesTest.js && node out/test/placementTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/termFindTest.js && node out/test/gitTest.js",
     "package": "npm run codicons && npm run compile && vsce package",
     "install-local": "npm run package && node scripts/install-local.mjs",
     "lint": "eslint --no-warn-ignored src webview media/*.js scripts",
