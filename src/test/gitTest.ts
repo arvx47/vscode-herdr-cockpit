@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { filterOverrides, gitEnv, gitInfo, mainBranch, parseStatus } from '../gitInfo';
+import { filterOverrides, gitEnv, gitInfo, hasChanges, mainBranch, parseStatus } from '../gitInfo';
 
 // Parser: staged / modified / untracked / conflicts / upstream / ahead-behind.
 const p = parseStatus(
@@ -50,7 +50,7 @@ gitInfo(dir, () => {
   assert.strictEqual(info.lastCommit?.subject, 'tracked');
   assert.strictEqual(gitInfo('/definitely/not/here', () => {}), undefined);
   console.log('✓ git branch + change count; repo fsmonitor/filter commands not executed');
-  failClosed().then(envScrubbed).then(mainBranches).then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+  failClosed().then(envScrubbed).then(mainBranches).then(changesToReview).then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
 });
 setTimeout(() => { console.error('git test timed out'); process.exit(1); }, 4000);
 
@@ -117,4 +117,23 @@ async function mainBranches() {
   execSync(`git init -q -b dev && git ${commit}`, { cwd: none });
   assert.strictEqual(await mainBranch(none), undefined, 'no main branch to find');
   console.log('✓ the main branch new worktrees start from');
+}
+
+// The done notification offers Review changes only when there's something to review.
+async function changesToReview() {
+  const commit = '-c user.email=a@b -c user.name=t commit -q --allow-empty -m x';
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-git-review-'));
+  execSync(`git init -q -b main && git ${commit}`, { cwd: repo });
+  assert.strictEqual(await hasChanges(repo, false), false, 'a clean repo: nothing to review');
+  fs.writeFileSync(path.join(repo, 'new.txt'), 'x');
+  assert.strictEqual(await hasChanges(repo, false), true, 'a new file counts');
+  fs.rmSync(path.join(repo, 'new.txt'));
+  // A worktree's branch with a commit of its own: something to review even with a clean working tree.
+  execSync(`git checkout -q -b ticket && git ${commit}`, { cwd: repo });
+  assert.strictEqual(await hasChanges(repo, false), false, 'outside a worktree only uncommitted changes count');
+  assert.strictEqual(await hasChanges(repo, true), true, "a worktree branch's commits count");
+  execSync('git checkout -q main', { cwd: repo });
+  assert.strictEqual(await hasChanges(repo, true), false, 'the main branch itself: nothing since it');
+  assert.strictEqual(await hasChanges(fs.mkdtempSync(path.join(os.tmpdir(), 'hb-git-norepo-')), false), undefined, 'not a repository');
+  console.log('✓ whether there are changes to review');
 }

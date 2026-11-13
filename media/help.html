@@ -224,7 +224,7 @@
     <div class="row agent st-working">
       <div class="avatar logo" data-logo="codex"></div>
       <div class="main">
-        <div class="line1"><span class="name">Codex</span><span class="state"><span class="codicon codicon-sync spin"></span>Working <span class="t">4m</span></span></div>
+        <div class="line1"><span class="name">Rate limiting</span><span class="agent-name">Codex (work)</span><span class="state"><span class="codicon codicon-sync spin"></span>Working <span class="t">4m</span></span></div>
         <div class="sub">Add rate limiting to the login route</div>
       </div>
       <div class="side"><span class="icon-btn expander"><span class="codicon codicon-chevron-down"></span></span></div>
@@ -244,6 +244,7 @@
   <dl>
     <dt>Logo</dt><dd>Which agent it is (Claude, Codex, Kiro, Cursor, Copilot, Gemini and more). Agents without a known logo show their first letter.</dd>
     <dt>Ring, corner dot and pill</dt><dd>The status, in the colors below. The dot pulses while an agent is working or blocked.</dd>
+    <dt>Grey name after the name</dt><dd>Which agent it is, when the row shows its session's title instead (<b>Rate limiting</b> · <b>Codex (work)</b>): the agent's name in your agent list, so you can tell accounts apart.</dd>
     <dt>Time in the pill</dt><dd>How long the agent has been in this status, counted from when VS Code noticed the change (it restarts when the window reloads).</dd>
     <dt>Second line</dt><dd>The task title the agent set; without one, the gist of its latest reply (such as Claude's "recap").</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the rest: the full summary of the latest reply (or, for a blocked or done agent, the end of its screen), chips for the Herdr tab, model and other metadata, and the working folder. Click again (or press <kbd>←</kbd>) to hide. Each row remembers its choice.</dd>
@@ -359,7 +360,7 @@
 <section id="terminals">
   <h2>Terminal tabs</h2>
   <ul>
-    <li>Click any agent or shell row to open it in a VS Code terminal tab. The tab has the agent's logo (or a terminal icon for shells) as its icon. Its name is the row's name with <b>Herdr:</b> in front (<b>Herdr: Fix login</b>, <b>Herdr: Tab 2</b>), so Herdr tabs stand apart from the editor's own terminals. Clicking again brings the existing tab forward.</li>
+    <li>Click any agent or shell row to open it in a VS Code terminal tab. The tab has the agent's logo (or a terminal icon for shells) as its icon. An agent's tab is named after the agent, then its session once Claude Code has titled it (<b>Claude: Fix login</b>, <b>Claude (work) 2</b> before that); a shell's has <b>Herdr:</b> in front (<b>Herdr: Tab 2</b>), so Herdr tabs stand apart from the editor's own terminals. Clicking again brings the existing tab forward.</li>
     <li>Agents open with <b>takeover</b>: your keystrokes go to the agent from this tab.</li>
     <li><b>One client controls a pane at a time.</b> When another one takes it (a Cockpit window in another editor, or <code>herdr attach</code> in a terminal), the tab keeps showing the pane live but read-only, with a yellow note on its bottom row saying who has it, for example <b>Kiro is using this pane · type here to take it back</b>. The first key you press takes control back; that key isn't sent, so it can't answer an agent's question by accident. Selecting and copying still work while it's read-only. Turn on <code>herdr.notifyOnTakeover</code> (off by default) for a notification saying which panes were taken, with <b>Take Back</b>. Clicking the pane or its space in the sidebar takes it back too.</li>
     <li><b>Selecting and copying text</b> works like the Herdr TUI: drag to select, double-click a word, triple-click a line. With <code>herdr.copyOnSelect</code> on, the text is copied when you let go: a green <b>Copied to clipboard</b> note flashes at the bottom of the tab, and the status bar says how many characters. By default the selection stays highlighted and <b>⌘C</b> (Ctrl+Shift+C) copies it; ⌘C works with the setting on too. Keep dragging past the top or bottom of the tab and it scrolls the pane's scrollback for you, selecting as it goes (faster the longer you hold). The mouse wheel scrolls the scrollback too.</li>
@@ -397,7 +398,7 @@
   <ul>
     <li><b>Status bar</b> (bottom left): <span class="codicon codicon-hubot"></span> agent count, then working <span class="codicon codicon-sync"></span>, blocked <span class="codicon codicon-warning"></span> and done <span class="codicon codicon-pass-filled"></span> counts. It turns yellow when something is blocked. Click it to jump to the agent that needs you. <span class="codicon codicon-debug-disconnect"></span> <b>Herdr</b> means Herdr isn't connected: click it for Start Herdr, Open Herdr TUI, Retry and Copy Diagnostics.</li>
     <li><b>Badge</b> on the sidebar icon: how many agents are blocked or done.</li>
-    <li><b>Notifications</b> when an agent becomes blocked or done, with <b>Open</b> and (when done) <b>Review changes</b> buttons.</li>
+    <li><b>Notifications</b> when an agent becomes blocked or done, with an <b>Open</b> button, plus <b>Review changes</b> when a done agent left something to review (changed or new files, or commits on a worktree's branch).</li>
   </ul>
 </section>
 

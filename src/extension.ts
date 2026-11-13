@@ -11,10 +11,10 @@ import type { PaneProcessInfoResult } from './herdrTypes';
 import { HerdrPanel, PanelAction } from './panel';
 import { HerdrSync } from './herdrSync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './activity';
-import { AgentNames, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection } from './viewState';
+import { AgentNames, agentNameParts, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection } from './viewState';
 import { AgentProfile, readAgentList, startingTable } from './agentProfiles';
 import { agentLogo } from './agentLogos';
-import { gitInfo, mainBranch } from './gitInfo';
+import { gitInfo, hasChanges, mainBranch } from './gitInfo';
 import { isMounted, PREFIX } from './folders';
 import { AttachTerminals, TerminalLocationSetting } from './terminals';
 import { TabAction } from './builtinTerminal';
@@ -167,6 +167,14 @@ export function activate(ctx: vscode.ExtensionContext) {
     isOpenHere: (space) => flow.isOpenHere(space),
     attachPane: (space, pane) => flow.attachPane(space, pane),
     review: (space, pane) => review(space, pane),
+    // git reads the repo's own config: only in a trusted window (see gitInfo.ts).
+    hasChanges: async (space, pane) => {
+      const cwd = pane.cwd ?? space.cwd;
+      if (!vscode.workspace.isTrusted || !cwd) {
+        return undefined;
+      }
+      return hasChanges(cwd, !!space.worktree?.is_linked_worktree);
+    },
     startHerdr: () => startHerdr(),
     kick: () => kick(),
   });
@@ -281,9 +289,13 @@ export function activate(ctx: vscode.ExtensionContext) {
   async function renamedTabByUser(paneId: string, name: string) {
     const hit = paneOf({ paneId });
     let label = name.trim();
-    // The tab shows "Herdr: <name>"; Herdr gets only the name.
-    if (label.toLowerCase().startsWith(TAB_PREFIX.toLowerCase())) {
-      label = label.slice(TAB_PREFIX.length).trim();
+    // A shell's tab shows "Herdr: <name>", an agent's "<agent>: <name>"; Herdr gets only the name.
+    let prefix = TAB_PREFIX;
+    if (hit?.pane.isAgent) {
+      prefix = `${agentNameParts(hit.pane).base}:`;
+    }
+    if (label.toLowerCase().startsWith(prefix.toLowerCase())) {
+      label = label.slice(prefix.length).trim();
     }
     if (!hit || !label || !isConnected()) return;
     if (hit.pane.isAgent) {

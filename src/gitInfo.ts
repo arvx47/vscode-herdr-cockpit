@@ -184,6 +184,34 @@ export function gitInfo(cwd: string | undefined, onUpdate: () => void): GitInfo 
 }
 
 /**
+ * Whether Review changes would list anything: uncommitted changes (new files too) or, on a worktree's branch
+ * (`worktree`), commits since the main branch. Undefined when git can't tell (not a repository, or it can't run
+ * safely here). Like gitInfo(), callers skip it in untrusted windows.
+ */
+export async function hasChanges(cwd: string, worktree: boolean): Promise<boolean | undefined> {
+  const filters = await filterOverrides(cwd);
+  if (!filters) {
+    return undefined;
+  }
+  const status = await run(cwd, filters, ['status', '--porcelain=v1', '--untracked-files=normal', '--ignore-submodules=all']);
+  if (status === undefined) {
+    return undefined;
+  }
+  if (status.trim()) {
+    return true;
+  }
+  if (!worktree) {
+    return false;
+  }
+  const base = await mainBranch(cwd);
+  if (!base) {
+    return false;
+  }
+  const ahead = await run(cwd, filters, ['rev-list', '--count', `refs/heads/${base}..HEAD`]);
+  return Number(ahead?.trim() ?? '0') > 0;
+}
+
+/**
  * The branch new work starts from: the local branch the remote's default points to (origin/HEAD → `master`),
  * else a local `main` or `master`. Local, not `origin/…`: a branch started from a remote branch would track
  * it, and a later push could aim at that branch. Undefined when there's none (or git can't run safely here).

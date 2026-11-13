@@ -128,7 +128,12 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
         term = opened.get(pty);
       }
       opened.delete(pty);
-      if (term) deps.adopt(paneId, space.id, term, pty, herdrTabName(name));
+      // The tab's name until the snapshot has the pane (tabName()): an agent's own name, "Herdr: <name>" for a shell.
+      let tabTitle = herdrTabName(name);
+      if (kind) {
+        tabTitle = name;
+      }
+      if (term) deps.adopt(paneId, space.id, term, pty, tabTitle);
       if (kind) startAgent(deps, paneId, kind, space.label, { profile });
       return paneId;
     });

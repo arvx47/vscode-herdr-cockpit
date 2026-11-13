@@ -191,6 +191,7 @@ export function AgentRow(props: RowProps) {
       line1={
         <div className="line1">
           <span className="name">{p.name}</span>
+          {p.agentName && <span className="agent-name">{p.agentName}</span>}
           {pill}
         </div>
       }

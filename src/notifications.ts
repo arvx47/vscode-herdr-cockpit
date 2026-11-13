@@ -23,6 +23,8 @@ export interface NotificationDeps {
   isOpenHere(space: Space): boolean;
   attachPane(space: Space, pane: Pane): Promise<void>;
   review(space: Space, pane?: Pane): Promise<unknown>;
+  /** Whether Review changes would list anything for this agent (undefined: git can't tell). */
+  hasChanges(space: Space, pane: Pane): Promise<boolean | undefined>;
   startHerdr(): Promise<boolean>;
   kick(): Promise<void>;
 }
@@ -55,8 +57,9 @@ export class Notifications implements vscode.Disposable {
       return;
     }
     const msg = `${MESSAGE_PREFIX}: ${agent.label} in ${space.label} is ${agent.status}`;
+    // Review changes only when there's something to review: an agent can finish without changing a file.
     let actions = ['Open'];
-    if (agent.status === 'done') {
+    if (agent.status === 'done' && (await this.deps.hasChanges(space, agent).catch(() => undefined)) === true) {
       actions = ['Review changes', 'Open'];
     }
     let pick: string | undefined;

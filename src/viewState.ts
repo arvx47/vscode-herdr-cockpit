@@ -23,6 +23,11 @@ export interface PaneView {
   name: string;
   /** Agents: task / terminal title. Shells: unused (see shell). */
   detail?: string;
+  /**
+   * Agents whose name is their session's title (or a name given to them): which agent it is, "Claude (work)",
+   * shown next to the name so you can tell the accounts apart.
+   */
+  agentName?: string;
   /** Agents only. */
   status?: AgentStatus;
   stateLabel?: string;
@@ -325,52 +330,53 @@ export function setProfileNames(profiles: readonly AgentProfile[]): void {
   profileRows = profiles;
 }
 
+/** The row an agent was started from, by its name: "claude-work" and "claude-work-2" → "Claude (work)". */
+function profileAgentName(agentName: string | null | undefined): string | undefined {
+  return profileOfAgent(profileRows, agentName ?? undefined)?.name;
+}
+
 /**
- * A profile's agent by the profile's name and number: "claude-work" → ["Claude (work)"], "claude-work-2" →
- * ["Claude (work)", "2"]. Like the kind ("Claude") for a plain agent, it's what shows without a session name.
+ * An agent's name in two parts: `base`, its row's or agent's name ("Claude", "Claude (work)"; not the number in
+ * Herdr's unique name, "claude-work-2"), and `own`, when it has one: a name Herdr or someone gave it, or the session's title (Claude Code titles its
+ * terminal with it). The sidebar shows `own`, else `base`; the tab shows both ("Claude: Fix login").
  */
-function profileAgentName(agentName: string | null | undefined): [string, string?] | undefined {
-  const p = profileOfAgent(profileRows, agentName ?? undefined);
-  if (!p || !agentName) {
-    return undefined;
+export function agentNameParts(p: Pane): { base: string; own?: string } {
+  const a = p.raw.agent;
+  const kind = p.agentKind;
+  const kindTitle = kind ? agentTitle(kind) : p.label;
+  // Names we generate ("claude", "claude-2", or a row's "claude-work-2") read as "Claude" or "Claude (work)": the
+  // number only keeps Herdr's names unique. Any other name was chosen by someone and wins.
+  let base = kindTitle;
+  let chosen: string | undefined;
+  const fromProfile = profileAgentName(a?.name);
+  if (fromProfile) {
+    base = fromProfile;
+  } else {
+    const generated = a?.name && kind ? new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-\\d+)?$`).exec(a.name) : null;
+    if (a?.name && !generated) {
+      chosen = a.name;
+    }
   }
-  if (agentName === p.slug) {
-    return [p.name];
+  if (a?.display_agent) {
+    return { base, own: a.display_agent };
   }
-  return [p.name, agentName.slice(p.slug.length + 1)];
+  if (chosen) {
+    return { base, own: chosen };
+  }
+  // Skip default titles ("Claude Code") and "kiro: ~/path"-style ones, which say nothing the space doesn't.
+  const session = p.terminalTitle?.trim();
+  const useless = !session || session === base || session === kindTitle || session === 'Claude Code' || /^[~/]/.test(session) ||
+    (!!kind && session.toLowerCase().startsWith(kind.toLowerCase() + ':'));
+  if (agentNames === 'title' && !useless) {
+    return { base, own: session };
+  }
+  return { base };
 }
 
 export function paneName(tab: Tab | undefined, p: Pane): string {
   if (p.isAgent) {
-    const a = p.raw.agent;
-    if (a?.display_agent) return a.display_agent;
-    const kind = p.agentKind;
-    const kindTitle = kind ? agentTitle(kind) : p.label;
-    // Names we generate ("claude", "claude-2", or a row's "claude-work-2") read better as "Claude", "Claude 2",
-    // "Claude (work) 2"; any other name was chosen by someone and wins.
-    let title = kindTitle;
-    let number: string | undefined;
-    const fromProfile = profileAgentName(a?.name);
-    if (fromProfile) {
-      title = fromProfile[0];
-      number = fromProfile[1];
-    } else {
-      const generated = a?.name && kind ? new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-(\\d+))?$`).exec(a.name) : null;
-      if (a?.name && !generated) return a.name;
-      number = generated?.[1];
-    }
-    // Claude Code titles its terminal with the session name. Skip default titles ("Claude Code")
-    // and "kiro: ~/path"-style ones, which say nothing the space doesn't.
-    const session = p.terminalTitle?.trim();
-    const useless = !session || session === title || session === kindTitle || session === 'Claude Code' || /^[~/]/.test(session) ||
-      (!!kind && session.toLowerCase().startsWith(kind.toLowerCase() + ':'));
-    if (agentNames === 'title' && !useless) {
-      return session;
-    }
-    if (number) {
-      return `${title} ${number}`;
-    }
-    return title;
+    const { base, own } = agentNameParts(p);
+    return own ?? base;
   }
   if (p.raw.pane?.label) return p.raw.pane.label;
   if (!tab) return 'shell';
@@ -422,8 +428,18 @@ export function herdrTabName(name: string): string {
   return `${TAB_PREFIX} ${name}`;
 }
 
-/** The VS Code tab's name: paneName() with "Herdr: " in front. */
+/**
+ * The VS Code tab's name. An agent's says which agent it is, then its session: "Claude: Fix login",
+ * "Claude (work)" until the session has a title. A shell's starts with "Herdr:" ("Herdr: Tab 2").
+ */
 export function tabName(tab: Tab | undefined, p: Pane): string {
+  if (p.isAgent) {
+    const { base, own } = agentNameParts(p);
+    if (own) {
+      return `${base}: ${own}`;
+    }
+    return base;
+  }
   return herdrTabName(paneName(tab, p));
 }
 
@@ -440,11 +456,17 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   const act = i.activity(p.id);
   const lines = act?.output ?? [];
   const status = p.status ?? 'unknown';
+  const parts = agentNameParts(p);
+  let agentName: string | undefined;
+  if (parts.own && parts.base !== name) {
+    agentName = parts.base;
+  }
   return {
     id: p.id,
     spaceId: space.id,
     kind: 'agent',
     name,
+    agentName,
     detail,
     status,
     stateLabel: p.stateLabel,

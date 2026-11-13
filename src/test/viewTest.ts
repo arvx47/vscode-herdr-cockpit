@@ -8,7 +8,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../model';
 import type { Space } from '../model';
 import { ago, left } from '../format';
-import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, todayLines, usageView } from '../viewState';
+import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../viewState';
 import type { PaneActivity } from '../activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
 
@@ -246,16 +246,16 @@ const named = (name: string | null, kind = 'claude', display: string | null = nu
   paneName(undefined, { ...ka.agents[0], agentKind: kind, terminalTitle, raw: { agent: { ...ka.agents[0].raw.agent!, agent: kind, name, display_agent: display } } });
 assert.deepStrictEqual(
   [named(null), named('claude'), named('claude-2'), named('reviewer'), named(null, 'agy'), named('claude', 'claude', 'Claude (auth)')],
-  ['Claude', 'Claude', 'Claude 2', 'reviewer', 'Antigravity', 'Claude (auth)'],
+  ['Claude', 'Claude', 'Claude', 'reviewer', 'Antigravity', 'Claude (auth)'],
 );
 // The session name from the terminal title beats a generated name, not a chosen one; default and path titles don't count.
 assert.deepStrictEqual(
   [named('claude-2', 'claude', null, 'Fix date formatting'), named('reviewer', 'claude', null, 'Fix date formatting'), named('claude-3', 'claude', null, 'Claude Code'), named('kiro', 'kiro', null, 'kiro: ~/code/dashboard'), named('claude', 'claude', null, '~/code/api')],
-  ['Fix date formatting', 'reviewer', 'Claude 3', 'Kiro', 'Claude'],
+  ['Fix date formatting', 'reviewer', 'Claude', 'Kiro', 'Claude'],
 );
 // herdr.agentNames = herdr: only Herdr's names.
 setAgentNames('herdr');
-assert.deepStrictEqual([named('claude-2', 'claude', null, 'Fix date formatting'), named('reviewer', 'claude', null, 'Fix date formatting')], ['Claude 2', 'reviewer']);
+assert.deepStrictEqual([named('claude-2', 'claude', null, 'Fix date formatting'), named('reviewer', 'claude', null, 'Fix date formatting')], ['Claude', 'reviewer']);
 setAgentNames('title');
 console.log('✓ agent display names');
 
@@ -289,18 +289,29 @@ console.log('✓ usage: the Today line and Codex credits');
   setProfileNames([{ slug: 'claude-work', name: 'Claude (work)', kind: 'claude', env: {}, args: [], plain: false }]);
   const agent = (name: string) => ({ isAgent: true, agentKind: 'claude', label: 'x', raw: { agent: { name } } }) as any;
   assert.strictEqual(paneName(undefined, agent('claude-work')), 'Claude (work)');
-  assert.strictEqual(paneName(undefined, agent('claude-work-2')), 'Claude (work) 2');
+  assert.strictEqual(paneName(undefined, agent('claude-work-2')), 'Claude (work)');
   assert.notStrictEqual(paneName(undefined, agent('claude')), 'Claude (work)', 'a plain Claude keeps its own name');
   // Like a plain agent, the session name shows once Claude Code has one; the row's name is the fallback.
   const titled = (name: string, terminalTitle: string) => ({ ...agent(name), terminalTitle }) as any;
   assert.strictEqual(paneName(undefined, titled('claude-work', 'Fix the login bug')), 'Fix the login bug');
-  assert.strictEqual(paneName(undefined, titled('claude-work-2', 'Claude Code')), 'Claude (work) 2', 'a default title is no session name');
+  assert.strictEqual(paneName(undefined, titled('claude-work-2', 'Claude Code')), 'Claude (work)', 'a default title is no session name');
   assert.strictEqual(paneName(undefined, titled('claude-work', 'Claude (work)')), 'Claude (work)');
   setAgentNames('herdr');
   assert.strictEqual(paneName(undefined, titled('claude-work', 'Fix the login bug')), 'Claude (work)', 'herdr.agentNames: herdr keeps the row name');
   setAgentNames('title');
+  // The tab says which agent it is, then its session: "Claude (work): Fix the login bug".
+  assert.strictEqual(tabName(undefined, titled('claude-work', 'Fix the login bug')), 'Claude (work): Fix the login bug');
+  assert.strictEqual(tabName(undefined, titled('claude-work-2', 'Claude Code')), 'Claude (work)', 'no session title yet');
+  assert.strictEqual(tabName(undefined, titled('claude', 'Pull request removal')), 'Claude: Pull request removal');
+  assert.strictEqual(tabName(undefined, titled('claude-2', 'Pull request removal')), 'Claude: Pull request removal');
+  const shell = { isAgent: false, label: 'x', raw: { pane: { label: 'dev server' } } } as any;
+  assert.strictEqual(tabName(undefined, shell), 'Herdr: dev server', 'a shell keeps the Herdr: prefix');
+  // The sidebar row: the session title, with the row's name next to it (agentName) so accounts stand apart.
+  const row = buildViewState({ ...inputs, model: { ...model, spaces: [{ ...model.spaces[0], tabs: [{ ...model.spaces[0].tabs[0], panes: [{ ...titled('claude-work', 'Fix the login bug'), id: 'w1:px', tokens: {}, status: 'idle' }] }] }] } as any });
+  const r = row.spaces.flatMap((sp) => sp.agents)[0];
+  assert.deepStrictEqual([r?.name, r?.agentName], ['Fix the login bug', 'Claude (work)']);
   setProfileNames([]);
-  console.log("✓ a profile's agents: the session name, else the profile's name");
+  console.log("✓ a profile's agents: the session name, else the profile's name; tabs say agent: session; rows name the agent");
 }
 
 console.log('\nview tests passed');
