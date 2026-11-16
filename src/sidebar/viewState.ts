@@ -71,7 +71,10 @@ export interface SpaceView {
   label: string;
   /** cwd with the home directory shortened to ~ */
   path?: string;
-  /** The card's folder line: `path` shortened to fit (see shortPath()), and a worktree's repository. */
+  /**
+   * The card's folder line: `text`, the folder shortened to fit (see shortPath()), and for a linked worktree the
+   * repository it belongs to (`worktreeOf`; then `text` is the whole folder, on a line of its own).
+   */
   folder?: { text: string; worktreeOf?: string };
   status?: AgentStatus;
   /** Herdr's focused workspace. */
@@ -400,7 +403,11 @@ export function shortPath(p: string): string {
   return [parts[0], '…', ...parts.slice(-2)].join('/');
 }
 
-/** The card's folder line: where the space lives, and for a worktree, whose checkout it is. */
+/**
+ * The card's folder line: where the space lives. A linked worktree says whose checkout it is ("Worktree of app")
+ * and gets its whole folder on the next line (shortened, ~/.herdr/worktrees/<repo>/<branch> lost the part that
+ * says it's one of Herdr's worktrees).
+ */
 export function folderLine(sp: Space, spaces: Space[]): { text: string; worktreeOf?: string } | undefined {
   const p = tilde(sp.cwd);
   if (!p) {
@@ -412,6 +419,7 @@ export function folderLine(sp: Space, spaces: Space[]): { text: string; worktree
     // The repo's own space by its name in the sidebar, else Herdr's name for the repository.
     const repo = repoSpace(spaces, sp);
     line.worktreeOf = repo?.label ?? wt.repo_name;
+    line.text = p;
   }
   return line;
 }

@@ -157,6 +157,9 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 }
 .space-folder .codicon { font-size: 12px; flex: none; }
 .space-folder .worktree-of { flex: none; }
+/* A worktree: the folder with a folder icon, then "Worktree of app" with its icon, the icons one above the other. */
+.space-folder.worktree { flex-direction: column; align-items: stretch; gap: 1px; }
+.space-folder.worktree .folder-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .space-folder .folder-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--fs-xs); }
 /* A card's actions (New tab, New worktree) on its name line, always shown: no taller than the name, so the
    header keeps its height. */

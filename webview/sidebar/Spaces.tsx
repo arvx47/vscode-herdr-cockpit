@@ -181,10 +181,24 @@ function FolderLine({ sp }: { sp: SpaceView }) {
     title = `A worktree of ${f.worktreeOf}: its own checkout and branch\n${title}`;
     icon = 'repo-forked';
   }
+  if (f.worktreeOf) {
+    // Two lines: its whole folder (shortened, Herdr's worktree folders all look alike), then whose checkout it is.
+    return (
+      <div className="space-folder worktree" title={title}>
+        <div className="folder-row">
+          <Icon name="folder" />
+          <span className="folder-path">{f.text}</span>
+        </div>
+        <div className="folder-row">
+          <Icon name={icon} />
+          <span className="worktree-of">Worktree of {f.worktreeOf}</span>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="space-folder" title={title}>
       <Icon name={icon} />
-      {f.worktreeOf && <span className="worktree-of">{f.worktreeOf} worktree ·</span>}
       <span className="folder-path">{f.text}</span>
     </div>
   );

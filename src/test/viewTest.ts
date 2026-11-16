@@ -2,6 +2,7 @@
 // captured from herdr 0.9.1 panes. No VS Code or socket needed.
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import * as assert from 'assert';
 import { describeProcess, isShellProcess, summarizeAgent, summarizeShell } from '../state/activity';
 import * as vm from 'vm';
@@ -181,6 +182,11 @@ console.log('✓ a window with its own folders is marked for the "no space here"
   assert.strictEqual(shortPath('/a/b/c/d/e'), '/…/d/e');
   assert.deepStrictEqual(folderLine(main, all), { text: '/r/app' });
   assert.deepStrictEqual(folderLine(wt, all), { text: '/wt/app/feat', worktreeOf: 'm' }, 'named after its repo space');
+  assert.deepStrictEqual(
+    folderLine({ ...wt, cwd: path.join(os.homedir(), '.herdr', 'worktrees', 'app', 'feat') }, all),
+    { text: '~/.herdr/worktrees/app/feat', worktreeOf: 'm' },
+    'a worktree: its whole folder (it has a line of its own)',
+  );
   assert.deepStrictEqual(folderLine(orphan, all), { text: '/wt/gone/y', worktreeOf: 'gone' }, "no repo space: Herdr's repo name");
   assert.strictEqual(folderLine(sp('x', ''), all), undefined, 'no folder known: no line');
   console.log('✓ space cards show their folder, and a worktree its repo');
