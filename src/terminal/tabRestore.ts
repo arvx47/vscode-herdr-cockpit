@@ -22,6 +22,8 @@ export interface TabRestoreDeps {
   terms: AttachTerminals;
   model(): Model | undefined;
   enabled(): boolean;
+  /** The name a pane's tab gets (tabName() in viewState.ts). */
+  tabName(pane: Pane): string;
   log(line: string): void;
 }
 
@@ -78,15 +80,25 @@ export class TabRestore implements vscode.Disposable {
     const saved = this.deps.state.get<{ paneId: string; spaceId: string }[]>(OPEN_TABS_KEY, []);
     const panes = new Map(allPanes(this.deps.model()).map(({ pane }) => [pane.id, pane] as const));
     const reopened: Pane[] = [];
+    // After Restart Extensions the window keeps the tabs the previous run opened, but they no longer show their
+    // pane (it belonged to the extension host that stopped): close the one a reopened tab replaces, matched by name.
+    const leftovers = terms.untracked();
+    let replaced = 0;
     for (const { paneId } of saved) {
       const pane = panes.get(paneId);
       if (pane && !terms.has(paneId)) {
+        const name = this.deps.tabName(pane);
+        const old = leftovers.findIndex((t) => t.name === name);
+        if (old >= 0) {
+          leftovers.splice(old, 1)[0].dispose();
+          replaced++;
+        }
         terms.attach(pane, { preserveFocus: true, polite: true });
         reopened.push(pane);
       }
     }
     if (saved.length) {
-      log(`reopened ${reopened.length} of ${saved.length} tabs from the last session`);
+      log(`reopened ${reopened.length} of ${saved.length} tabs from the last session (${replaced} replacing tabs left from before a restart)`);
     }
     this.save();
     if (!reopened.length) {

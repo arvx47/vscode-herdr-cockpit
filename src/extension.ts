@@ -156,6 +156,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     terms,
     model: () => model,
     enabled: () => cfg().get<boolean>('restoreTabs', true),
+    tabName: (pane) => tabName(model?.spaces.flatMap((s) => s.tabs).find((t) => t.id === pane.tabId), pane),
     log: (line) => log.appendLine(line),
   });
   const flow: WindowFlow = new WindowFlow({

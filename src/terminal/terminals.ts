@@ -141,6 +141,12 @@ export class AttachTerminals implements vscode.Disposable {
     return this.byPane.get(paneId)?.name;
   }
 
+  /** Terminals of this window that this run of the extension didn't open (or adopt). */
+  untracked(): vscode.Terminal[] {
+    const mine = new Set([...this.byPane.values()].map((e) => e.term));
+    return vscode.window.terminals.filter((t) => !mine.has(t));
+  }
+
   /** The live built-in tab behind a terminal, if it's one of ours. */
   ptyOf(term: vscode.Terminal | undefined): PaneTab | undefined {
     for (const e of this.byPane.values()) if (e.term === term && live(e)) return e.pty;
