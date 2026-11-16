@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.41",
+  "version": "0.3.45",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -157,8 +157,7 @@
       {
         "command": "herdr.toggleFollow",
         "title": "%command.toggleFollow%",
-        "category": "%category%",
-        "toggled": "config.herdr.followMode"
+        "category": "%category%"
       },
       {
         "command": "herdr.dumpSnapshot",
@@ -169,8 +168,27 @@
         "command": "herdr.toggleShellPanes",
         "title": "%command.toggleShellPanes%",
         "category": "%category%",
-        "icon": "$(terminal)",
-        "toggled": "config.herdr.showShellPanes"
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "herdr.showShellPanes",
+        "title": "%command.showShellPanes%",
+        "category": "%category%"
+      },
+      {
+        "command": "herdr.hideShellPanes",
+        "title": "%command.hideShellPanes%",
+        "category": "%category%"
+      },
+      {
+        "command": "herdr.followOn",
+        "title": "%command.followOn%",
+        "category": "%category%"
+      },
+      {
+        "command": "herdr.followOff",
+        "title": "%command.followOff%",
+        "category": "%category%"
       },
       {
         "command": "herdr.openSettings",
@@ -331,13 +349,23 @@
           "group": "0_start@1"
         },
         {
-          "command": "herdr.toggleFollow",
-          "when": "view == herdr.spaces",
+          "command": "herdr.followOn",
+          "when": "view == herdr.spaces && !config.herdr.followMode",
           "group": "1_follow@1"
         },
         {
-          "command": "herdr.toggleShellPanes",
-          "when": "view == herdr.spaces",
+          "command": "herdr.followOff",
+          "when": "view == herdr.spaces && config.herdr.followMode",
+          "group": "1_follow@1"
+        },
+        {
+          "command": "herdr.showShellPanes",
+          "when": "view == herdr.spaces && !config.herdr.showShellPanes",
+          "group": "1_follow@2"
+        },
+        {
+          "command": "herdr.hideShellPanes",
+          "when": "view == herdr.spaces && config.herdr.showShellPanes",
           "group": "1_follow@2"
         },
         {
@@ -495,6 +523,30 @@
         {
           "command": "herdr.startServer",
           "when": "!herdr.connected"
+        },
+        {
+          "command": "herdr.toggleFollow",
+          "when": "false"
+        },
+        {
+          "command": "herdr.toggleShellPanes",
+          "when": "false"
+        },
+        {
+          "command": "herdr.followOn",
+          "when": "!config.herdr.followMode"
+        },
+        {
+          "command": "herdr.followOff",
+          "when": "config.herdr.followMode"
+        },
+        {
+          "command": "herdr.showShellPanes",
+          "when": "!config.herdr.showShellPanes"
+        },
+        {
+          "command": "herdr.hideShellPanes",
+          "when": "config.herdr.showShellPanes"
         }
       ],
       "webview/context": [

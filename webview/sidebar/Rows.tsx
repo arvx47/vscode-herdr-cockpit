@@ -1,6 +1,6 @@
 // Agent and shell rows: two lines (name + status, then one line of context); the chevron reveals the rest.
 import type { KeyboardEvent, ReactNode } from 'react';
-import type { PaneView } from '../../src/viewState';
+import type { PaneView } from '../../src/sidebar/viewState';
 import { post, useNow } from './host';
 import { AgentLogo, Icon, IconButton, menuContext, pressable, Since } from './ui';
 

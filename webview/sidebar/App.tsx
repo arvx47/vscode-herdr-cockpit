@@ -1,7 +1,7 @@
 // The sidebar: status counters, Needs you, Spaces, then Usage at the bottom. Draws the ViewState that
-// src/panel.ts posts (built by src/viewState.ts, where the decisions live and are tested).
+// src/sidebar/panel.ts posts (built by src/sidebar/viewState.ts, where the decisions live and are tested).
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { ViewState } from '../../src/viewState';
+import type { ViewState } from '../../src/sidebar/viewState';
 import { post, ready, useUiState } from './host';
 import { AgentRow } from './Rows';
 import { SpacesSection } from './Spaces';

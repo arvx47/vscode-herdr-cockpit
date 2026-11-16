@@ -1,8 +1,8 @@
-// The agent list (src/agentProfiles.ts): herdr.agents' rows (plain, renamed, with their own variables), what older
+// The agent list (src/agents/agentProfiles.ts): herdr.agents' rows (plain, renamed, with their own variables), what older
 // versions saved, and an agent recognized by the row it was started from.
 import * as assert from 'assert';
 import * as path from 'path';
-import { DEFAULT_AGENTS, parseProfileSpec, profileOfAgent, readAgentList, readAgentProfiles, startingTable } from '../agentProfiles';
+import { DEFAULT_AGENTS, parseProfileSpec, profileOfAgent, readAgentList, readAgentProfiles, startingTable } from '../agents/agentProfiles';
 
 const home = path.join(path.sep, 'home', 'someone');
 const names = (r: { profiles: { name: string }[] }) => r.profiles.map((p) => p.name);

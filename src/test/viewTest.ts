@@ -3,14 +3,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as assert from 'assert';
-import { describeProcess, isShellProcess, summarizeAgent, summarizeShell } from '../activity';
+import { describeProcess, isShellProcess, summarizeAgent, summarizeShell } from '../state/activity';
 import * as vm from 'vm';
-import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../model';
-import type { Space } from '../model';
-import { ago, left } from '../format';
-import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../viewState';
-import type { PaneActivity } from '../activity';
-import type { PaneProcessInfo, SessionSnapshotResult } from '../herdrTypes';
+import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../state/model';
+import type { Space } from '../state/model';
+import { ago, left } from '../util/format';
+import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
+import type { PaneActivity } from '../state/activity';
+import type { PaneProcessInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
 
 const zsh: PaneProcessInfo = { pane_id: 'w2:p5', foreground_process_group_id: 1, foreground_processes: [{ pid: 1, name: 'zsh', argv: ['-zsh'] }] };
 const P = 'dev@laptop api-service %';

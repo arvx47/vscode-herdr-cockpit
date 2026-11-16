@@ -1,10 +1,10 @@
-// Notification wording (src/notices.ts) and the folders a file link opens from without asking (src/linkRoots.ts).
+// Notification wording (src/commands/notices.ts) and the folders a file link opens from without asking (src/windows/linkRoots.ts).
 import * as assert from 'assert';
 import * as path from 'path';
-import { fileReference, lostNotice, nameList, takenOverNotice } from '../notices';
-import { shellTabName } from '../viewState';
-import { fileLinkRoots } from '../linkRoots';
-import { branchFromInput, branchProblem } from '../branchName';
+import { fileReference, lostNotice, nameList, takenOverNotice } from '../commands/notices';
+import { shellTabName } from '../sidebar/viewState';
+import { fileLinkRoots } from '../windows/linkRoots';
+import { branchFromInput, branchProblem } from '../commands/branchName';
 
 // Losing Herdr: a stopped server offers to start it, a broken connection to retry
 assert.deepStrictEqual(lostNotice('crashed').actions, ['Start Herdr', 'Open Herdr TUI']);

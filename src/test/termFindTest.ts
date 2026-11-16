@@ -5,10 +5,10 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { HerdrStream } from '../herdrStream';
-import { charWidth, layout } from '../termFind';
-import { FindController, PaneScroll } from '../termFindController';
-import { Screen } from '../termScreen';
+import { HerdrStream } from '../drivers/herdr/herdrStream';
+import { charWidth, layout } from '../drivers/herdr/termFind';
+import { FindController, PaneScroll } from '../drivers/herdr/termFindController';
+import { Screen } from '../drivers/herdr/termScreen';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

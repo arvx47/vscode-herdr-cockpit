@@ -1,9 +1,9 @@
 // Find in a built-in Herdr tab (termFind.ts), file links (termLinks.ts) and the screen pieces they use
 // (highlights, the find bar, Option+click, Shift+click, typing over a selection). No VS Code, no Herdr.
 import * as assert from 'assert';
-import { charWidth, compileQuery, findMatches, layout, offsetFor, PaneText, startAt } from '../termFind';
-import { findFileRefs } from '../termLinks';
-import { Screen } from '../termScreen';
+import { charWidth, compileQuery, findMatches, layout, offsetFor, PaneText, startAt } from '../drivers/herdr/termFind';
+import { findFileRefs } from '../terminal/termLinks';
+import { Screen } from '../drivers/herdr/termScreen';
 
 (async () => {
   // ---------- widths and wrapping ----------

@@ -1,6 +1,6 @@
-// Matching editor tabs to our terminals (src/tabMatch.ts) and the moves that put them back in order.
+// Matching editor tabs to our terminals (src/terminal/tabMatch.ts) and the moves that put them back in order.
 import * as assert from 'assert';
-import { matchTabs, nextMove, TabRef } from '../tabMatch';
+import { matchTabs, nextMove, TabRef } from '../terminal/tabMatch';
 
 const tabs = (labels: string[], column = 1): TabRef<string>[] => labels.map((label, index) => ({ tab: `${column}:${index}`, label, column, index }));
 const none = () => undefined;

@@ -1,7 +1,7 @@
 // The Usage section: each running agent's plan limits, session tokens or credits, and what it did today. Folds to one line of numbers.
 import type { ReactNode } from 'react';
-import type { UsageView } from '../../src/viewState';
-import { shortCount } from '../../src/format';
+import type { UsageView } from '../../src/sidebar/viewState';
+import { shortCount } from '../../src/util/format';
 import { post, type UiState } from './host';
 import { AgentLogo, FoldHeading, Icon, Since, Until } from './ui';
 

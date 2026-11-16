@@ -1,4 +1,4 @@
-// The webview's side of src/panel.ts: actions go back as { type: 'cmd', command, spaceId?, paneId? }, and
+// The webview's side of src/sidebar/panel.ts: actions go back as { type: 'cmd', command, spaceId?, paneId? }, and
 // what's folded or expanded is kept in VS Code's webview state, so it survives the view being hidden.
 import { useCallback, useState, useSyncExternalStore } from 'react';
 

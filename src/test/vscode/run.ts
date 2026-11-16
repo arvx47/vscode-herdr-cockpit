@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { runTests } from '@vscode/test-electron';
-import { resolveBinary } from '../../connection';
+import { resolveBinary } from '../../drivers/herdr/connection';
 
 const SESSION = 'hb-vsc';
 

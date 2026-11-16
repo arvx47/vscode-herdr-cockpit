@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { filterOverrides, gitEnv, gitInfo, hasChanges, mainBranch, parseStatus } from '../gitInfo';
+import { filterOverrides, gitEnv, gitInfo, hasChanges, mainBranch, parseStatus } from '../util/gitInfo';
 
 // Parser: staged / modified / untracked / conflicts / upstream / ahead-behind.
 const p = parseStatus(

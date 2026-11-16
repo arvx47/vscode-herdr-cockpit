@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { writeClaim } from '../../hubFiles';
+import { writeClaim } from '../../windows/hubFiles';
 
 const SESSION = process.env.HERDR_HUB_TEST_SESSION ?? '';
 const [S1, S2] = (process.env.HERDR_HUB_TEST_SPACES ?? '').split(',');
@@ -90,7 +90,18 @@ async function steps(): Promise<void> {
   first.show();
   await sleep(300);
   await vscode.commands.executeCommand('workbench.action.createTerminalEditorSameGroup');
-  await until('"+" created a Herdr tab and a built-in tab', () => ours().length === 2 && panesOf(S1).length === 2);
+  try {
+    await until('"+" created a Herdr tab and a built-in tab', () => ours().length === 2 && panesOf(S1).length === 2);
+  } catch (e) {
+    console.log('terminals:', JSON.stringify(vscode.window.terminals.map((t) => ({ name: t.name, pty: 'pty' in (t.creationOptions as object), exit: t.exitStatus }))));
+    console.log('ours:', ours().length, 'herdr panes S1:', JSON.stringify(panesOf(S1)));
+    for (const t of vscode.window.terminals) {
+      const o = t.creationOptions as vscode.TerminalOptions;
+      console.log('terminal', t.name, 'shell', o.shellPath, 'args', JSON.stringify(o.shellArgs), 'hidden', o.hideFromUser, 'cwd', String(o.cwd));
+    }
+    console.log('active group tabs:', JSON.stringify(vscode.window.tabGroups.activeTabGroup.tabs.map((t) => t.label)), 'groups', vscode.window.tabGroups.all.length);
+    throw e;
+  }
   const plus = ours().find((t) => t !== first)!;
   await until('the "+" tab is tracked', () => hubStatus().tabs === 2);
   step('"+": Herdr tab created, built-in tab, tracked');

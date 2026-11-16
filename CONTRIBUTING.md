@@ -13,7 +13,7 @@ npm run package      # -> herdr-cockpit-<version>.vsix
 
 Press F5 in VS Code to run the extension in an Extension Development Host.
 
-- `src/herdrTypes.ts` is generated from `herdr api schema --json` (`npm run gen:types`). Don't edit it by hand.
+- `src/drivers/herdr/herdrTypes.ts` is generated from `herdr api schema --json` (`npm run gen:types`). Don't edit it by hand.
 - Keep `herdrClient.ts`, `model.ts`, `connection.ts`, `hubFiles.ts` and the other modules without `vscode` imports testable with plain Node.
 - The plugin (`plugin/herdr-cockpit.sh`) is POSIX `sh`: test it with `npm test`, which runs it under `/bin/sh` and `dash` when installed.
 - To try mutating Herdr calls, use a throwaway session (`herdr --session test server`), never your real one.

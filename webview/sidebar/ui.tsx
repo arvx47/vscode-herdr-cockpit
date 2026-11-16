@@ -1,6 +1,6 @@
 // Small pieces every part of the sidebar uses: icons, buttons, foldable headings, relative times, agent logos.
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
-import { ago, left } from '../../src/format';
+import { ago, left } from '../../src/util/format';
 import { useNow } from './host';
 
 declare global {

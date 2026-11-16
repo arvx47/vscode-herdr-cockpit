@@ -1,8 +1,8 @@
-// Connection screens and strips: why Herdr isn't connected (reasons from src/connection.ts) with the next step,
+// Connection screens and strips: why Herdr isn't connected (reasons from src/drivers/herdr/connection.ts) with the next step,
 // the reconnecting / protocol banner, and the versions line at the bottom.
 import type { ReactNode } from 'react';
-import type { ViewState } from '../../src/viewState';
-import { EXTENSION_NAME } from '../../src/brand';
+import type { ViewState } from '../../src/sidebar/viewState';
+import { EXTENSION_NAME } from '../../src/util/brand';
 import { post } from './host';
 import { Icon } from './ui';
 
@@ -192,7 +192,7 @@ export function Banner({ state }: { state: ViewState }) {
   return null;
 }
 
-/** Herdr Cockpit's version, and Herdr's while connected. */
+/** Herdr Cockpit's version, and Herdr's while connected (or the driver's name, when it isn't Herdr). */
 export function Versions({ state }: { state: ViewState }) {
   const v = state.versions;
   if (!v) {
@@ -202,6 +202,7 @@ export function Versions({ state }: { state: ViewState }) {
     <div className="versions">
       {EXTENSION_NAME} v{v.cockpit}
       {v.herdr && ` · Herdr ${v.herdr}`}
+      {v.driver && ` · ${v.driver} driver`}
     </div>
   );
 }

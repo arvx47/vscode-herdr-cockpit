@@ -6,7 +6,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { claudeAccountKey, claudeStatusLineScript, hasCapture, readUsage, shQuote, wrapStatusLine } from '../usage';
+import { claudeAccountKey, claudeStatusLineScript, hasCapture, readUsage, shQuote, wrapStatusLine } from '../agents/usage';
 
 const shells = [...new Map(['/bin/sh', '/bin/dash', '/usr/bin/dash'].filter((s) => fs.existsSync(s)).map((s) => [fs.realpathSync(s), s])).values()];
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-sh-'));

@@ -31,9 +31,9 @@ import {
   windowWithSpace,
   spacesWorkspaceFile,
   writeWindowRecord,
-} from '../hubFiles';
-import { EXTENSION_NAME } from '../brand';
-import { findTool, toolDirs } from '../tools';
+} from '../windows/hubFiles';
+import { EXTENSION_NAME } from '../util/brand';
+import { findTool, toolDirs } from '../util/tools';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-hub-'));
 

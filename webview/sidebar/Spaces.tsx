@@ -1,8 +1,8 @@
 // The Spaces section: "This window" / "Other spaces" (or one list), space cards with their git line, agents and
 // a foldable Shells group.
 import type { KeyboardEvent, ReactNode } from 'react';
-import type { SpaceView, ViewState } from '../../src/viewState';
-import { ago } from '../../src/format';
+import type { SpaceView, ViewState } from '../../src/sidebar/viewState';
+import { ago } from '../../src/util/format';
 import { post, useNow, type UiState } from './host';
 import { AgentRow, shellState, ShellRow } from './Rows';
 import { FoldHeading, Icon, IconButton, menuContext, pressable } from './ui';
@@ -190,7 +190,9 @@ function FolderLine({ sp }: { sp: SpaceView }) {
   );
 }
 
-function SpaceCard({ sp, ui, update, showShells }: { sp: SpaceView; ui: UiState; update: Update; showShells: boolean }) {
+function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; ui: UiState; update: Update; showShells: boolean; worktrees: boolean }) {
+  // New worktree, when the driver makes worktree spaces.
+  const repo = !!sp.git && worktrees;
   const open = ui.open[sp.id] ?? sp.defaultOpen;
   const setOpen = (o: boolean) => update((u) => ({ ...u, open: { ...u.open, [sp.id]: o } }));
   let cls = `space st-${sp.status ?? 'none'}`;
@@ -235,7 +237,7 @@ function SpaceCard({ sp, ui, update, showShells }: { sp: SpaceView; ui: UiState;
       <div
         className="space-head"
         title={title}
-        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: !!sp.git })}
+        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo })}
         {...pressable(() => setOpen(!open), { expanded: open, onKey })}
       >
         <span className={chev}>
@@ -248,7 +250,7 @@ function SpaceCard({ sp, ui, update, showShells }: { sp: SpaceView; ui: UiState;
           ))}
         </span>
         <IconButton icon="add" className="card-btn" title={`New tab in ${sp.label}: a shell or an agent`} onClick={() => post('newTab', { spaceId: sp.id })} />
-        {!!sp.git && (
+        {repo && (
           <IconButton
             icon="git-branch-create"
             className="card-btn"
@@ -313,7 +315,7 @@ function NoSpaceCard({ name, canAdd }: { name: string; canAdd: boolean }) {
 }
 
 export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiState; update: Update }) {
-  const card = (sp: SpaceView) => <SpaceCard key={sp.id} sp={sp} ui={ui} update={update} showShells={state.showShells} />;
+  const card = (sp: SpaceView) => <SpaceCard key={sp.id} sp={sp} ui={ui} update={update} showShells={state.showShells} worktrees={state.worktrees} />;
   const { layout } = state;
   let body: ReactNode;
   if (layout.split) {

@@ -1,6 +1,6 @@
-// Which window a space opens in (src/placement.ts), case by case.
+// Which window a space opens in (src/windows/placement.ts), case by case.
 import * as assert from 'assert';
-import { decidePlacement, followsInto, insideFolders, PlaceFacts } from '../placement';
+import { decidePlacement, followsInto, insideFolders, PlaceFacts } from '../windows/placement';
 
 const base: PlaceFacts = { pane: false, mode: 'folder', ownWindow: false, openHere: false, mounted: false, otherWindow: false, hasFolders: true };
 const cases: [string, Partial<PlaceFacts>, ReturnType<typeof decidePlacement>][] = [
@@ -20,6 +20,14 @@ const cases: [string, Partial<PlaceFacts>, ReturnType<typeof decidePlacement>][]
   ['folder mode, remembered: add here', { remembered: 'workspace' }, 'add'],
   ['folder mode, remembered: own window', { remembered: 'window' }, 'window'],
   ['folder mode, nothing remembered', {}, 'ask'],
+  ['a session of this window, single-folder window: opens here, nothing mounted (a reload would end it)', { local: true }, 'stay'],
+  ['a session of this window, window without folders', { local: true, hasFolders: false }, 'stay'],
+  ['a session of this window, right-click Open in Its Own Window: still here', { local: true, how: 'window' }, 'stay'],
+  ['a session of this window, workspace file: mounted at the end', { local: true, workspaceFile: true }, 'add'],
+  ['a session of this window, workspace file, folder inside ours', { local: true, workspaceFile: true, openHere: true, insideFolder: true }, 'stay'],
+  ['a session of this window, workspace mode', { local: true, mode: 'workspace', workspaceFile: true }, 'add'],
+  ['a session of another window: opens in that window', { local: true, elsewhere: true }, 'window'],
+  ['a session of another window, even with a workspace file here', { local: true, elsewhere: true, workspaceFile: true }, 'window'],
 ];
 for (const [what, facts, expected] of cases) {
   assert.strictEqual(decidePlacement({ ...base, ...facts }), expected, what);

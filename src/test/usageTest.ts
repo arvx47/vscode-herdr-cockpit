@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { claudeAccountKey, claudeCaptureFile, claudeStatusLineScript, codexLiveUsage, currentBlock, legacyClaudeCaptureFile, readUsage, todayDelta } from '../usage';
+import { claudeAccountKey, claudeCaptureFile, claudeStatusLineScript, codexLiveUsage, currentBlock, legacyClaudeCaptureFile, readUsage, todayDelta } from '../agents/usage';
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-'));
 const put = (rel: string, body: string) => {

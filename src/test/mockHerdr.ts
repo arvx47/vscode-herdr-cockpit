@@ -4,7 +4,7 @@
 // again on the same socket. Tests override or add methods with `handlers`.
 import * as fs from 'fs';
 import * as net from 'net';
-import type { PaneInfo, SessionSnapshotResult, TabInfo, WorkspaceInfo } from '../herdrTypes';
+import type { PaneInfo, SessionSnapshotResult, TabInfo, WorkspaceInfo } from '../drivers/herdr/herdrTypes';
 
 export interface MockRequest {
   id: string;
@@ -43,7 +43,7 @@ const invalid = (message: string): MockError => ({ code: 'invalid_request', mess
 const isText = (v: unknown) => typeof v === 'string';
 const given = (v: unknown) => v !== undefined && v !== null;
 
-/** Required string fields per method, as in the generated param types (src/herdrTypes.ts). */
+/** Required string fields per method, as in the generated param types (src/drivers/herdr/herdrTypes.ts). */
 const REQUIRED: Record<string, string[]> = {
   'workspace.focus': ['workspace_id'],
   'workspace.rename': ['workspace_id', 'label'],

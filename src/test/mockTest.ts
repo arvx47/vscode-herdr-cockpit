@@ -4,13 +4,16 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as assert from 'assert';
-import { HerdrClient, HerdrError, DEFAULT_SUBSCRIPTIONS, expandHome, subscriptionsFor } from '../herdrClient';
-import { normalize } from '../model';
-import { ActivityWatcher } from '../activity';
-import { HerdrActions, agentName, agentSlug, agentTitle, resumeArgs } from '../herdrActions';
+import { HerdrClient, HerdrError, DEFAULT_SUBSCRIPTIONS, subscriptionsFor } from '../drivers/herdr/herdrClient';
+import { normalize } from '../state/model';
+import { ActivityWatcher } from '../state/activity';
+import { HerdrBackend } from '../drivers/herdr/herdrBackend';
+import { HerdrActions } from '../drivers/herdr/herdrActions';
 import { MockHerdr, pane, snap, tab, validate, ws } from './mockHerdr';
 
-import type { AgentInfo, PaneInfo, SessionSnapshotResult } from '../herdrTypes';
+import type { AgentInfo, PaneInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
+import { expandHome } from '../util/paths';
+import { agentName, agentSlug, agentTitle, resumeArgs } from '../agents/agentNames';
 
 const sock = path.join(os.tmpdir(), `herdr-mock-${process.pid}.sock`);
 
@@ -200,8 +203,21 @@ async function main() {
   assert.strictEqual(normalize(await client.request<SessionSnapshotResult>('session.snapshot')).focusedSpaceId, 'w2');
   console.log('✓ requests, errors, focus');
 
+  // 3a. the Herdr backend: snapshot with the server's version, focus
+  const backend = new HerdrBackend(client);
+  const read = await backend.snapshot();
+  assert.strictEqual(read.version, snapshot.snapshot.version);
+  assert.strictEqual(read.protocol, snapshot.snapshot.protocol);
+  assert.strictEqual(read.model.focusedSpaceId, 'w2');
+  await backend.focusSpace('w1');
+  assert.strictEqual((await backend.snapshot()).model.focusedSpaceId, 'w1');
+  await backend.focusSpace('w2'); // back as the tests below expect it
+  await assert.rejects(backend.focusSpace('nope'), (e: any) => e instanceof HerdrError && e.code === 'not_found');
+  assert.deepStrictEqual(await backend.rawSnapshot(), await client.request('session.snapshot'));
+  console.log('✓ Herdr backend (snapshot, version, focus)');
+
   // 3b. pane activity via pane.process_info + pane.read
-  const watcher = new ActivityWatcher(client);
+  const watcher = new ActivityWatcher(backend);
   assert.strictEqual(await watcher.poll([{ paneId: 'w1:p2', kind: 'shell' }]), true);
   const act = watcher.get('w1:p2')!;
   assert.strictEqual(act.state, 'running');

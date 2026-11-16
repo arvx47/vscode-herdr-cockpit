@@ -4,7 +4,9 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { backoffDelay, binaryFound, diagnose, herdrEnv, serverEnv, serverStatus, sessionOfSocket, startServer } from '../connection';
+import { binaryFound, diagnose, herdrEnv, serverStatus, sessionOfSocket, startServer } from '../drivers/herdr/connection';
+import { backoffDelay } from '../state/sync';
+import { terminalEnv } from '../util/env';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-conn-'));
 const state = path.join(dir, 'state.json');
@@ -135,9 +137,9 @@ const killStarted = () => {
   console.log('✓ start server: already running (no second server), started, early exit, timeout, missing binary, one window at a time, custom-socket clash');
 
   // The server gets a terminal-like environment: no VS Code variables, and Kiro told not to wrap shells.
-  const vs = serverEnv({ PATH: '/usr/bin', HOME: '/h', VSCODE_PID: '1', VSCODE_IPC_HOOK: '/x', ELECTRON_RUN_AS_NODE: '1', __CFBundleIdentifier: 'com.microsoft.VSCode', TERM_PROGRAM: 'vscode', HERDR_SESSION: 'w' });
+  const vs = terminalEnv({ PATH: '/usr/bin', HOME: '/h', VSCODE_PID: '1', VSCODE_IPC_HOOK: '/x', ELECTRON_RUN_AS_NODE: '1', __CFBundleIdentifier: 'com.microsoft.VSCode', TERM_PROGRAM: 'vscode', HERDR_SESSION: 'w' });
   assert.deepStrictEqual(vs, { PATH: '/usr/bin', HOME: '/h', HERDR_SESSION: 'w', Q_TERM_DISABLED: '1' });
-  assert.deepStrictEqual(serverEnv({ PATH: '/usr/bin', Q_TERM: '2.27.1', TERM_PROGRAM: 'ghostty' }), { PATH: '/usr/bin', Q_TERM: '2.27.1', TERM_PROGRAM: 'ghostty' }, 'inside a Kiro terminal: leave Kiro alone');
+  assert.deepStrictEqual(terminalEnv({ PATH: '/usr/bin', Q_TERM: '2.27.1', TERM_PROGRAM: 'ghostty' }), { PATH: '/usr/bin', Q_TERM: '2.27.1', TERM_PROGRAM: 'ghostty' }, 'inside a Kiro terminal: leave Kiro alone');
   console.log('✓ server environment: VS Code variables dropped, Kiro wrapper off');
 
   fs.rmSync(dir, { recursive: true, force: true });

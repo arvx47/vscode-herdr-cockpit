@@ -1,39 +1,44 @@
 import * as vscode from 'vscode';
-import { EXTENSION_NAME, MESSAGE_PREFIX } from './brand';
+import { EXTENSION_NAME, MESSAGE_PREFIX } from './util/brand';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { errorText, expandHome, HerdrClient, resolveSocketPath } from './herdrClient';
-import { sleep } from './format';
-import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } from './model';
-import type { PaneProcessInfoResult } from './herdrTypes';
-import { HerdrPanel, PanelAction } from './panel';
-import { HerdrSync } from './herdrSync';
-import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './activity';
-import { AgentNames, agentNameParts, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection } from './viewState';
-import { AgentProfile, readAgentList, startingTable } from './agentProfiles';
-import { agentLogo } from './agentLogos';
-import { gitInfo, hasChanges, mainBranch } from './gitInfo';
-import { isMounted, PREFIX } from './folders';
-import { AttachTerminals, TerminalLocationSetting } from './terminals';
-import { TabAction } from './builtinTerminal';
-import { findFileRefs } from './termLinks';
-import { binaryFound, diagnose, herdrEnv, resolveBinary, startServer } from './connection';
-import { claimant, hubDir, hubOpen, hubWorkspaceFile, legacyHubWorkspaceFile, OfferHubSetting, readClaim, removeClaim, windowKey, writeClaim, shouldOfferHub, normPath } from './hubFiles';
-import { HERDR_PROTOCOL } from './herdrTypes';
-import { reviewChanges } from './review';
-import { TabRestore } from './tabRestore';
-import { HUB_TAB_DESCRIPTION, Links, PLATFORM_KEY } from './links';
-import { CockpitFiles } from './cockpitFiles';
-import { DOWN_TEXT } from './notices';
-import { Notifications } from './notifications';
-import { MANAGED_KEY, WindowFlow } from './windowFlow';
-import { Commands, Target } from './commands';
-import { agentSlug, HerdrActions } from './herdrActions';
-import { closedTab, ManageDeps } from './manage';
-import { registerProfiles, SHELL_PROFILE_TITLE } from './profiles';
-import { ClaudeAccount, codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './usage';
+import { HerdrClient, resolveSocketPath } from './drivers/herdr/herdrClient';
+import { sleep } from './util/format';
+import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } from './state/model';
+import { HerdrPanel, PanelAction } from './sidebar/panel';
+import { SessionSync } from './state/sync';
+import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './state/activity';
+import { AgentNames, agentNameParts, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewState } from './sidebar/viewState';
+import { AgentProfile, readAgentList, startingTable } from './agents/agentProfiles';
+import { agentLogo } from './agents/agentLogos';
+import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
+import { isMounted, PREFIX } from './windows/folders';
+import { AttachTerminals, TerminalLocationSetting } from './terminal/terminals';
+import { TabAction } from './drivers/paneTab';
+import { agentSlug } from './agents/agentNames';
+import { findFileRefs } from './terminal/termLinks';
+import { binaryFound, diagnose, herdrEnv, resolveBinary, startServer } from './drivers/herdr/connection';
+import { claimant, hubDir, hubOpen, hubWorkspaceFile, legacyHubWorkspaceFile, OfferHubSetting, readClaim, removeClaim, windowKey, writeClaim, shouldOfferHub, normPath } from './windows/hubFiles';
+import { HERDR_PROTOCOL } from './drivers/herdr/herdrTypes';
+import { reviewChanges } from './commands/review';
+import { TabRestore } from './terminal/tabRestore';
+import { HUB_TAB_DESCRIPTION, Links, PLATFORM_KEY } from './windows/links';
+import { CockpitFiles } from './windows/cockpitFiles';
+import { DOWN_TEXT } from './commands/notices';
+import { Notifications } from './commands/notifications';
+import { MANAGED_KEY, WindowFlow } from './windows/windowFlow';
+import { Commands, Target } from './commands/commands';
+import { inDriver } from './drivers/backend';
+import type { Backend } from './drivers/backend';
+import { Driver, herdrDriver } from './drivers/drivers';
+import type { BuiltinDeps } from './drivers/herdr/builtinTerminal';
+import { closedTab, ManageDeps } from './commands/manage';
+import { registerProfiles, SHELL_PROFILE_TITLE } from './terminal/profiles';
+import { ClaudeAccount, codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './agents/usage';
+import { errorText } from './util/errors';
+import { expandHome } from './util/paths';
 
 const REVEALED_KEY = 'herdr.hubViewRevealed';
 /** Webview action -> command id. */
@@ -71,6 +76,12 @@ export function activate(ctx: vscode.ExtensionContext) {
   /** A .catch() handler that logs instead of leaving an unhandled rejection. */
   const logError = (what: string) => (e: unknown) => log.appendLine(`${what}: ${errorText(e)}`);
   const client = new HerdrClient(() => resolveSocketPath(cfg().get<string>('socketPath')));
+  /**
+   * This window's driver (drivers.ts): everything reads and changes the session through its backend and opens its
+   * tabs (pickDriver() below). Herdr is the only one on this branch; the native driver lives on its own branch.
+   */
+  const driver = pickDriver();
+  const backend: Backend = driver.backend;
   // When did each agent enter its current state? (observed locally; Herdr exposes only a sequence number)
   const stateSince = new Map<string, { status?: AgentStatus; at: number }>();
   const showShells = () => cfg().get<boolean>('showShellPanes', true);
@@ -90,7 +101,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     const id = PANEL_COMMANDS[a.command];
     if (id) vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId, account: a.account } satisfies Target);
   });
-  const activity = new ActivityWatcher(client);
+  const activity = new ActivityWatcher(backend);
   const logoUri = (f: string) => vscode.Uri.joinPath(ctx.extensionUri, 'media', 'agent-logos', `${f}.svg`);
   /** The agent's logo as a tab / quick pick icon, or undefined when there's none. */
   const agentIcon = (kind?: string) => {
@@ -116,7 +127,13 @@ export function activate(ctx: vscode.ExtensionContext) {
       scheduleRender();
       tabs.save();
     },
-    {
+    driver.newTab,
+    (paneId) => void closedTabByUser(paneId).catch(logError('close in Herdr')),
+    (paneId, name) => void renamedTabByUser(paneId, name).catch(logError('rename in Herdr')),
+  );
+  /** The driver: Herdr, with its tabs' dependencies. */
+  function pickDriver(): Driver {
+    const herdrTabs: Omit<BuiltinDeps, 'onEnded'> = {
       binary: () => binary(),
       env: () => herdrEnvNow(),
       log: (line) => log.appendLine(line),
@@ -131,10 +148,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       },
       request: (method, params, timeoutMs) => client.request(method, params, timeoutMs),
       copyOnSelect: () => cfg().get<boolean>('copyOnSelect', false),
-    },
-    (paneId) => void closedTabByUser(paneId).catch(logError('close in Herdr')),
-    (paneId, name) => void renamedTabByUser(paneId, name).catch(logError('rename in Herdr')),
-  );
+    };
+    return herdrDriver(client, herdrTabs);
+  }
   const tabs = new TabRestore({
     state: ctx.workspaceState,
     terms,
@@ -147,7 +163,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     log: (line) => log.appendLine(line),
     model: () => model,
     terms,
-    client,
+    backend,
     socketPath: () => socketPath(),
     isHubWindow: () => isHubWindow(),
     openHub: (): Promise<void> => links.openHub(),
@@ -202,7 +218,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   // git reads each repo's own config; only run it once the window is trusted (see gitInfo.ts).
   const git = (cwd?: string) => (vscode.workspace.isTrusted ? gitInfo(cwd, scheduleRender) : undefined);
 
-  // ---------- connection (herdrSync.ts) ----------
+  // ---------- connection (sync.ts) ----------
   const socketPath = () => resolveSocketPath(cfg().get<string>('socketPath'));
   const binary = () => resolveBinary(cfg().get<string>('binaryPath'));
   const herdrEnvNow = () => herdrEnv(cfg().get<string>('socketPath') || undefined);
@@ -210,8 +226,8 @@ export function activate(ctx: vscode.ExtensionContext) {
   const startLockFile = () => path.join(hubDir(), 'locks', `start-${crypto.createHash('sha256').update(socketPath()).digest('hex').slice(0, 24)}.lock`);
   /** The space whose tabs were open when Herdr went away, to offer reopening them. */
   let lostSpace: { id: string; label: string } | undefined;
-  const sync = new HerdrSync({
-    client,
+  const sync = new SessionSync({
+    backend,
     socketPath,
     diagnose: (e) => diagnose(binary(), socketPath(), !!cfg().get<string>('socketPath'), herdrEnvNow(), e),
     onSnapshot: (next) => apply(next),
@@ -263,25 +279,31 @@ export function activate(ctx: vscode.ExtensionContext) {
     const name = paneName(space.tabs.find((t) => t.id === pane.tabId), pane);
     let running: string | undefined;
     if (!pane.isAgent) {
-      const info = await client.request<PaneProcessInfoResult>('pane.process_info', { pane_id: paneId }).then((r) => r.process_info).catch(() => undefined);
+      const info = await backend.processInfo(paneId).catch(() => undefined);
       const lead = leaderProcess(info);
       if (lead && !isShellProcess(lead.name)) running = describeProcess(lead);
     }
     const last = space.tabs.flatMap((t) => t.panes).length === 1;
     if (last || (mode === 'ask' && (pane.isAgent || running))) {
+      const where = inDriver(backend.capabilities);
+      let keep = 'Keep Running leaves it running in this window; click it in the sidebar to open it again.';
+      if (backend.capabilities.server) {
+        keep = `Keep Running leaves it${where}; click it in the sidebar to open it again.`;
+      }
       const detail = [
-        pane.isAgent ? `${name} is an agent: closing it in Herdr stops it.` : running ? `It's running ${running}.` : undefined,
-        last ? `It's the last tab of "${space.label}", so Herdr closes the space too.` : undefined,
-        'Keep Running leaves it in Herdr; click it in the sidebar to open it again.',
+        pane.isAgent ? `${name} is an agent: closing it${where} stops it.` : running ? `It's running ${running}.` : undefined,
+        last ? `It's the last tab of "${space.label}", so the space closes too.` : undefined,
+        keep,
       ]
         .filter(Boolean)
         .join(' ');
-      const pick = await vscode.window.showWarningMessage(`Close ${name} in Herdr too?`, { modal: true, detail }, 'Close in Herdr', 'Keep Running');
-      if (pick !== 'Close in Herdr') return;
+      const close = `Close${where}`;
+      const pick = await vscode.window.showWarningMessage(`Close ${name}${where} too?`, { modal: true, detail }, close, 'Keep Running');
+      if (pick !== close) return;
     }
     await manage.actions.closePane(paneId);
     closed.closedInHerdr = true;
-    log.appendLine(`closed ${paneId} in Herdr (tab closed)`);
+    log.appendLine(`closed ${paneId} (tab closed)`);
     kick();
   }
 
@@ -323,6 +345,8 @@ export function activate(ctx: vscode.ExtensionContext) {
   /** Start the headless server in the background (it outlives VS Code), then connect. */
   async function startHerdr(): Promise<boolean> {
     if (isConnected()) return true;
+    // A driver without a server has nothing to start: its session is in this window.
+    if (!backend.capabilities.server) return true;
     const bin = binary();
     if (!binaryFound(bin)) {
       const pick = await vscode.window.showErrorMessage(`Herdr isn't installed (looked for ${bin}).`, 'Install Herdr', 'Settings');
@@ -355,7 +379,7 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   /** The Cockpit window opened with Herdr stopped: start it, per herdr.startServer (asked once, then remembered). */
   async function maybeAutoStart() {
-    if (!isHubWindow() || sync.conn.kind !== 'down' || (sync.conn.reason !== 'not-running' && sync.conn.reason !== 'crashed')) return;
+    if (!backend.capabilities.server || !isHubWindow() || sync.conn.kind !== 'down' || (sync.conn.reason !== 'not-running' && sync.conn.reason !== 'crashed')) return;
     const mode = cfg().get<'ask' | 'always' | 'never'>('startServer', 'ask');
     if (mode === 'never') return;
     if (mode === 'always') {
@@ -397,6 +421,15 @@ export function activate(ctx: vscode.ExtensionContext) {
     activitySave = setTimeout(saveActivity, 2000);
   }
 
+  /** The bottom line: our version, and Herdr's while connected (or the driver, when it isn't Herdr). */
+  function versions(): ViewState['versions'] {
+    const cockpit = String(ctx.extension.packageJSON.version);
+    if (!backend.capabilities.server) {
+      return { cockpit, driver: backend.capabilities.label };
+    }
+    return { cockpit, herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined };
+  }
+
   function render() {
     flow.noteFolders(model);
     scheduleHubStatus();
@@ -414,10 +447,11 @@ export function activate(ctx: vscode.ExtensionContext) {
         order: cfg().get<'activity' | 'herdr'>('spaceOrder', 'herdr'),
         lastActive: (sp) => spaceActivity.get(sp.label),
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
-        versions: { cockpit: String(ctx.extension.packageJSON.version), herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined },
+        versions: versions(),
         here: (sp) => flow.isOpenHere(sp),
         needsYou: cfg().get<boolean>('showNeedsYou', false),
         thisWindow: thisWindowView(),
+        worktrees: backend.capabilities.worktrees,
       }),
     );
   }
@@ -676,7 +710,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   function herdrAgentKinds(): Promise<string[]> {
     const version = sync.conn.kind === 'connected' ? sync.conn.version : undefined;
     if (!agentKindsCache || agentKindsCache.version !== version) {
-      const kinds = new HerdrActions(client).agentKinds().catch((e) => {
+      const kinds = backend.actions.agentKinds().catch((e) => {
         log.appendLine(`agent manifests: ${errorText(e)}`);
         agentKindsCache = undefined; // ask again next time
         return [];
@@ -686,7 +720,8 @@ export function activate(ctx: vscode.ExtensionContext) {
     return agentKindsCache.kinds;
   }
   const manage: ManageDeps = {
-    actions: new HerdrActions(client),
+    actions: backend.actions,
+    capabilities: backend.capabilities,
     async findPane(paneId) {
       for (let i = 0; i < 15; i++) {
         await refresh();
@@ -742,7 +777,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     cfg,
     model: () => model,
     sync,
-    client,
+    backend,
     terms,
     tabs,
     flow,
@@ -794,6 +829,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     {
       dispose: () => {
         sync.dispose();
+        backend.dispose?.();
         clearTimeout(renderTimer);
         clearInterval(redrawTimer);
         clearInterval(activityTimer);
@@ -856,12 +892,13 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (!hit?.pane.isAgent || hit.pane.status !== 'done' || !vscode.window.state.focused || !isConnected()) {
       return;
     }
-    client
-      .request('agent.focus', { target: hit.pane.id })
+    backend
+      .focusAgent(hit.pane.id)
       .then(() => kick())
       .catch(logError('agent.focus'));
   }
-  const terminalContext = () => void vscode.commands.executeCommand('setContext', 'herdr.terminalActive', !!terms.ptyOf(vscode.window.activeTerminal));
+  // Only tabs with keys of their own: VS Code's terminal finds and scrolls in a tab without them itself.
+  const terminalContext = () => void vscode.commands.executeCommand('setContext', 'herdr.terminalActive', !!terms.ptyOf(vscode.window.activeTerminal)?.ownKeys);
   const tabAction = (a: TabAction) => () => {
     const pty = terms.ptyOf(vscode.window.activeTerminal);
     if (pty) pty.action(a);
@@ -999,7 +1036,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       mode: cfg().get<OfferHubSetting>('offerHubOnStartup', 'emptyWindows'),
       isHub: isHubWindow(),
       hasFolder,
-      herdrInstalled: binaryFound(binary()),
+      // A driver without a server needs no Herdr.
+      herdrInstalled: !backend.capabilities.server || binaryFound(binary()),
       hubOpenElsewhere: hubOpen(scheme),
     });
     if (!offer) return;

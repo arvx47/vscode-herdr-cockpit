@@ -1,4 +1,4 @@
-// HerdrSync (src/herdrSync.ts) against the fake Herdr server (mockHerdr.ts), which can stop and start again:
+// SessionSync (src/state/sync.ts) against the fake Herdr server (mockHerdr.ts), which can stop and start again:
 // connect, lose the connection, the reconnect grace, diagnose, come back, refreshes that wait for each other,
 // a kick or the socket appearing while a refresh fails, the event subscription following the pane set (and
 // recovering from pane_not_found), events causing one debounced refresh, switching sockets, and dispose.
@@ -7,10 +7,11 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as assert from 'assert';
-import { HerdrClient } from '../herdrClient';
-import { HerdrSync, SyncDeps } from '../herdrSync';
-import type { Model } from '../model';
-import type { SessionSnapshotResult } from '../herdrTypes';
+import { HerdrClient } from '../drivers/herdr/herdrClient';
+import { HerdrBackend } from '../drivers/herdr/herdrBackend';
+import { SessionSync, SyncDeps } from '../state/sync';
+import type { Model } from '../state/model';
+import type { SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
 import { MockHerdr, pane, sleep, snap, tab, until, ws } from './mockHerdr';
 
 // Its own folder: the sync watches the socket's folder while Herdr is down.
@@ -57,8 +58,8 @@ const closeGate = () => {
 function makeSync(name: string, timing: SyncDeps['timing'], socketPath = () => sock) {
   const seen: string[] = [];
   const state = { model: undefined as Model | undefined, diagnosed: 0, seen };
-  const sync = new HerdrSync({
-    client: new HerdrClient(socketPath),
+  const sync = new SessionSync({
+    backend: new HerdrBackend(new HerdrClient(socketPath)),
     socketPath,
     diagnose: async () => {
       state.diagnosed++;
@@ -89,7 +90,7 @@ async function main() {
   const seen = s.seen;
 
   // A function, so TypeScript doesn't narrow the state across the asserts below.
-  const state = (x: HerdrSync = sync): string => x.conn.kind;
+  const state = (x: SessionSync = sync): string => x.conn.kind;
 
   // 1. start: connected, one snapshot, events subscribed for the snapshot's panes; live once Herdr acknowledged
   await sync.start();

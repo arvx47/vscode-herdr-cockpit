@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Generates src/herdrTypes.ts from Herdr's own JSON Schema.
+// Generates src/drivers/herdr/herdrTypes.ts from Herdr's own JSON Schema.
 //
 //   node scripts/gen-herdr-types.mjs                # runs `herdr api schema --json`
 //   node scripts/gen-herdr-types.mjs schema.json    # or reads a saved schema
@@ -50,7 +50,7 @@ const RESULT_VARIANTS = [
 ];
 
 const here = dirname(fileURLToPath(import.meta.url));
-const out = join(here, '..', 'src', 'herdrTypes.ts');
+const out = join(here, '..', 'src', 'drivers', 'herdr', 'herdrTypes.ts');
 
 const herdr = (...args) => execFileSync('herdr', args, { encoding: 'utf8' });
 const schemaArg = process.argv[2];

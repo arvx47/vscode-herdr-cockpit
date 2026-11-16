@@ -4,8 +4,8 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { HerdrStream, isTakenOver } from '../herdrStream';
-import { parseInput, Screen } from '../termScreen';
+import { HerdrStream, isTakenOver } from '../drivers/herdr/herdrStream';
+import { parseInput, Screen } from '../drivers/herdr/termScreen';
 
 (async () => {
   // ---------- input ----------
