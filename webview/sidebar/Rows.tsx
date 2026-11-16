@@ -53,7 +53,7 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
     hint = 'Click to show its terminal tab';
   }
   const onKey = (e: KeyboardEvent) => {
-    if (!props.attention && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    if (!props.attention && p.more && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       props.onExpand(e.key === 'ArrowRight');
     }
@@ -76,7 +76,11 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
   );
 }
 
-function Expander({ open, onExpand }: { open: boolean; onExpand: (open: boolean) => void }) {
+function Expander({ p, open, onExpand }: { p: PaneView; open: boolean; onExpand: (open: boolean) => void }) {
+  // Nothing more to show: keep its place so the row's other buttons line up with the rows around it.
+  if (!p.more) {
+    return <span className="expander" aria-hidden="true" />;
+  }
   let icon = 'chevron-down';
   let title = 'Show details';
   if (open) {
@@ -87,13 +91,12 @@ function Expander({ open, onExpand }: { open: boolean; onExpand: (open: boolean)
 }
 
 /** Expanded-only extras: chips, then the folder when it isn't the space's. */
-function Extras({ p, more }: { p: PaneView; more?: ReactNode }) {
-  const hasChips = !!more || !!p.tab || p.chips.length > 0;
+function Extras({ p }: { p: PaneView }) {
+  const hasChips = !!p.tab || p.chips.length > 0;
   return (
     <>
       {hasChips && (
         <div className="chips">
-          {more}
           {p.tab && (
             <span className="chip">
               <Icon name="window" />
@@ -132,7 +135,7 @@ function Lines({ lines }: { lines: string[] }) {
 
 export function AgentRow(props: RowProps) {
   const { p } = props;
-  const open = props.attention || props.expanded;
+  const open = props.attention || (props.expanded && p.more);
   const status = p.status ?? 'unknown';
   let cls = `agent st-${status}`;
   if (p.framed && !props.attention) {
@@ -159,20 +162,11 @@ export function AgentRow(props: RowProps) {
   }
   let body: ReactNode = null;
   if (open) {
-    let kindChip: ReactNode = null;
-    if (p.agentKind && p.agentKind.toLowerCase() !== p.name.toLowerCase()) {
-      kindChip = (
-        <span className="chip">
-          <Icon name="hubot" />
-          {p.agentKind}
-        </span>
-      );
-    }
     body = (
       <>
         {p.detail && <div className="sub">{p.detail}</div>}
         {story}
-        <Extras p={p} more={kindChip} />
+        <Extras p={p} />
       </>
     );
   } else if (p.detail || p.headline) {
@@ -201,7 +195,7 @@ export function AgentRow(props: RowProps) {
           <span className="actions">
             <IconButton icon="diff" title="Review the changes in this agent's folder" onClick={() => post('review', { spaceId: p.spaceId, paneId: p.id })} />
           </span>
-          {!props.attention && <Expander open={props.expanded} onExpand={props.onExpand} />}
+          {!props.attention && <Expander p={p} open={!!open} onExpand={props.onExpand} />}
         </>
       }
     />
@@ -239,8 +233,9 @@ export function ShellRow(props: RowProps) {
   } else if (sh?.typed) {
     main = <Cmd sigil="›" text={sh.typed} typed />;
   }
+  const open = props.expanded && p.more;
   let body = main;
-  if (props.expanded) {
+  if (open) {
     body = (
       <>
         {main}
@@ -254,6 +249,7 @@ export function ShellRow(props: RowProps) {
   return (
     <RowFrame
       {...props}
+      expanded={open}
       className={`shell sh-${st}`}
       avatar={
         <div className="avatar">
@@ -271,7 +267,7 @@ export function ShellRow(props: RowProps) {
         </div>
       }
       body={body}
-      side={<Expander open={props.expanded} onExpand={props.onExpand} />}
+      side={<Expander p={p} open={open} onExpand={props.onExpand} />}
     />
   );
 }

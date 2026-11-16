@@ -38,7 +38,7 @@ export interface PaneView {
   focused: boolean;
   /** An attach terminal for this pane is open in VS Code. */
   attached: boolean;
-  /** Tab label when it adds information (not a bare number, not equal to the name). */
+  /** Tab label when it adds information (not a bare number, not the name, nor the agent's). */
   tab?: string;
   /** Extra metadata worth a chip: model, $tokens. */
   chips: string[];
@@ -56,6 +56,8 @@ export interface PaneView {
   };
   /** The working folder, when it isn't the space's own (that one is on the space card). */
   cwd?: string;
+  /** Expanding the row shows something its two lines don't: without it the row has no chevron. */
+  more: boolean;
   /** Its space's name (shown on Needs you rows, which sit outside their space). */
   spaceLabel: string;
   /** Its space's folder is open in this window: right-click offers Attach, else where to open it. */
@@ -200,9 +202,9 @@ export function orderByActivity(spaces: Space[], lastActive: (s: Space) => numbe
 }
 
 const tilde = (p?: string) => (p ? tildePath(p) : p);
-/** The tab's label when it says something the name doesn't: not a bare number, not the name in other case. */
-function meaningfulTab(tab: Tab | undefined, name: string): string | undefined {
-  if (!tab || /^\d+$/.test(tab.label) || tab.label.toLowerCase() === name.toLowerCase()) {
+/** The tab's label when it says something the names don't: not a bare number, not one of them in other case. */
+function meaningfulTab(tab: Tab | undefined, ...names: (string | undefined)[]): string | undefined {
+  if (!tab || /^\d+$/.test(tab.label) || names.some((n) => !!n && tab.label.toLowerCase() === n.toLowerCase())) {
     return undefined;
   }
   return tab.label;
@@ -473,6 +475,16 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   if (parts.own && parts.base !== name) {
     agentName = parts.base;
   }
+  // A tab named after the agent ("claude", "Claude (work)") says nothing its logo and name don't.
+  const tabLabel = meaningfulTab(tab, name, parts.base, kind);
+  const chips = [p.tokens.model, ...Object.entries(p.tokens).filter(([k]) => k !== 'model').map(([, v]) => v)].filter(
+    (x): x is string => !!x,
+  );
+  const gist = headline(lines);
+  const preview = status === 'blocked' ? lines.slice(-5) : status === 'done' ? lines.slice(-3) : [];
+  const cwd = ownCwd(p, space);
+  // Collapsed, the row shows the task or else the gist; expanded, both plus the screen, chips and folder.
+  const more = preview.length > 0 || (!!detail && !!gist && gist !== detail) || !!tabLabel || chips.length > 0 || !!cwd;
   return {
     id: p.id,
     spaceId: space.id,
@@ -486,13 +498,12 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     since: i.since(p.id),
     focused: p.focused,
     attached: i.attached(p.id),
-    tab: meaningfulTab(tab, name),
-    chips: [p.tokens.model, ...Object.entries(p.tokens).filter(([k]) => k !== 'model').map(([, v]) => v)].filter(
-      (x): x is string => !!x,
-    ),
-    headline: headline(lines),
-    preview: status === 'blocked' ? lines.slice(-5) : status === 'done' ? lines.slice(-3) : [],
-    cwd: ownCwd(p, space),
+    tab: tabLabel,
+    chips,
+    headline: gist,
+    preview,
+    cwd,
+    more,
     spaceLabel: space.label,
     spaceMounted: i.mounted(space),
     needs: false,
@@ -503,6 +514,14 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
 function shellView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): PaneView {
   const act = i.activity(p.id);
   const name = paneName(tab, p);
+  const tabLabel = meaningfulTab(tab, name);
+  const chips = Object.values(p.tokens);
+  const cwd = ownCwd(p, space);
+  const shell: PaneView['shell'] = act
+    ? { state: act.state ?? 'unknown', command: act.command, typed: act.typed, output: act.output, failed: act.failed, changedAt: act.changedAt }
+    : { state: 'unknown', output: [], failed: false };
+  // Collapsed, the row shows the command or else what's typed; expanded, both plus output, chips and folder.
+  const more = shell.output.length > 0 || (!!shell.command && !!shell.typed) || !!tabLabel || chips.length > 0 || !!cwd;
   return {
     id: p.id,
     spaceId: space.id,
@@ -510,13 +529,12 @@ function shellView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     name,
     focused: p.focused,
     attached: i.attached(p.id),
-    tab: meaningfulTab(tab, name),
-    chips: Object.values(p.tokens),
+    tab: tabLabel,
+    chips,
     preview: [],
-    shell: act
-      ? { state: act.state ?? 'unknown', command: act.command, typed: act.typed, output: act.output, failed: act.failed, changedAt: act.changedAt }
-      : { state: 'unknown', output: [], failed: false },
-    cwd: ownCwd(p, space),
+    shell,
+    cwd,
+    more,
     spaceLabel: space.label,
     spaceMounted: i.mounted(space),
     needs: false,

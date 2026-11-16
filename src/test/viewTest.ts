@@ -316,8 +316,22 @@ console.log('✓ usage: the Today line and Codex credits');
   const row = buildViewState({ ...inputs, model: { ...model, spaces: [{ ...model.spaces[0], tabs: [{ ...model.spaces[0].tabs[0], panes: [{ ...titled('claude-work', 'Fix the login bug'), id: 'w1:px', tokens: {}, status: 'idle' }] }] }] } as any });
   const r = row.spaces.flatMap((sp) => sp.agents)[0];
   assert.deepStrictEqual([r?.name, r?.agentName], ['Fix the login bug', 'Claude (work)']);
+  // Its details: a Herdr tab named after the agent is no chip, and with nothing else to show there's no chevron.
+  const rowIn = (tabLabel: string, extra: object = {}) =>
+    buildViewState({
+      ...inputs,
+      model: { ...model, spaces: [{ ...model.spaces[0], tabs: [{ ...model.spaces[0].tabs[0], label: tabLabel, panes: [{ ...titled('claude-work', 'Fix the login bug'), id: 'w1:px', tokens: {}, status: 'idle', cwd: model.spaces[0].cwd, ...extra }] }] }] } as any,
+    }).spaces.flatMap((sp) => sp.agents)[0];
+  for (const label of ['claude', 'Claude (work)', 'Fix the login bug', '2']) {
+    const plain = rowIn(label);
+    assert.strictEqual(plain?.tab, undefined, `no tab chip for a tab named ${label}`);
+    assert.strictEqual(plain?.more, false, `nothing to expand under a tab named ${label}`);
+  }
+  assert.deepStrictEqual([rowIn('Login work')?.tab, rowIn('Login work')?.more], ['Login work', true], 'a tab with its own name is a detail');
+  assert.strictEqual(rowIn('claude', { tokens: { model: 'opus' } })?.more, true, 'a model chip is a detail');
+  assert.strictEqual(rowIn('claude', { status: 'done' })?.more, false, 'a done agent with no screen read yet has nothing more');
   setProfileNames([]);
-  console.log("✓ a profile's agents: the session name, else the profile's name; tabs say agent: session; rows name the agent");
+  console.log("✓ a profile's agents: the session name, else the profile's name; tabs say agent: session; rows name the agent; no chevron without details");
 }
 
 console.log('\nview tests passed');

@@ -266,8 +266,14 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .main { min-width: 0; }
 .line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Which agent a session-named row is ("Claude (work)"): after the name, given up to half the line before it shortens. */
-.agent-name { flex: 0 1 auto; max-width: 50%; min-width: 0; font-size: var(--fs-sm); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Which agent a session-named row is ("Claude (work)"): a grey badge after the name, given up to half the line before it shortens. */
+.agent-name {
+  flex: 0 1 auto; max-width: 50%; min-width: 0;
+  font-size: var(--fs-xs); padding: 0 6px; border-radius: 4px; line-height: 17px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .state {
   flex: none; display: inline-flex; align-items: center; gap: 4px;
   font-size: var(--fs-xs); font-weight: 600;

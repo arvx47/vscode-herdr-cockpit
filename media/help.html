@@ -247,7 +247,7 @@
     <dt>Grey name after the name</dt><dd>Which agent it is, when the row shows its session's title instead (<b>Rate limiting</b> · <b>Codex (work)</b>): the agent's name in your agent list, so you can tell accounts apart.</dd>
     <dt>Time in the pill</dt><dd>How long the agent has been in this status, counted from when VS Code noticed the change (it restarts when the window reloads).</dd>
     <dt>Second line</dt><dd>The task title the agent set; without one, the gist of its latest reply (such as Claude's "recap").</dd>
-    <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the rest: the full summary of the latest reply (or, for a blocked or done agent, the end of its screen), chips for the Herdr tab, model and other metadata, and the working folder. Click again (or press <kbd>←</kbd>) to hide. Each row remembers its choice.</dd>
+    <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the rest: the full summary of the latest reply (or, for a blocked or done agent, the end of its screen), chips for the Herdr tab, model and other metadata, and the working folder. Click again (or press <kbd>←</kbd>) to hide. Each row remembers its choice. A row with nothing more to show has no chevron.</dd>
     <dt>Small blue dot after the name</dt><dd>The pane that is focused in Herdr.</dd>
     <dt>Click the row</dt><dd>Opens the agent in a terminal tab (or brings its tab forward).</dd>
     <dt><span class="codicon codicon-diff"></span> on hover</dt><dd><b>Review changes</b>: the changed files in the agent's folder, with diffs.</dd>
@@ -285,7 +285,7 @@
     <dt><code>$ …</code></dt><dd>The last command run at the prompt.</dd>
     <dt><code>▶ …</code></dt><dd>The program running right now.</dd>
     <dt><code>› …</code> (italic)</dt><dd>Typed at the prompt but not run yet.</dd>
-    <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the last lines of output (not for full-screen programs like editors), anything typed but not run, the tab and the working folder.</dd>
+    <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the last lines of output (not for full-screen programs like editors), anything typed but not run, the tab and the working folder. A shell with nothing more to show has no chevron.</dd>
     <dt>Name</dt><dd>The pane's label in Herdr, else its tab's name, else <b>Tab N</b> for Herdr's numbered tabs. The VS Code terminal tab uses the same name.</dd>
   </dl>
   <p class="note">Shell activity is read every few seconds, only while the sidebar is visible, and never leaves your machine.</p>
