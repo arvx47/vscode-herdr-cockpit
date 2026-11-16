@@ -20,7 +20,7 @@
   <h2>Getting started</h2>
   <ol>
     <li><b>Open the Cockpit window.</b> A window opened without a folder (a new window, or the editor's first launch) asks
-      <b>Working with agents?</b>: click <b>Open Herdr Cockpit</b>. Or use <span class="codicon codicon-ellipsis"></span> → <b>Set Up Cockpit Window</b>.
+      <b>Working with agents?</b>: click <b>Open Herdr Cockpit</b>. Or use <span class="codicon codicon-ellipsis"></span> → <b>Open Cockpit Window</b>.
       The Cockpit window is made for Herdr: its first folder never changes, so switching spaces never restarts your extensions (see <a href="#follow">the Cockpit window</a>).</li>
     <li><b>Make sure Herdr runs.</b> If it doesn't, the sidebar offers <b>Start Herdr</b> (see <a href="#offline">When Herdr isn't running</a>).</li>
     <li><b>Click an agent or shell in a space.</b> Its space's folder opens in the window and that pane opens as a terminal tab (right-click the space and pick <b>Switch to Space</b> to open all of them).</li>
@@ -40,13 +40,13 @@
   <table>
     <tr><th>Title bar</th><th>What it does</th></tr>
     <tr><td><span class="codicon codicon-question"></span> Help</td><td>Opens this page.</td></tr>
+    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Open Cockpit Window</b></td><td>Opens the dedicated VS Code window for Herdr (sets it up the first time). See <a href="#follow">the Cockpit window</a>.</td></tr>
+    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Open Herdr TUI</b></td><td>Opens Herdr's own full-screen interface in an editor tab (also starts the Herdr server if it isn't running).</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Start Herdr</b></td><td>Only while Herdr isn't running: starts it in the background. See <a href="#offline">When Herdr isn't running</a>.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Follow Herdr Focus</b> / <b>Stop Following Herdr Focus</b></td><td>The menu shows the one that changes it. When on, when you switch spaces in Herdr itself, this window switches too. See <a href="#follow">Follow mode</a>.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Show Shell Panes</b> / <b>Hide Shell Panes</b></td><td>The menu shows the one that changes it. Shown, it lists plain shell panes in every space, under each space's <b>Shells</b> group.</td></tr>
-    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Open Herdr TUI</b></td><td>Opens Herdr's own full-screen interface in an editor tab (also starts the Herdr server if it isn't running).</td></tr>
-    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Set Up Cockpit Window</b></td><td>Opens a dedicated VS Code window for Herdr. See <a href="#follow">the Cockpit window</a>.</td></tr>
-    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Refresh</b></td><td>Re-reads everything from Herdr now. Rarely needed: the view updates by itself.</td></tr>
     <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Settings</b></td><td>Opens this extension's settings (listed <a href="#settings">below</a>).</td></tr>
+    <tr><td><span class="codicon codicon-ellipsis"></span> → <b>Refresh</b></td><td>Re-reads everything from Herdr now. Rarely needed: the view updates by itself.</td></tr>
   </table>
   <div class="demo top">
     <div class="stats">
@@ -406,7 +406,7 @@
   <h2>Follow mode and the Cockpit window</h2>
   <p><b>Follow mode</b> (<span class="codicon codicon-ellipsis"></span> menu → <b>Follow Herdr Focus</b>): when you switch spaces in Herdr itself, this window switches too. It's off by default (setting <code>herdr.followMode</code>).
     To avoid hijacking unrelated windows it only acts in the Cockpit window, or in a window where you've already switched a space from the sidebar.</p>
-  <p>The <b>Cockpit window</b> (<span class="codicon codicon-ellipsis"></span> menu → <b>Set Up Cockpit Window</b>) is a dedicated VS Code window for Herdr. Its first folder never changes, so switching spaces never restarts your extensions. In the Cockpit window, terminal tabs show
+  <p>The <b>Cockpit window</b> (<span class="codicon codicon-ellipsis"></span> menu → <b>Open Cockpit Window</b>) is a dedicated VS Code window for Herdr. Its first folder never changes, so switching spaces never restarts your extensions. In the Cockpit window, terminal tabs show
     just their name, and VS Code's terminal <b>+</b> creates Herdr tabs (see <a href="#create">Create</a>). The first time a Cockpit window opens, it opens this sidebar for you. The Cockpit window opens without the editor's Welcome page, and opening a space closes it in any window.</p>
   <p><b>Cockpit windows in several editors</b> (say VS Code and Kiro) can follow Herdr at the same time. When they follow the same space switch, a pane another window already has stays with that window and shows here read-only (see <a href="#terminals">Terminal tabs</a>); type in its tab to take it.</p>
   <p>A window opened without a folder (a new window, or the editor's first launch) asks whether to open Herdr Cockpit there (setting <code>herdr.offerHubOnStartup</code>; <b>Don't Ask Again</b> turns it off). It doesn't ask when a Cockpit window is already open.</p>
@@ -508,7 +508,7 @@
     <dt>"Working with agents?" appears in every new window</dt><dd>It asks in windows opened without a folder, unless a Cockpit window is already open. Click <b>Don't Ask Again</b>, or set <code>herdr.offerHubOnStartup</code> to <code>never</code> (or <code>allWindows</code> to be asked in every window).</dd>
     <dt>The Welcome page doesn't close</dt><dd>Herdr Cockpit recognizes it by its English title ("Welcome", "Get Started"); with the editor in another language it stays open. Close it once, or set <code>workbench.startupEditor</code> to <code>none</code>.</dd>
     <dt>The sidebar says Herdr isn't running, installed or answering</dt><dd>See <a href="#offline">When Herdr isn't running</a>. If you use a named Herdr session or a custom socket, set <code>herdr.socketPath</code> (user settings).</dd>
-    <dt>Explorer says "Untitled (Workspace)"</dt><dd>A window becomes an untitled workspace when a space's folder is mounted next to the folder it already had. Use the Cockpit window instead (<b>Set Up Cockpit Window</b>), or save this one with <b>File → Save Workspace As…</b>.</dd>
+    <dt>Explorer says "Untitled (Workspace)"</dt><dd>A window becomes an untitled workspace when a space's folder is mounted next to the folder it already had. Use the Cockpit window instead (<b>Open Cockpit Window</b>), or save this one with <b>File → Save Workspace As…</b>.</dd>
     <dt>A terminal tab won't open</dt><dd>VS Code may not find the <code>herdr</code> binary when it was started from the Dock or an app launcher, which don't load your shell's PATH. Set <code>herdr.binaryPath</code> in your <b>user</b> settings (workspace values are ignored).</dd>
     <dt>Agents show up as shells running "zsh (kiro-cli-term)"</dt><dd>Kiro's shell integration wrapped Herdr's pane shells, which hides agents from
       Herdr. It happens when the Herdr server was started without Kiro's terminal around it (older Herdr Cockpit versions' <b>Start Herdr</b> did this).

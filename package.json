@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.50",
+  "version": "0.3.51",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -344,59 +344,59 @@
           "group": "navigation@1"
         },
         {
-          "command": "herdr.startServer",
-          "when": "view == herdr.spaces && !herdr.connected",
-          "group": "0_start@1"
-        },
-        {
-          "command": "herdr.followOn",
-          "when": "view == herdr.spaces && !config.herdr.followMode",
-          "group": "1_follow@1"
-        },
-        {
-          "command": "herdr.followOff",
-          "when": "view == herdr.spaces && config.herdr.followMode",
-          "group": "1_follow@1"
-        },
-        {
-          "command": "herdr.showShellPanes",
-          "when": "view == herdr.spaces && !config.herdr.showShellPanes",
-          "group": "1_follow@2"
-        },
-        {
-          "command": "herdr.hideShellPanes",
-          "when": "view == herdr.spaces && config.herdr.showShellPanes",
-          "group": "1_follow@2"
+          "command": "herdr.setupHub",
+          "when": "view == herdr.spaces",
+          "group": "0_open@1"
         },
         {
           "command": "herdr.openTui",
           "when": "view == herdr.spaces",
-          "group": "2_open@1"
+          "group": "0_open@2"
         },
         {
-          "command": "herdr.setupHub",
-          "when": "view == herdr.spaces",
-          "group": "2_open@2"
+          "command": "herdr.startServer",
+          "when": "view == herdr.spaces && !herdr.connected",
+          "group": "1_start@1"
         },
         {
-          "command": "herdr.refresh",
-          "when": "view == herdr.spaces",
-          "group": "3_tools@1"
+          "command": "herdr.followOn",
+          "when": "view == herdr.spaces && !config.herdr.followMode",
+          "group": "2_view@1"
         },
         {
-          "command": "herdr.openSettings",
-          "when": "view == herdr.spaces",
-          "group": "3_tools@2"
+          "command": "herdr.followOff",
+          "when": "view == herdr.spaces && config.herdr.followMode",
+          "group": "2_view@1"
+        },
+        {
+          "command": "herdr.showShellPanes",
+          "when": "view == herdr.spaces && !config.herdr.showShellPanes",
+          "group": "2_view@2"
+        },
+        {
+          "command": "herdr.hideShellPanes",
+          "when": "view == herdr.spaces && config.herdr.showShellPanes",
+          "group": "2_view@2"
         },
         {
           "command": "herdr.openAgents",
           "when": "view == herdr.spaces",
-          "group": "4_usage@0"
+          "group": "3_agents@1"
         },
         {
           "command": "herdr.setupClaudeUsage",
           "when": "view == herdr.spaces && herdr.claudeLimitsOn",
-          "group": "4_usage@1"
+          "group": "3_agents@2"
+        },
+        {
+          "command": "herdr.openSettings",
+          "when": "view == herdr.spaces",
+          "group": "4_tools@1"
+        },
+        {
+          "command": "herdr.refresh",
+          "when": "view == herdr.spaces",
+          "group": "4_tools@2"
         }
       ],
       "commandPalette": [

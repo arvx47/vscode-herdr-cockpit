@@ -45,7 +45,7 @@ Works in **VS Code, Cursor, Kiro and Positron** on **macOS and Linux**. A commun
 
 1. Install **Herdr Cockpit** from the Extensions view (VS Code Marketplace; Open VSX for Cursor, Kiro and Positron), or download the `.vsix` from [Releases](https://github.com/sriharirao92/vscode-herdr-cockpit/releases) and run `code --install-extension herdr-cockpit.vsix` (or `cursor`, `kiro`, `positron`).
 2. Run Herdr as usual, or click **Start Herdr** in the sidebar.
-3. Run **Herdr Cockpit: Set Up Cockpit Window**. The Cockpit window's first folder (`~/.herdr-cockpit`) never changes, so switching spaces never restarts your extensions.
+3. Run **Herdr Cockpit: Open Cockpit Window**. The Cockpit window's first folder (`~/.herdr-cockpit`) never changes, so switching spaces never restarts your extensions.
 4. Click an agent or shell in a space (or right-click the space and pick **Switch to Space** to open all of its panes).
 
 The **Get started with Herdr Cockpit** walkthrough covers the same steps (Command Palette: **Welcome: Open Walkthrough…**).

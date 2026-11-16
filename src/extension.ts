@@ -1029,7 +1029,7 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   /**
    * A window just opened without a folder (a new window, or the editor's first launch): offer to make it the
-   * hub, so you don't have to find the sidebar or run Set Up Cockpit Window (herdr.offerHubOnStartup).
+   * hub, so you don't have to find the sidebar or run Open Cockpit Window (herdr.offerHubOnStartup).
    */
   async function maybeOfferHub() {
     const hasFolder = !!vscode.workspace.workspaceFolders?.length || !!vscode.workspace.workspaceFile;
