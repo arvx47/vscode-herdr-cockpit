@@ -823,6 +823,14 @@ export function activate(ctx: vscode.ExtensionContext) {
         await sleep(200);
       }
     },
+    async findSpace(spaceId) {
+      for (let i = 0; i < 15; i++) {
+        await refresh();
+        const space = model?.spaces.find((s) => s.id === spaceId);
+        if (space?.tabs[0]?.panes[0]) return space;
+        await sleep(200);
+      }
+    },
     attach: (space, pane, startingAs) => flow.attachPane(space, pane, startingAs),
     agentIcon,
     spaces: () => model?.spaces ?? [],

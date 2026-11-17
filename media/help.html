@@ -185,6 +185,12 @@
       <code>herdr.newWorktreeStartsWith</code> (<code>ask</code> asks each time). From the Command Palette it uses the repository
       open in this window, else asks which. Close the space with <b>Close in Herdr…</b> when the work is done: that also offers
       to delete the worktree.</dd>
+    <dt><span class="codicon codicon-history"></span> Reopen worktree (the <span class="codicon codicon-add"></span> next to Spaces → <b>Reopen a closed worktree…</b>, right-click a repository's space, or <b>Herdr Cockpit: Reopen Worktree…</b>)</dt>
+    <dd>For a worktree that's still on disk but gone from the sidebar: you closed its space without deleting the worktree,
+      or Herdr restarted without it. It lists every worktree with no space, from the repositories of your spaces and from
+      <code>~/.herdr/worktrees</code> (so it finds them even when the repository has no space either); from a space's menu, only
+      that repository's. The space comes back named after its branch, with your files as you left them, and starts like a
+      new worktree (<code>herdr.newWorktreeStartsWith</code>).</dd>
     <dt><span class="codicon codicon-add"></span> New tab (the <span class="codicon codicon-add"></span> on a space's name line, folded or not, or right-click a space)</dt>
     <dd>Choose <b>Shell</b>, <b>Shell with a name…</b> or an agent. The agents listed come from the
       table <b>Herdr: Agents</b> (below); <b>More agents…</b> lists every other agent Herdr can start. The tab opens right away;

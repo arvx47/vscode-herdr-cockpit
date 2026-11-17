@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.55",
+  "version": "0.3.56",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -245,6 +245,12 @@
         "title": "%command.newWorktree%",
         "category": "%category%",
         "icon": "$(git-branch-create)"
+      },
+      {
+        "command": "herdr.reopenWorktree",
+        "title": "%command.reopenWorktree%",
+        "category": "%category%",
+        "icon": "$(history)"
       },
       {
         "command": "herdr.setupClaudeUsage",
@@ -509,6 +515,10 @@
           "when": "herdr.connected"
         },
         {
+          "command": "herdr.reopenWorktree",
+          "when": "herdr.connected"
+        },
+        {
           "command": "herdr.focusAttention",
           "when": "herdr.connected"
         },
@@ -604,6 +614,11 @@
           "command": "herdr.newWorktree",
           "when": "webviewId == herdr.spaces && webviewSection =~ /^space/ && spaceRepo",
           "group": "0_create@2"
+        },
+        {
+          "command": "herdr.reopenWorktree",
+          "when": "webviewId == herdr.spaces && webviewSection =~ /^space/ && spaceRepo",
+          "group": "0_create@3"
         },
         {
           "command": "herdr.rename",
@@ -1128,7 +1143,7 @@
     "gen:icons": "node scripts/gen-agent-icons.mjs",
     "codicons": "node scripts/copy-codicons.mjs",
     "pretest": "tsc -p .",
-    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/usageScriptTest.js && node out/test/sessionTextTest.js && node out/test/summariesTest.js && node out/test/connectionTest.js && node out/test/syncTest.js && node out/test/tabMatchTest.js && node out/test/noticesTest.js && node out/test/agentProfilesTest.js && node out/test/placementTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/termFindTest.js && node out/test/gitTest.js",
+    "test": "node out/test/mockTest.js && node out/test/viewTest.js && node out/test/usageTest.js && node out/test/usageScriptTest.js && node out/test/sessionTextTest.js && node out/test/summariesTest.js && node out/test/connectionTest.js && node out/test/syncTest.js && node out/test/tabMatchTest.js && node out/test/noticesTest.js && node out/test/worktreeListTest.js && node out/test/agentProfilesTest.js && node out/test/placementTest.js && node out/test/hubTest.js && node out/test/pluginTest.js && node out/test/streamTest.js && node out/test/findTest.js && node out/test/termFindTest.js && node out/test/gitTest.js",
     "package": "npm run codicons && npm run compile && vsce package",
     "install-local": "npm run package && node scripts/install-local.mjs",
     "lint": "eslint --no-warn-ignored src webview media/*.js scripts",

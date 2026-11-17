@@ -84,6 +84,13 @@ export function validate(method: string, params: any): MockError | undefined {
       }
       return undefined;
     }
+    case 'worktree.list':
+    case 'worktree.open':
+      // Verified on 0.9.5 (no space focused, as on a headless server).
+      if (!given(params.workspace_id) && !given(params.cwd)) {
+        return invalid('workspace_id or cwd is required when no workspace is active');
+      }
+      return undefined;
     case 'agent.start': {
       if (!AGENT_NAME.test(params.name)) {
         return invalid(`agent name "${params.name}" must match ${AGENT_NAME.source}`);

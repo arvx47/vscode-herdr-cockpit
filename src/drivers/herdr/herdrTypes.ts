@@ -47,6 +47,21 @@ export interface WorktreeRemovedResult {
   workspace_id: string;
 }
 
+export interface WorktreeListResult {
+  source: WorktreeSourceInfo;
+  type: 'worktree_list';
+  worktrees: WorktreeInfo[];
+}
+
+export interface WorktreeOpenedResult {
+  already_open: boolean;
+  root_pane: PaneInfo;
+  tab: TabInfo;
+  type: 'worktree_opened';
+  workspace: WorkspaceInfo;
+  worktree: WorktreeInfo;
+}
+
 export interface AgentStartedResult {
   agent: AgentInfo;
   argv: string[];
@@ -148,6 +163,23 @@ export interface WorktreeRemoveParams {
   force?: boolean;
   trust_repository?: boolean;
   workspace_id: string;
+}
+
+export interface WorktreeListParams {
+  cwd?: string | null;
+  trust_repository?: boolean;
+  workspace_id?: string | null;
+}
+
+export interface WorktreeOpenParams {
+  branch?: string | null;
+  cwd?: string | null;
+  /** default: false */
+  focus?: boolean;
+  label?: string | null;
+  path?: string | null;
+  trust_repository?: boolean;
+  workspace_id?: string | null;
 }
 
 export interface TabCreateParams {
@@ -276,6 +308,14 @@ export interface WorktreeInfo {
   label: string;
   open_workspace_id?: string | null;
   path: string;
+}
+
+export interface WorktreeSourceInfo {
+  repo_key: string;
+  repo_name: string;
+  repo_root: string;
+  source_checkout_path: string;
+  source_workspace_id?: string | null;
 }
 
 export interface AgentInfo {

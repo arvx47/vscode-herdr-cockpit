@@ -14,6 +14,9 @@ import type {
   WorkspaceCreateParams,
   WorkspaceInfo,
   WorktreeCreateParams,
+  WorktreeListResult,
+  WorktreeOpenedResult,
+  WorktreeOpenParams,
   WorktreeInfo,
 } from './herdr/herdrTypes';
 import type { Model } from '../state/model';
@@ -63,6 +66,12 @@ export type WorktreeCreate = Omit<WorktreeCreateParams, 'workspace_id' | 'cwd' |
   ({ workspace_id: string; cwd?: never } | { cwd: string; workspace_id?: never }) &
   ({ branch: string; path?: never } | { path: string; branch?: never });
 
+/** Which repo a worktree call is about: a space's (`workspace_id`) or a folder's (`cwd`), not both. */
+export type WorktreeSource = { workspace_id: string; cwd?: never } | { cwd: string; workspace_id?: never };
+
+/** Opening an existing worktree (`path`) as a space; the source must be the repo's own space or folder. */
+export type WorktreeOpen = Omit<WorktreeOpenParams, 'workspace_id' | 'cwd' | 'path'> & WorktreeSource & { path: string };
+
 /** A new tab, or a new space's first tab. */
 export interface Created {
   tab: TabInfo;
@@ -80,6 +89,10 @@ export interface BackendActions {
   createSpace(params: WorkspaceCreateParams): Promise<Created & { workspace: WorkspaceInfo }>;
   /** New space on a new git worktree of a repo (needs capabilities.worktrees). */
   createWorktreeSpace(params: WorktreeCreate): Promise<Created & { workspace: WorkspaceInfo; worktree: WorktreeInfo }>;
+  /** Every git worktree of a repo, with the space each is open in (needs capabilities.worktrees). */
+  listWorktrees(params: WorktreeSource): Promise<WorktreeListResult>;
+  /** A space on an existing worktree; answers its space when it already has one (`already_open`). */
+  openWorktreeSpace(params: WorktreeOpen): Promise<WorktreeOpenedResult>;
   /** Close a worktree space and delete its folder; refused with uncommitted changes unless `force`. */
   removeWorktree(workspaceId: string, force?: boolean): Promise<unknown>;
   /** Start an agent in a pane at its prompt. `name` matches AGENT_NAME; `args` go to the agent's own CLI. */

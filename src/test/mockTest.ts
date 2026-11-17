@@ -102,6 +102,16 @@ const mock = new MockHerdr({
       reply({ result: { type: 'agent_prompted', agent: { ...pane(req.params.target, 'w1:t1', { agent: 'claude' }), agent_status: 'working', name: 'claude' } } }),
     'server.agent_manifests': (_req, reply) =>
       reply({ result: { type: 'agent_manifest_status', manifests: ['claude', 'codex', 'gemini'].map((a) => ({ agent: a, source: 'remote', source_kind: 'remote', local_override_shadowing_remote: false })) } }),
+    'worktree.list': (_req, reply) =>
+      reply({ result: { type: 'worktree_list',
+        source: { repo_key: '/repo/.git', repo_name: 'repo', repo_root: '/repo', source_checkout_path: '/repo' },
+        worktrees: [
+          { path: '/repo', branch: 'main', is_bare: false, is_detached: false, is_prunable: false, is_linked_worktree: false, label: 'repo', open_workspace_id: 'w1' },
+          { path: '/wt/old', branch: 'OUT-1', is_bare: false, is_detached: false, is_prunable: false, is_linked_worktree: true, label: 'repo' },
+        ] } }),
+    'worktree.open': (req, reply) =>
+      reply({ result: { type: 'worktree_opened', workspace: ws('w7', req.params.label ?? 'old'), already_open: false,
+        worktree: { path: req.params.path, branch: 'OUT-1', is_bare: false, is_detached: false, is_prunable: false, is_linked_worktree: true, label: 'repo', open_workspace_id: 'w7' } } }),
     'worktree.remove': (req, reply) =>
       reply({ result: { type: 'worktree_removed', workspace_id: req.params.workspace_id, path: '/wt/x', forced: !!req.params.force } }),
   },
@@ -111,7 +121,7 @@ const subscriber = () => [...mock.subscribers].pop() as net.Socket;
 /** Requests the mock accepted for the create/start/rename/close methods, in order. */
 const ACTION_METHODS = new Set([
   'workspace.create', 'tab.create', 'worktree.create', 'agent.start', 'agent.prompt', 'tab.rename', 'tab.close',
-  'workspace.rename', 'workspace.close', 'worktree.remove', 'pane.split', 'pane.rename', 'agent.rename', 'pane.close',
+  'workspace.rename', 'workspace.close', 'worktree.remove', 'worktree.list', 'worktree.open', 'pane.split', 'pane.rename', 'agent.rename', 'pane.close',
 ]);
 const calls = () => mock.requests.filter((r) => ACTION_METHODS.has(r.method) && !(r.method === 'agent.start' && r !== lastStart()));
 const lastStart = () => mock.calls('agent.start').pop();
@@ -250,6 +260,10 @@ async function main() {
   await actions.closeSpace('w9', true);
   await actions.removeWorktree('w8');
   await actions.removeWorktree('w8', true);
+  const listed = await actions.listWorktrees({ cwd: '/wt/old' });
+  assert.deepStrictEqual([listed.source.source_checkout_path, listed.worktrees.filter((w) => !w.open_workspace_id).map((w) => w.path)], ['/repo', ['/wt/old']]);
+  const opened = await actions.openWorktreeSpace({ cwd: '/repo', path: '/wt/old', label: 'OUT-1' });
+  assert.deepStrictEqual([opened.workspace.workspace_id, opened.workspace.label, opened.already_open], ['w7', 'OUT-1', false]);
   const split = await actions.splitPane({ target_pane_id: 'w1:p1', direction: 'right' });
   assert.strictEqual(split.tab_id, 'w1:t1', 'the split pane is in the same tab');
   await actions.renamePane('w1:p2', 'server');
@@ -271,6 +285,8 @@ async function main() {
       ['workspace.close', { workspace_id: 'w9', close_group: true }],
       ['worktree.remove', { workspace_id: 'w8' }],
       ['worktree.remove', { workspace_id: 'w8', force: true }],
+      ['worktree.list', { cwd: '/wt/old' }],
+      ['worktree.open', { focus: false, cwd: '/repo', path: '/wt/old', label: 'OUT-1' }],
       ['pane.split', { focus: false, target_pane_id: 'w1:p1', direction: 'right' }],
       ['pane.rename', { pane_id: 'w1:p2', label: 'server' }],
       ['pane.rename', { pane_id: 'w1:p2', label: null }],
@@ -293,13 +309,14 @@ async function main() {
     [['resume', 's1'], undefined, undefined, undefined, ['--resume', 'c1']],
     'resumes only agents whose CLI takes a session id',
   );
-  console.log('✓ create space/tab/worktree, start agent, split, rename, close');
+  console.log('✓ create space/tab/worktree, list and open worktrees, start agent, split, rename, close');
 
   // 3d. the mock refuses what Herdr refuses, so a wrapper sending bad params fails here first
   const code = (p: Promise<unknown>) => p.then(() => 'ok', (e) => (e instanceof HerdrError ? `${e.code}: ${e.message}` : String(e)));
   assert.match(await code(client.request('worktree.create', { workspace_id: 'w1', cwd: '/repo', branch: 'x' })), /only one of workspace_id or cwd may be supplied/);
   assert.match(await code(client.request('worktree.create', { workspace_id: 'w1' })), /exactly one of path or branch is required/);
   assert.match(await code(client.request('worktree.create', { cwd: '/repo', branch: 'x', path: '/wt' })), /exactly one of path or branch is required/);
+  assert.match(await code(client.request('worktree.open', { path: '/wt/old' })), /workspace_id or cwd is required/);
   assert.match(await code(client.request('agent.start', { pane_id: 'w1:p1', kind: 'claude', name: 'Claude 2' })), /agent name/);
   assert.match(await code(client.request('agent.start', { pane_id: 'w1:p1', kind: 'claude', name: 'claude', timeout_ms: 3000 })), /timeout_ms/);
   assert.match(await code(client.request('agent.start', { pane_id: 'w1:p1', kind: 'claude', name: 'claude', timeout_ms: 300_001 })), /timeout_ms/);

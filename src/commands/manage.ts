@@ -13,6 +13,8 @@ import { repoSpace } from '../state/model';
 import type { Pane, Space } from '../state/model';
 import { paneName, tabName } from '../sidebar/viewState';
 import { branchFromInput, branchProblem } from './branchName';
+import { ClosedWorktree, closedWorktrees, herdrWorktreeFolders, worktreeLabel, worktreeListFolders } from './worktreeList';
+import { tildePath } from '../util/paths';
 import { AgentProfile, profileOfAgent } from '../agents/agentProfiles';
 
 /** What a new tab runs: a plain shell, or an agent kind ("claude", "codex", ...), maybe with a profile's environment. */
@@ -30,6 +32,8 @@ export interface ManageDeps {
   capabilities: BackendCapabilities;
   /** Re-reads the snapshot until the pane shows up (it normally does right away). */
   findPane(paneId: string): Promise<{ space: Space; pane: Pane } | undefined>;
+  /** Re-reads the snapshot until the space shows up with a pane. */
+  findSpace(spaceId: string): Promise<Space | undefined>;
   /** Opens the pane in a terminal tab (switching to its space first, like clicking its row). */
   attach(space: Space, pane: Pane, startingAs?: string): Promise<void>;
   agentIcon(kind?: string): vscode.QuickPickItem['iconPath'];
@@ -386,6 +390,9 @@ export async function newSpace(deps: ManageDeps, folder?: string) {
   if (!dirPath) {
     const picked = await pickNewSpacePlace(deps, title);
     if (!picked) return;
+    if (picked.reopen) {
+      return reopenWorktree(deps);
+    }
     dirPath = picked.dir;
     from = picked.from;
   }
@@ -403,10 +410,10 @@ export async function newSpace(deps: ManageDeps, folder?: string) {
 }
 
 /** Create a space, name its first tab after what runs in it, and open it like any new pane. */
-async function createAndOpen(deps: ManageDeps, label: string, what: What, create: () => Promise<{ pane: { pane_id: string } }>) {
+async function createAndOpen(deps: ManageDeps, label: string, what: What, create: () => Promise<{ pane: { pane_id: string } }>, doing = 'Creating') {
   try {
     const { pane } = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Creating space "${label}"…` },
+      { location: vscode.ProgressLocation.Notification, title: `${doing} space "${label}"…` },
       create,
     );
     if (what.label || what.kind) {
@@ -511,20 +518,101 @@ export async function newWorktree(deps: ManageDeps, from?: Space) {
     } else {
       created = await deps.actions.createWorktreeSpace({ workspace_id: repoId, branch, label: branch });
     }
-    if (!what.profile) {
-      return created;
-    }
-    // worktree.create takes no variables: the profile's agent gets a tab of its own that has them, in place
-    // of the plain first one (closed only once the new tab exists, or Herdr would close the space with it).
-    const tab = await deps.actions.createTab({ workspace_id: created.workspace.workspace_id, cwd: created.worktree.path, env: what.profile.env });
-    await deps.actions.closePane(created.pane.pane_id).catch(() => undefined);
-    return tab;
+    return withProfileTab(deps, what, created.workspace.workspace_id, created.worktree.path, created.pane.pane_id);
   });
 }
 
-/** Where a new space goes: a folder you pick (`dir`), or a new worktree of a space's repo (`from`). */
-async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir?: string; from?: Space } | undefined> {
-  type Item = vscode.QuickPickItem & { folder?: boolean; from?: Space };
+/**
+ * worktree.create and worktree.open take no variables: a profile's agent gets a tab of its own that has them, in
+ * place of the plain first pane (closed only once the new tab exists, or Herdr would close the space with it).
+ */
+async function withProfileTab(deps: ManageDeps, what: What, spaceId: string, cwd: string, firstPaneId: string): Promise<{ pane: { pane_id: string } }> {
+  if (!what.profile) {
+    return { pane: { pane_id: firstPaneId } };
+  }
+  const tab = await deps.actions.createTab({ workspace_id: spaceId, cwd, env: what.profile.env });
+  await deps.actions.closePane(firstPaneId).catch(() => undefined);
+  return tab;
+}
+
+/** The worktrees that exist on disk but have no space, from every repo Herdr knows (or only `from`'s). */
+async function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<ClosedWorktree[]> {
+  let folders: string[];
+  if (from?.cwd) {
+    folders = [from.cwd];
+  } else {
+    folders = worktreeListFolders(deps.spaces(), herdrWorktreeFolders(os.homedir()));
+  }
+  // A folder that's gone or isn't a repository just has nothing to list.
+  const lists = await Promise.all(folders.map((cwd) => deps.actions.listWorktrees({ cwd }).catch(() => undefined)));
+  return closedWorktrees(lists.filter((l) => l !== undefined));
+}
+
+/**
+ * A space again for a worktree that's still on disk but not in the sidebar (its space was closed in Herdr, or
+ * Herdr restarted without it): pick it from every repo's worktrees, or `from`'s repo. It starts like a new
+ * worktree (herdr.newWorktreeStartsWith).
+ */
+export async function reopenWorktree(deps: ManageDeps, from?: Space) {
+  if (!(await deps.ensureConnected())) return;
+  const found = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Looking for closed worktrees…' }, () =>
+    findClosedWorktrees(deps, from),
+  );
+  // A worktree card stands for its repo.
+  let repoName = from?.label;
+  if (from?.worktree?.is_linked_worktree) {
+    repoName = from.worktree.repo_name;
+  }
+  if (!found.length) {
+    let where = 'Every worktree Herdr knows already has a space.';
+    if (repoName) {
+      where = `Every worktree of ${repoName} already has a space.`;
+    }
+    vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: no closed worktree to reopen. ${where}`);
+    return;
+  }
+  type Item = vscode.QuickPickItem & { w?: ClosedWorktree };
+  const items: Item[] = [];
+  const repos = new Set(found.map((w) => w.repoFolder));
+  for (const w of found) {
+    const prev = items.at(-1) as Item | undefined;
+    if (repos.size > 1 && prev?.w?.repoFolder !== w.repoFolder) {
+      items.push({ label: w.repoName, kind: vscode.QuickPickItemKind.Separator });
+    }
+    let description = w.branch;
+    if (!w.branch) {
+      description = 'detached';
+    }
+    items.push({ label: worktreeLabel(w), description, detail: tildePath(w.path), iconPath: new vscode.ThemeIcon('repo-forked'), w });
+  }
+  let title = 'Reopen worktree';
+  if (repoName) {
+    title = `Reopen a worktree of ${repoName}`;
+  }
+  const pick = await vscode.window.showQuickPick(items, { title, placeHolder: 'Which worktree? It opens as a space again, files as you left them', matchOnDetail: true });
+  const w = pick?.w;
+  if (!w) return;
+  const label = worktreeLabel(w);
+  const what = await worktreeStart(deps, label);
+  if (!what) return;
+  await createAndOpen(deps, label, what, async () => {
+    const opened = await deps.actions.openWorktreeSpace({ cwd: w.repoFolder, path: w.path, label });
+    const spaceId = opened.workspace.workspace_id;
+    const space = await deps.findSpace(spaceId);
+    const first = space?.tabs[0]?.panes[0];
+    if (!first) {
+      throw new Error(`Herdr opened ${spaceId} but it hasn't appeared yet. Refresh and click it in the sidebar`);
+    }
+    return withProfileTab(deps, what, spaceId, w.path, first.id);
+  }, 'Opening');
+}
+
+/**
+ * Where a new space goes: a folder you pick (`dir`), a new worktree of a space's repo (`from`), or a closed
+ * worktree again (`reopen`).
+ */
+async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir?: string; from?: Space; reopen?: boolean } | undefined> {
+  type Item = vscode.QuickPickItem & { folder?: boolean; from?: Space; reopen?: boolean };
   // Herdr starts new worktrees from the repo's own space, not from another worktree's: offer each repo once.
   const repos = repoSpaces(deps);
   const items: Item[] = [
@@ -538,8 +626,18 @@ async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir
       from: s,
     })),
   ];
+  if (deps.capabilities.worktrees) {
+    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+    items.push({
+      label: 'Reopen a closed worktree…',
+      iconPath: new vscode.ThemeIcon('history'),
+      detail: 'A worktree still on disk whose space is gone from the sidebar',
+      reopen: true,
+    });
+  }
   const where = await vscode.window.showQuickPick(items, { title, placeHolder: 'Where should the new space live?' });
   if (!where) return;
+  if (where.reopen) return { reopen: true };
   if (!where.folder) return { from: where.from };
   const near = deps.spaces().find((s) => s.cwd)?.cwd;
   const [dir] =

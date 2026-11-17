@@ -2,7 +2,7 @@
 // socket API; every create defaults to focus:false so Herdr's own view (e.g. in your terminal)
 // doesn't jump. No vscode imports (tested against the mock server).
 
-import type { BackendActions, Created, WorktreeCreate } from '../backend';
+import type { BackendActions, Created, WorktreeCreate, WorktreeOpen, WorktreeSource } from '../backend';
 import type { HerdrClient } from './herdrClient';
 import { sleep } from '../../util/format';
 import type {
@@ -24,6 +24,8 @@ import type {
   WorkspaceInfo,
   WorktreeCreatedResult,
   WorktreeInfo,
+  WorktreeListResult,
+  WorktreeOpenedResult,
 } from './herdrTypes';
 
 /** How long to wait for an agent to be ready (Herdr's default is 30s, max 300s). */
@@ -53,6 +55,20 @@ export class HerdrActions implements BackendActions {
   async createWorktreeSpace(params: WorktreeCreate): Promise<Created & { workspace: WorkspaceInfo; worktree: WorktreeInfo }> {
     const r = await this.client.request<WorktreeCreatedResult>('worktree.create', { focus: false, ...params }, 30_000);
     return { workspace: r.workspace, tab: r.tab, pane: r.root_pane, worktree: r.worktree };
+  }
+
+  /** Every git worktree of the repo at `cwd` (any folder of it, a worktree's too) or of `workspace_id`'s repo. */
+  async listWorktrees(params: WorktreeSource): Promise<WorktreeListResult> {
+    return this.client.request<WorktreeListResult>('worktree.list', params);
+  }
+
+  /**
+   * A space on a worktree that exists but has none (closed in Herdr, or made outside it). `cwd` is the repo's
+   * own folder (WorktreeListResult.source.source_checkout_path): Herdr refuses a linked worktree's. When the
+   * worktree already has a space, Herdr answers that one (`already_open`).
+   */
+  async openWorktreeSpace(params: WorktreeOpen): Promise<WorktreeOpenedResult> {
+    return this.client.request<WorktreeOpenedResult>('worktree.open', { focus: false, ...params }, 30_000);
   }
 
   /**
