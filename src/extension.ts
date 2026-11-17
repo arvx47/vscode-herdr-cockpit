@@ -37,6 +37,9 @@ import type { BuiltinDeps } from './drivers/herdr/builtinTerminal';
 import { closedTab, ManageDeps } from './commands/manage';
 import { registerProfiles, SHELL_PROFILE_TITLE } from './terminal/profiles';
 import { ClaudeAccount, codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './agents/usage';
+import { claudeProjectDir, SessionRequests } from './agents/sessionText';
+import { claudeCliRunner, paneSummaryEnv, Summaries } from './agents/summaries';
+import { findTool } from './util/tools';
 import { errorText } from './util/errors';
 import { expandHome } from './util/paths';
 
@@ -431,6 +434,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     return { cockpit, herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined };
   }
 
+  // Claude Code agents' last message from you, for their rows (herdr.agentDescription = request; pollRequests).
+  const requests = new Map<string, string>();
+  const sessionRequests = new SessionRequests();
   function render() {
     flow.noteFolders(model);
     scheduleHubStatus();
@@ -443,6 +449,13 @@ export function activate(ctx: vscode.ExtensionContext) {
         mounted: isMounted,
         attached: (id) => terms.has(id),
         activity: (id) => activity.get(id),
+        request: (id) => requests.get(id),
+        summary: (id) => {
+          if (!summariesOn()) {
+            return undefined;
+          }
+          return summaries.get(id);
+        },
         usage,
         connection: { ...(sync.conn as object), kind: sync.conn.kind, expectedProtocol: HERDR_PROTOCOL } as ViewConnection,
         order: cfg().get<'activity' | 'herdr'>('spaceOrder', 'herdr'),
@@ -486,9 +499,88 @@ export function activate(ctx: vscode.ExtensionContext) {
           .map((p): ActivityTarget => ({ paneId: p.id, kind: p.isAgent ? 'agent' : 'shell', status: p.status })),
       ),
     );
-    if (await activity.poll(targets)) scheduleRender();
+    void pollSummaries().catch(logError('summaries'));
+    const changed = await activity.poll(targets);
+    if ((await pollRequests()) || changed) scheduleRender();
   }
   const activityTimer = setInterval(pollActivity, 4000);
+
+  // What each agent of this window is doing, in a sentence or two by Claude Haiku (herdr.agentDescription = summary:
+  // it sends the end of the agent's screen to Claude, through the Claude Code login that agent uses).
+  const summariesOn = () => cfg().get<string>('agentDescription', 'request') === 'summary';
+  const summaries = new Summaries(
+    {
+      run: (system, prompt, req) => {
+        const claude = findTool('claude', [path.join(os.homedir(), '.claude', 'local', 'claude')]);
+        // The login that writes it is the one the pane's Claude runs in (paneSummaryEnv()); for other agents,
+        // herdr.agentSummariesAgent.
+        const envOf = (r: typeof req) => {
+          const defaultDir = path.join(os.homedir(), '.claude');
+          const dirs = claudeAccounts().map((a) => ({ dir: a.configDir, isDefault: a.configDir === defaultDir }));
+          const picked = paneSummaryEnv(r, process.env, agentProfiles(), dirs, cfg().get<string>('agentSummariesAgent', ''));
+          if ('error' in picked) {
+            throw new Error(picked.error);
+          }
+          return picked.env;
+        };
+        return claudeCliRunner(claude, path.join(hubDir(), 'summaries'), envOf)(system, prompt, req);
+      },
+      log: (line) => log.appendLine(line),
+    },
+    () => scheduleRender(),
+  );
+  /** Agents of the spaces open in this window whose summary is due: their screen read, and summarized if it changed. */
+  async function pollSummaries() {
+    if (!model || !summariesOn()) return;
+    summaries.keep(allPanes(model).map(({ pane }) => pane.id));
+    for (const sp of model.spaces.filter((s) => flow.isOpenHere(s))) {
+      for (const a of sp.agents) {
+        const status = a.status ?? 'unknown';
+        if (!summaries.due(a.id, status)) continue;
+        const screen = await backend.readText(a.id, 'recent_unwrapped', 120).catch(() => '');
+        // Its foreground processes: the Claude Code running there tells which account it's in.
+        const info = await backend.processInfo(a.id).catch(() => undefined);
+        const pids = (info?.foreground_processes ?? []).map((x) => x.pid).filter((x): x is number => typeof x === 'number');
+        const tab = sp.tabs.find((t) => t.id === a.tabId);
+        summaries.consider({
+          paneId: a.id,
+          kind: (a.agentKind ?? 'agent').toLowerCase(),
+          name: paneName(tab, a),
+          status,
+          screen,
+          pids,
+          agentName: a.raw.agent?.name ?? undefined,
+        });
+      }
+    }
+  }
+
+  /** Read the requests with the activity; true when a row's request changed. */
+  async function pollRequests(): Promise<boolean> {
+    const next = new Map<string, string>();
+    if (model && cfg().get<string>('agentDescription', 'request') === 'request') {
+      const dirs = claudeAccounts().map((a) => a.configDir);
+      const projects = new Set<string>();
+      for (const { pane } of allPanes(model)) {
+        if (pane.agentKind !== 'claude' || !pane.cwd) {
+          continue;
+        }
+        for (const d of dirs) projects.add(claudeProjectDir(d, pane.cwd));
+        const text = await sessionRequests.find(dirs, pane.cwd, pane.terminalTitle).catch((e) => {
+          log.appendLine(`session of ${pane.id}: ${errorText(e)}`);
+          return undefined;
+        });
+        if (text) {
+          next.set(pane.id, text);
+        }
+      }
+      sessionRequests.prune(projects);
+    }
+    const changed = next.size !== requests.size || [...next].some(([id, t]) => requests.get(id) !== t);
+    requests.clear();
+    for (const [id, t] of next) requests.set(id, t);
+    return changed;
+  }
 
   // Agents' plan usage from their local files: once a minute, only while the sidebar is visible (`usage` is
   // declared further up, with the rest of what render() reads).
@@ -868,7 +960,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         void sync.socketChanged();
       }
       render();
-      if (e.affectsConfiguration('herdr.showShellPanes')) pollActivity();
+      if (e.affectsConfiguration('herdr.showShellPanes') || e.affectsConfiguration('herdr.agentDescription')) pollActivity();
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => render()),
     vscode.workspace.onDidGrantWorkspaceTrust(() => render()),

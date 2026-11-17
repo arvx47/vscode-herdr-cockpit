@@ -285,6 +285,13 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .state .t { font-weight: 400; opacity: .85; font-variant-numeric: tabular-nums; }
 .state .codicon { font-size: 11px; }
 .sub { margin-top: 1px; font-size: var(--fs-md); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Your last message to the agent (herdr.agentDescription): one line, up to four when the row is open. */
+/* The row's chosen description (herdr.agentDescription: Claude Haiku's summary, or your last message): one line,
+   then the same text in full when the row is open, in the dark box of the screen's lines (.term), wrapped since
+   it's a sentence. A summary has a sparkle and its age. */
+.desc .codicon { font-size: 12px; margin-right: 4px; vertical-align: -1px; color: var(--muted); }
+.term.desc { white-space: normal; overflow-wrap: anywhere; }
+.term.desc .t { color: var(--muted); }
 .row.open .sub { white-space: normal; color: var(--fg); opacity: .85; }
 .headline {
   margin-top: 3px; font-size: var(--fs-md); color: var(--muted);

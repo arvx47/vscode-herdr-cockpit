@@ -330,6 +330,22 @@ console.log('✓ usage: the Today line and Codex credits');
   assert.deepStrictEqual([rowIn('Login work')?.tab, rowIn('Login work')?.more], ['Login work', true], 'a tab with its own name is a detail');
   assert.strictEqual(rowIn('claude', { tokens: { model: 'opus' } })?.more, true, 'a model chip is a detail');
   assert.strictEqual(rowIn('claude', { status: 'done' })?.more, false, 'a done agent with no screen read yet has nothing more');
+  // herdr.agentDescription = request: your last message is the row's line; a long one opens to show it whole.
+  const withRequest = (text: string) =>
+    buildViewState({
+      ...inputs,
+      request: (id) => (id === 'w1:px' ? text : undefined),
+      model: { ...model, spaces: [{ ...model.spaces[0], tabs: [{ ...model.spaces[0].tabs[0], label: 'claude', panes: [{ ...titled('claude-work', 'Fix the login bug'), id: 'w1:px', tokens: {}, status: 'idle', cwd: model.spaces[0].cwd }] }] }] } as any,
+    }).spaces.flatMap((sp) => sp.agents)[0];
+  assert.deepStrictEqual([withRequest('add a test')?.request, withRequest('add a test')?.more], ['add a test', false]);
+  assert.strictEqual(withRequest('please '.repeat(20))?.more, true, 'a long request opens to show it all');
+  // herdr.agentDescription = summary: Claude Haiku's summary comes through, and the row always opens to show it whole.
+  const withSummary = buildViewState({
+    ...inputs,
+    summary: (id) => (id === 'w1:px' ? { text: 'Fixing the login retry.', at: 5 } : undefined),
+    model: { ...model, spaces: [{ ...model.spaces[0], tabs: [{ ...model.spaces[0].tabs[0], label: 'claude', panes: [{ ...titled('claude-work', 'Fix the login bug'), id: 'w1:px', tokens: {}, status: 'idle', cwd: model.spaces[0].cwd }] }] }] } as any,
+  }).spaces.flatMap((sp) => sp.agents)[0];
+  assert.deepStrictEqual([withSummary?.summary, withSummary?.more], [{ text: 'Fixing the login retry.', at: 5 }, true]);
   setProfileNames([]);
   console.log("✓ a profile's agents: the session name, else the profile's name; tabs say agent: session; rows name the agent; no chevron without details");
 }

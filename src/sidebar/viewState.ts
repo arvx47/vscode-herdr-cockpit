@@ -44,6 +44,10 @@ export interface PaneView {
   chips: string[];
   /** Agents: one-line summary of the latest reply (Claude's "※ recap", else the last line). */
   headline?: string;
+  /** Agents: your last message to it (herdr.agentDescription = request), the row's line under its name when known. */
+  request?: string;
+  /** Agents: what Claude Haiku says it's doing (herdr.agentDescription = summary), with when it was written. */
+  summary?: { text: string; at: number };
   /** Agents needing attention: the last lines of their screen. */
   preview: string[];
   shell?: {
@@ -173,6 +177,10 @@ export interface ViewInputs {
   mounted(space: Space): boolean;
   attached(paneId: string): boolean;
   activity(paneId: string): PaneActivity | undefined;
+  /** An agent's last message from you (agents/sessionText.ts), when herdr.agentDescription is request. */
+  request?(paneId: string): string | undefined;
+  /** An agent's summary (agents/summaries.ts), when herdr.agentDescription is summary and one was written. */
+  summary?(paneId: string): { text: string; at: number } | undefined;
   usage: ProviderUsage[];
   connection: ViewConnection;
   /** `activity`: busy and recently active spaces first (orderByActivity); `herdr`: Herdr's order. */
@@ -483,8 +491,21 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   const gist = headline(lines);
   const preview = status === 'blocked' ? lines.slice(-5) : status === 'done' ? lines.slice(-3) : [];
   const cwd = ownCwd(p, space);
-  // Collapsed, the row shows the task or else the gist; expanded, both plus the screen, chips and folder.
-  const more = preview.length > 0 || (!!detail && !!gist && gist !== detail) || !!tabLabel || chips.length > 0 || !!cwd;
+  const request = i.request?.(p.id);
+  const summary = i.summary?.(p.id);
+  // Collapsed, the row shows your last message, else the task, else the gist; expanded, all of them plus the
+  // screen, chips and folder.
+  // Open, a row shows its one description in full (plus chips and folder): with a chosen one (a summary, your last
+  // message) nothing else, so only a long one, or chips and a folder, are worth a chevron.
+  let more = !!tabLabel || chips.length > 0 || !!cwd;
+  if (summary) {
+    // The whole summary, with its age.
+    more = true;
+  } else if (request) {
+    more ||= request.length > 60;
+  } else {
+    more ||= preview.length > 0 || (!!detail && !!gist && gist !== detail);
+  }
   return {
     id: p.id,
     spaceId: space.id,
@@ -501,6 +522,8 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     tab: tabLabel,
     chips,
     headline: gist,
+    request,
+    summary,
     preview,
     cwd,
     more,

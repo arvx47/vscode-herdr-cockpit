@@ -160,14 +160,51 @@ export function AgentRow(props: RowProps) {
   } else if (p.headline && p.headline !== p.detail) {
     story = <div className="headline">{p.headline}</div>;
   }
+  // The row's description when herdr.agentDescription chose one (Claude Haiku's summary, or your last message):
+  // one line collapsed; open, the same text in full in the dark box the screen's lines use, and nothing else beside it.
+  let desc: { line: ReactNode; full: ReactNode; title: string } | undefined;
+  if (p.summary) {
+    desc = {
+      line: (
+        <>
+          <Icon name="sparkle" />
+          {p.summary.text}
+        </>
+      ),
+      full: (
+        <>
+          <Icon name="sparkle" />
+          {p.summary.text} <Since t={p.summary.at} />
+        </>
+      ),
+      title: 'Summary by Claude Haiku (herdr.agentDescription)',
+    };
+  } else if (p.request) {
+    desc = { line: p.request, full: p.request, title: `You asked: ${p.request}` };
+  }
   let body: ReactNode = null;
-  if (open) {
+  if (open && desc) {
+    body = (
+      <>
+        <div className="term desc" title={desc.title}>
+          {desc.full}
+        </div>
+        <Extras p={p} />
+      </>
+    );
+  } else if (open) {
     body = (
       <>
         {p.detail && <div className="sub">{p.detail}</div>}
         {story}
         <Extras p={p} />
       </>
+    );
+  } else if (desc) {
+    body = (
+      <div className="sub desc" title={desc.title}>
+        {desc.line}
+      </div>
     );
   } else if (p.detail || p.headline) {
     body = <div className="sub">{p.detail || p.headline}</div>;

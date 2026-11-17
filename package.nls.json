@@ -101,6 +101,9 @@
   "setting.autoAttachOnSwitch.deprecationMessage": "Replaced by herdr.autoAttach (false = \"none\"). Still read until herdr.autoAttach is set.",
   "setting.autoAttachShells.description": "Open shell panes too, not only agents, when you switch to a space.",
   "setting.autoAttachShells.deprecationMessage": "Replaced by herdr.autoAttach (false = \"agents\"). Still read until herdr.autoAttach is set.",
+  "setting.agentDescription.description": "What an agent's sidebar row says under its name. Machine setting (summary sends screen text out): ignored in workspace and folder settings.",
+  "setting.agentDescription.enumDescriptions.request": "Your last message to the agent, so the row says what the session is about. Claude Code only, read from its session file on this computer; other agents, and a session that can't be found, show what's on screen.",
+  "setting.agentDescription.enumDescriptions.screen": "What's on the agent's screen: Claude's latest recap, else its last line of output.",
   "setting.agentNames.description": "How agent tabs and sidebar rows are named.",
   "setting.agentNames.enumDescriptions.title": "An agent you haven't named shows its terminal title, e.g. Claude Code's session name. Default titles (\"Claude Code\") and folder paths are skipped.",
   "setting.agentNames.enumDescriptions.herdr": "Only Herdr's names: \"Claude\", \"Claude 2\", or a name you chose.",
@@ -129,5 +132,7 @@
   "walkthrough.getStarted.usage.title": "See your plan limits",
   "walkthrough.getStarted.usage.description": "Claude Code, Codex and Kiro usage in the sidebar.\n[Show Plan Limits](command:herdr.setupClaudeUsage)",
   "walkthrough.getStarted.guide.title": "Read the guide",
-  "walkthrough.getStarted.guide.description": "What every color, icon and button means.\n[Open the Guide](command:herdr.openHelp)"
+  "walkthrough.getStarted.guide.description": "What every color, icon and button means.\n[Open the Guide](command:herdr.openHelp)",
+  "setting.agentDescription.enumDescriptions.summary": "A short summary of what the agent is doing, written by Claude Haiku from the end of its screen (any agent, in this window). It sends that screen text to Anthropic through the Claude Code login the agent uses (`claude -p`, no tools, nothing saved), a tiny amount of your plan per summary: when a turn ends, and at most every 3 minutes while it works, only when the screen changed.",
+  "setting.agentSummariesAgent.markdownDescription": "Which Claude Code login writes an agent's summary (`#herdr.agentDescription#` = `summary`) when the pane doesn't say. A Claude Code agent's summary uses the account that agent runs in (found from its process, so it follows a switch inside the pane, like quitting `claude` and starting another account's alias), else the `#herdr.agents#` row it was started from. This setting is for the rest, like Codex or Kiro: the name of a Claude row of `#herdr.agents#`, such as `Claude (work)`. Empty: the first Claude row. Machine setting: ignored in workspace and folder settings."
 }

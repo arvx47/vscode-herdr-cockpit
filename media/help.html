@@ -246,7 +246,9 @@
     <dt>Ring, corner dot and pill</dt><dd>The status, in the colors below. The dot pulses while an agent is working or blocked.</dd>
     <dt>Grey name after the name</dt><dd>Which agent it is, when the row shows its session's title instead (<b>Rate limiting</b> · <b>Codex (work)</b>): the agent's name in your agent list, so you can tell accounts apart.</dd>
     <dt>Time in the pill</dt><dd>How long the agent has been in this status, counted from when VS Code noticed the change (it restarts when the window reloads).</dd>
-    <dt>Second line</dt><dd>The task title the agent set; without one, the gist of its latest reply (such as Claude's "recap").</dd>
+    <dt>Second line</dt><dd>For Claude Code: your last message to it, so the row says what the session is about (read from its session file on this computer; open the row to read all of it). Otherwise, and with <code>herdr.agentDescription</code> set to <code>screen</code>: the task title the agent set; without one, the gist of its latest reply (such as Claude's "recap"). With <code>summary</code>: a short summary
+      of what the agent is doing, written by Claude Haiku, marked <span class="codicon codicon-sparkle"></span> (open the row to
+      read all of it, with its age).</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the rest: the full summary of the latest reply (or, for a blocked or done agent, the end of its screen), chips for the Herdr tab, model and other metadata, and the working folder. Click again (or press <kbd>←</kbd>) to hide. Each row remembers its choice. A row with nothing more to show has no chevron.</dd>
     <dt>Small blue dot after the name</dt><dd>The pane that is focused in Herdr.</dd>
     <dt>Click the row</dt><dd>Opens the agent in a terminal tab (or brings its tab forward).</dd>
@@ -484,7 +486,12 @@
   <h2>Privacy and safety</h2>
   <ul>
     <li>Everything shown comes from your Herdr server and from files on this machine. Shell output, agent screens and usage
-      numbers never leave your computer. The only network request is Codex's own usage check, which Codex makes with its own login.</li>
+      numbers never leave your computer. The only network request is Codex's own usage check, which Codex makes with its own login.
+      The exception is one you turn on: <code>herdr.agentDescription</code> set to <code>summary</code> sends the end of each agent's
+      screen (in this window) to Claude Haiku through the Claude Code login that agent uses (<code>claude -p</code>, with no tools,
+      no settings files and nothing saved), when a turn ends and at most every 3 minutes while it works. It counts toward that
+      Claude plan, a tiny amount per summary. For agents that aren't Claude Code, <code>herdr.agentSummariesAgent</code> picks the
+      login: the name of a Claude row of <code>herdr.agents</code> (empty: the first).</li>
     <li>Herdr Cockpit never reads the agents' logins or tokens. Claude's plan limits come only from the status line you opt into.</li>
     <li>The git line runs only in trusted VS Code windows (<b>Workspace Trust</b> is the safety boundary, as for VS Code's own
       git support). On top of that, every git call switches off the commands a repository can define for itself that are
