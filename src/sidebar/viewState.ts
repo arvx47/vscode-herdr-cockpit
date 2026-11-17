@@ -97,8 +97,11 @@ export interface SpaceView {
   git?: GitInfo;
   worktree: boolean;
   tokens: string[];
+  /** Agents, then shells, each in Herdr's order unless you dragged them (ViewInputs.paneOrder). */
   agents: PaneView[];
   shells: PaneView[];
+  /** You dragged its rows into an order of your own (the card's menu offers Reset Row Order). */
+  reordered: boolean;
 }
 
 /** The connection, as the sidebar shows it (see Conn in sync.ts). */
@@ -187,6 +190,8 @@ export interface ViewInputs {
   order?: 'activity' | 'herdr';
   /** When a space was last active (an agent changed state, it was focused), if known. */
   lastActive?(space: Space): number | undefined;
+  /** The order you dragged a space's rows into (pane ids), if you did. */
+  paneOrder?(space: Space): string[] | undefined;
   versions?: { cockpit: string; herdr?: string; driver?: string };
   /** See ViewState.worktrees (default true). */
   worktrees?: boolean;
@@ -565,6 +570,21 @@ function shellView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   };
 }
 
+/**
+ * Rows in the order you dragged them into: the ones in `order` first, in that order, then the rest (panes opened
+ * since, or whose ids changed with a Herdr restart) in Herdr's order.
+ */
+export function applyPaneOrder<T extends { id: string }>(rows: T[], order: string[] | undefined): T[] {
+  if (!order?.length) {
+    return rows;
+  }
+  const at = new Map(order.map((id, n) => [id, n]));
+  return rows
+    .map((r, n) => ({ r, n, at: at.get(r.id) ?? order.length }))
+    .sort((a, b) => a.at - b.at || a.n - b.n)
+    .map((x) => x.r);
+}
+
 export function buildViewState(i: ViewInputs): ViewState {
   const totals = { ...emptyCounts(), agents: 0, shells: 0 };
   const all = i.model?.spaces ?? [];
@@ -574,6 +594,7 @@ export function buildViewState(i: ViewInputs): ViewState {
     const shells: PaneView[] = [];
     for (const tab of sp.tabs)
       for (const p of tab.panes) (p.isAgent ? agents : shells).push(p.isAgent ? agentView(sp, tab, p, i) : shellView(sp, tab, p, i));
+    const order = i.paneOrder?.(sp);
     for (const a of agents) totals[a.status ?? 'unknown']++;
     totals.agents += agents.length;
     totals.shells += shells.length;
@@ -593,8 +614,9 @@ export function buildViewState(i: ViewInputs): ViewState {
       folder: folderLine(sp, all),
       worktree: !!sp.worktree?.is_linked_worktree,
       tokens: Object.values(sp.tokens),
-      agents,
-      shells: i.showShells ? shells : [],
+      agents: applyPaneOrder(agents, order),
+      shells: i.showShells ? applyPaneOrder(shells, order) : [],
+      reordered: !!order?.length,
     };
   });
   const rank: Partial<Record<AgentStatus, number>> = { blocked: 0, done: 1 };

@@ -101,6 +101,10 @@ export function activate(ctx: vscode.ExtensionContext) {
   };
   /** The sidebar lists only the spaces open in this window. */
   const panel = new HerdrPanel(ctx.extensionUri, (a: PanelAction) => {
+    if (a.command === 'reorder') {
+      reorderPanes(a.spaceId, a.order ?? []);
+      return;
+    }
     const id = PANEL_COMMANDS[a.command];
     if (id) vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId, account: a.account } satisfies Target);
   });
@@ -425,6 +429,39 @@ export function activate(ctx: vscode.ExtensionContext) {
     activitySave = setTimeout(saveActivity, 2000);
   }
 
+  /**
+   * The order you dragged each space's rows into (by space name, like spaceActivity; pane ids, which a Herdr
+   * restart can change, and then the rows fall back to Herdr's order). Only the sidebar's: Herdr's stays.
+   */
+  const PANE_ORDER_KEY = 'herdr.paneOrder';
+  const paneOrder = new Map<string, string[]>(Object.entries(ctx.globalState.get<Record<string, string[]>>(PANE_ORDER_KEY, {})));
+  function savePaneOrder() {
+    void ctx.globalState.update(PANE_ORDER_KEY, Object.fromEntries([...paneOrder].slice(-200)));
+  }
+  /** The webview's drop: `order` is the space's rows as shown, the hidden shells keep their place after them. */
+  function reorderPanes(spaceId: string | undefined, order: string[]) {
+    const sp = model?.spaces.find((s) => s.id === spaceId);
+    if (!sp) {
+      return;
+    }
+    const ids = new Set(sp.tabs.flatMap((t) => t.panes.map((p) => p.id)));
+    const shown = order.filter((id) => ids.has(id));
+    const rest = (paneOrder.get(sp.label) ?? []).filter((id) => ids.has(id) && !shown.includes(id));
+    paneOrder.delete(sp.label);
+    paneOrder.set(sp.label, [...shown, ...rest]);
+    savePaneOrder();
+    render();
+  }
+  ctx.subscriptions.push(
+    vscode.commands.registerCommand('herdr.resetPaneOrder', (t?: Target) => {
+      const sp = model?.spaces.find((s) => s.id === t?.spaceId);
+      if (sp && paneOrder.delete(sp.label)) {
+        savePaneOrder();
+        render();
+      }
+    }),
+  );
+
   /** The bottom line: our version, and Herdr's while connected (or the driver, when it isn't Herdr). */
   function versions(): ViewState['versions'] {
     const cockpit = String(ctx.extension.packageJSON.version);
@@ -460,6 +497,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         connection: { ...(sync.conn as object), kind: sync.conn.kind, expectedProtocol: HERDR_PROTOCOL } as ViewConnection,
         order: cfg().get<'activity' | 'herdr'>('spaceOrder', 'herdr'),
         lastActive: (sp) => spaceActivity.get(sp.label),
+        paneOrder: (sp) => paneOrder.get(sp.label),
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: versions(),
         here: (sp) => flow.isOpenHere(sp),

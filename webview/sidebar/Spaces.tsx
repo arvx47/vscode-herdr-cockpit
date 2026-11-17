@@ -3,8 +3,8 @@
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { SpaceView, ViewState } from '../../src/sidebar/viewState';
 import { ago } from '../../src/util/format';
-import { post, useNow, type UiState } from './host';
-import { AgentRow, shellState, ShellRow } from './Rows';
+import { post, postReorder, useNow, type UiState } from './host';
+import { AgentRow, type Reorder, shellState, ShellRow } from './Rows';
 import { FoldHeading, Icon, IconButton, menuContext, pressable } from './ui';
 
 type Update = (change: (ui: UiState) => UiState) => void;
@@ -136,12 +136,55 @@ function GitLine({ sp }: { sp: SpaceView }) {
   );
 }
 
+/**
+ * Moving rows within one of a space's lists (`agents` or `shells`); what's saved is the whole space's order, the
+ * other list as it shows. Only the sidebar's order: Herdr's tabs stay where they are.
+ */
+function reorderOf(sp: SpaceView, list: 'agents' | 'shells'): Reorder | undefined {
+  const rows = sp[list];
+  if (rows.length < 2) {
+    return undefined;
+  }
+  const save = (ids: string[]) => {
+    let order = [...ids, ...sp.shells.map((p) => p.id)];
+    if (list === 'shells') {
+      order = [...sp.agents.map((p) => p.id), ...ids];
+    }
+    postReorder(sp.id, order);
+  };
+  const ids = rows.map((p) => p.id);
+  return {
+    group: `${sp.id}/${list}`,
+    move(id, target, after) {
+      const rest = ids.filter((x) => x !== id);
+      let at = rest.indexOf(target);
+      if (after) {
+        at++;
+      }
+      rest.splice(at, 0, id);
+      save(rest);
+    },
+    step(id, by) {
+      const from = ids.indexOf(id);
+      const to = from + by;
+      if (from < 0 || to < 0 || to >= ids.length) {
+        return;
+      }
+      const next = [...ids];
+      next.splice(from, 1);
+      next.splice(to, 0, id);
+      save(next);
+    },
+  };
+}
+
 function ShellGroup({ sp, ui, update }: { sp: SpaceView; ui: UiState; update: Update }) {
   const now = useNow();
   if (!sp.shells.length) {
     return null;
   }
   const open = ui.shellsOpen[sp.id] ?? sp.shellsDefaultOpen;
+  const shellOrder = reorderOf(sp, 'shells');
   const states = sp.shells.map((p) => shellState(p, now));
   const running = states.filter((s) => s === 'live' || s === 'running').length;
   const failed = states.filter((s) => s === 'failed').length;
@@ -161,7 +204,7 @@ function ShellGroup({ sp, ui, update }: { sp: SpaceView; ui: UiState; update: Up
       {open && (
         <div className="shells">
           {sp.shells.map((p) => (
-            <ShellRow key={p.id} p={p} expanded={!!ui.expanded[p.id]} onExpand={(o) => update((u) => ({ ...u, expanded: { ...u.expanded, [p.id]: o } }))} />
+            <ShellRow key={p.id} p={p} reorder={shellOrder} expanded={!!ui.expanded[p.id]} onExpand={(o) => update((u) => ({ ...u, expanded: { ...u.expanded, [p.id]: o } }))} />
           ))}
         </div>
       )}
@@ -242,6 +285,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
   if (sp.mounted) {
     section = 'space-mounted';
   }
+  const agentOrder = reorderOf(sp, 'agents');
   const openSpace = () => {
     setOpen(true);
     post('switch', { spaceId: sp.id });
@@ -251,7 +295,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
       <div
         className="space-head"
         title={title}
-        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo })}
+        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo, spaceReordered: sp.reordered })}
         {...pressable(() => setOpen(!open), { expanded: open, onKey })}
       >
         <span className={chev}>
@@ -297,7 +341,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
       {open && (
         <div className="space-body">
           {sp.agents.map((a) => (
-            <AgentRow key={a.id} p={a} expanded={!!ui.expanded[a.id]} onExpand={(o) => update((u) => ({ ...u, expanded: { ...u.expanded, [a.id]: o } }))} />
+            <AgentRow key={a.id} p={a} reorder={agentOrder} expanded={!!ui.expanded[a.id]} onExpand={(o) => update((u) => ({ ...u, expanded: { ...u.expanded, [a.id]: o } }))} />
           ))}
           <ShellGroup sp={sp} ui={ui} update={update} />
           {!sp.agents.length && !sp.shells.length && <div className="empty-note">{empty}</div>}

@@ -16,6 +16,11 @@ export function post(command: string, target: { spaceId?: string; paneId?: strin
   vscode.postMessage({ type: 'cmd', command, spaceId: target.spaceId, paneId: target.paneId, account: target.account });
 }
 
+/** Save the order you dragged a space's rows into: its pane ids as they now show (the sidebar's order only). */
+export function postReorder(spaceId: string, order: string[]) {
+  vscode.postMessage({ type: 'reorder', spaceId, order });
+}
+
 export function ready() {
   vscode.postMessage({ type: 'ready' });
 }

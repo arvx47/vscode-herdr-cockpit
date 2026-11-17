@@ -9,7 +9,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../state/model';
 import type { Space } from '../state/model';
 import { ago, left } from '../util/format';
-import { buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
+import { applyPaneOrder, buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
 import type { PaneActivity } from '../state/activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
 
@@ -98,6 +98,24 @@ assert.deepStrictEqual(vs.usage.map((u) => u.id), ['claude', 'kiro'], 'usage onl
 const hidden = buildViewState({ model, showShells: false, since: () => undefined, git: () => undefined, mounted: () => false, attached: () => false, activity: () => undefined, usage: [], connection: { kind: 'connected', expectedProtocol: 22 } });
 assert.ok(hidden.spaces.every((x) => x.shells.length === 0));
 console.log('✓ view state from real snapshot');
+
+{
+  // Rows you dragged: in your order, then the ones you didn't place (new panes) in Herdr's; the other list keeps its own.
+  const rows = ['a', 'b', 'c', 'd'].map((id) => ({ id }));
+  assert.deepStrictEqual(applyPaneOrder(rows, ['c', 'a']).map((r) => r.id), ['c', 'a', 'b', 'd']);
+  assert.deepStrictEqual(applyPaneOrder(rows, ['gone', 'd']).map((r) => r.id), ['d', 'a', 'b', 'c'], 'ids no longer there are skipped');
+  assert.strictEqual(applyPaneOrder(rows, undefined), rows);
+  const base = { model, showShells: true, since: () => undefined, git: () => undefined, mounted: () => false, attached: () => false, activity: () => undefined, usage: [], connection: { kind: 'connected' as const, expectedProtocol: 22 } };
+  const w2 = model.spaces.find((x) => x.id === 'w2')!;
+  const shellIds = vs.spaces.find((x) => x.id === 'w2')!.shells.map((x) => x.id);
+  const moved = [shellIds[2], shellIds[0]];
+  const ordered = buildViewState({ ...base, paneOrder: (s) => (s.label === w2.label ? moved : undefined) });
+  const ow2 = ordered.spaces.find((x) => x.id === 'w2')!;
+  assert.deepStrictEqual(ow2.shells.map((x) => x.id), [...moved, ...shellIds.filter((id) => !moved.includes(id))]);
+  assert.deepStrictEqual(ow2.agents.map((x) => x.id), sp('w2').agents.map((x) => x.id), 'agents keep their order');
+  assert.deepStrictEqual([ow2.reordered, ordered.spaces.find((x) => x.id === 'w5')!.reordered], [true, false]);
+  console.log("✓ rows in the order you dragged them into, new ones after in Herdr's order");
+}
 
 // ---- space filter: only this window's spaces are listed; counters, Needs you and labels still cover all
 const inputs = {

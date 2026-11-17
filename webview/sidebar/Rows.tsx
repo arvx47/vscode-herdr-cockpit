@@ -1,5 +1,6 @@
 // Agent and shell rows: two lines (name + status, then one line of context); the chevron reveals the rest.
-import type { KeyboardEvent, ReactNode } from 'react';
+import { useState } from 'react';
+import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
 import type { PaneView } from '../../src/sidebar/viewState';
 import { post, useNow } from './host';
 import { AgentLogo, Icon, IconButton, menuContext, pressable, Since } from './ui';
@@ -30,18 +31,93 @@ export function shellState(p: PaneView, now: number): ShellState {
   return 'unknown';
 }
 
+/**
+ * Dragging a row within its list (a space's agents, or its shells). `group` names the list: a row only takes
+ * drops from its own. `move` puts a row before or after another; `step` moves it one place (Alt+Up/Down).
+ */
+export interface Reorder {
+  group: string;
+  move(id: string, target: string, after: boolean): void;
+  step(id: string, by: number): void;
+}
+
 interface RowProps {
   p: PaneView;
   expanded: boolean;
   onExpand: (open: boolean) => void;
   /** In the Needs you list: always expanded, with its space's name. */
   attention?: boolean;
+  /** The row can be dragged to another place in its list. */
+  reorder?: Reorder;
+}
+
+/** The row being dragged; one drag at a time, so the module keeps it rather than every list. */
+let dragging: { id: string; group: string } | undefined;
+
+/** Drag and drop for a row: where a drop would land (a line above or below it) and the handlers. */
+function useRowDrag(p: PaneView, reorder: Reorder | undefined) {
+  const [drop, setDrop] = useState<'before' | 'after'>();
+  const [dragged, setDragged] = useState(false);
+  if (!reorder) {
+    return { cls: '', props: {} };
+  }
+  const accepts = () => dragging?.group === reorder.group && dragging.id !== p.id;
+  const props = {
+    draggable: true,
+    onDragStart: (e: DragEvent) => {
+      dragging = { id: p.id, group: reorder.group };
+      e.dataTransfer.setData('application/x-herdr-pane', p.id);
+      e.dataTransfer.effectAllowed = 'move';
+      setDragged(true);
+    },
+    onDragEnd: () => {
+      dragging = undefined;
+      setDragged(false);
+    },
+    onDragOver: (e: DragEvent<HTMLElement>) => {
+      if (!accepts()) {
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const box = e.currentTarget.getBoundingClientRect();
+      if (e.clientY > box.top + box.height / 2) {
+        setDrop('after');
+      } else {
+        setDrop('before');
+      }
+    },
+    onDragLeave: (e: DragEvent<HTMLElement>) => {
+      // Moving onto one of the row's own children isn't leaving it.
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+        setDrop(undefined);
+      }
+    },
+    onDrop: (e: DragEvent) => {
+      const from = dragging;
+      setDrop(undefined);
+      if (!from || !accepts()) {
+        return;
+      }
+      e.preventDefault();
+      reorder.move(from.id, p.id, drop === 'after');
+    },
+  };
+  let cls = '';
+  if (drop) {
+    cls += ` drop-${drop}`;
+  }
+  if (dragged) {
+    cls += ' dragging';
+  }
+  return { cls, props };
 }
 
 /** What every row shares: the frame, click to attach, the right-click menu, keyboard expand/collapse. */
 function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line1: ReactNode; body: ReactNode; side: ReactNode }) {
   const { p } = props;
-  let cls = `row ${props.className}`;
+  const drag = useRowDrag(p, props.reorder);
+  let cls = `row ${props.className}${drag.cls}`;
   if (p.focused) {
     cls += ' herdr-focused';
   }
@@ -52,8 +128,20 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
   if (p.attached) {
     hint = 'Click to show its terminal tab';
   }
+  if (props.reorder) {
+    hint += '. Drag it, or Alt+Up/Down, to move it';
+  }
   const onKey = (e: KeyboardEvent) => {
-    if (!props.attention && p.more && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    if (props.reorder && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      // Before App's Up/Down navigation sees it.
+      e.preventDefault();
+      e.stopPropagation();
+      let by = 1;
+      if (e.key === 'ArrowUp') {
+        by = -1;
+      }
+      props.reorder.step(p.id, by);
+    } else if (!props.attention && p.more && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       props.onExpand(e.key === 'ArrowRight');
     }
@@ -64,6 +152,7 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
       title={`${p.name} · ${p.id}\n${hint}`}
       data-vscode-context={menuContext({ webviewSection: p.kind, spaceId: p.spaceId, paneId: p.id, spaceHere: p.spaceMounted })}
       {...pressable(() => post('attach', { spaceId: p.spaceId, paneId: p.id }), { onKey })}
+      {...drag.props}
     >
       {props.avatar}
       <div className="main">
