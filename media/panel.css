@@ -366,6 +366,11 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .row.framed { margin: 4px 0; }
 .attention .row:hover, .row.framed:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .attention .where { font-size: var(--fs-sm); color: var(--muted); }
+/* The Herdr tab you're in: the row looks hovered (a framed one, its own hover); the one you were in last, half as much. */
+.row.active-now { background: var(--hover); }
+.row.framed.active-now { background: color-mix(in srgb, var(--c) 20%, transparent); }
+.row.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
+.row.framed.active-recent { background: color-mix(in srgb, var(--c) 14%, transparent); }
 
 /* shells group */
 .group {

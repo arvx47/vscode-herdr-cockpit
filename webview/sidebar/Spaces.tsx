@@ -1,6 +1,6 @@
 // The Spaces section: "This window" / "Other spaces" (or one list), space cards with their git line, agents and
 // a foldable Shells group.
-import type { KeyboardEvent, ReactNode } from 'react';
+import { useEffect, type KeyboardEvent, type ReactNode } from 'react';
 import type { SpaceView, ViewState } from '../../src/sidebar/viewState';
 import { ago } from '../../src/util/format';
 import { post, postReorder, useNow, type UiState } from './host';
@@ -376,7 +376,37 @@ function NoSpaceCard({ name, canAdd }: { name: string; canAdd: boolean }) {
   );
 }
 
+/**
+ * When you move to another Herdr tab, unfold what hides its row (its group, its card, the Shells group) and scroll it
+ * into view. Only on the move: fold it again afterwards and it stays folded.
+ */
+function useActiveRow(state: ViewState, update: Update) {
+  const row = state.activeRow;
+  useEffect(() => {
+    if (!row) {
+      return;
+    }
+    update((u) => {
+      const next: UiState = { ...u, open: { ...u.open, [row.spaceId]: true } };
+      if (row.kind === 'shell') {
+        next.shellsOpen = { ...u.shellsOpen, [row.spaceId]: true };
+      }
+      if (row.group === 'elsewhere') {
+        next.elsewhereOpen = true;
+      } else if (row.group === 'others') {
+        next.othersOpen = true;
+      }
+      return next;
+    });
+    const t = setTimeout(() => {
+      document.querySelector(`[data-space="${CSS.escape(row.spaceId)}"] [data-pane="${CSS.escape(row.id)}"]`)?.scrollIntoView({ block: 'nearest' });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [row?.id]);
+}
+
 export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiState; update: Update }) {
+  useActiveRow(state, update);
   const card = (sp: SpaceView) => <SpaceCard key={sp.id} sp={sp} ui={ui} update={update} showShells={state.showShells} worktrees={state.worktrees} />;
   const { layout } = state;
   let body: ReactNode;

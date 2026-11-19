@@ -121,6 +121,9 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
   if (p.focused) {
     cls += ' herdr-focused';
   }
+  if (p.active) {
+    cls += ` active-${p.active}`;
+  }
   if (props.expanded) {
     cls += ' open';
   }
@@ -149,6 +152,7 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
   return (
     <div
       className={cls}
+      data-pane={p.id}
       title={`${p.name} · ${p.id}\n${hint}`}
       data-vscode-context={menuContext({ webviewSection: p.kind, spaceId: p.spaceId, paneId: p.id, spaceHere: p.spaceMounted })}
       {...pressable(() => post('attach', { spaceId: p.spaceId, paneId: p.id }), { onKey })}

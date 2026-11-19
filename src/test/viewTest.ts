@@ -244,6 +244,20 @@ console.log('✓ a window with its own folders is marked for the "no space here"
   );
   console.log('✓ spaces layout: split, no-space card, other windows, other spaces unfolded');
 
+  // The Herdr tab you're in: its row is highlighted and the sidebar is told where it is; the last one, faintly.
+  const anyAgent = all.spaces.find((x) => x.agents.length)!;
+  const pid = anyAgent.agents[0].id;
+  const inTab = buildViewState({ ...inputs, activePane: { id: pid, now: true } });
+  const rowsOf = (vs: typeof inTab) => vs.spaces.flatMap((x) => [...x.agents, ...x.shells]);
+  assert.strictEqual(rowsOf(inTab).find((r) => r.id === pid)!.active, 'now');
+  assert.strictEqual(rowsOf(inTab).filter((r) => r.active).length, 1, 'only that row');
+  assert.deepStrictEqual(inTab.activeRow, { id: pid, spaceId: anyAgent.id, kind: 'agent', group: 'others' });
+  const lastTab = buildViewState({ ...inputs, activePane: { id: pid, now: false } });
+  assert.strictEqual(rowsOf(lastTab).find((r) => r.id === pid)!.active, 'recent');
+  assert.strictEqual(lastTab.activeRow, undefined, 'nothing to unfold for the last tab');
+  assert.strictEqual(buildViewState({ ...inputs, activePane: { id: 'gone', now: true } }).activeRow, undefined, 'a pane no longer in Herdr');
+  console.log('✓ the tab you are in: row highlighted, the last one faintly');
+
   const v = buildViewState({ ...inputs, mounted: (sp) => sp.id === 'w2' });
   const w2 = v.spaces.find((x) => x.id === 'w2')!;
   assert.ok(w2.defaultOpen, 'a space open here starts unfolded');

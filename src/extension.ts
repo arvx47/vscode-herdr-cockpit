@@ -10,7 +10,7 @@ import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } fr
 import { HerdrPanel, PanelAction } from './sidebar/panel';
 import { SessionSync } from './state/sync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './state/activity';
-import { AgentNames, agentNameParts, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewState } from './sidebar/viewState';
+import { AgentNames, agentNameParts, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
 import { AgentProfile, readAgentList, startingTable } from './agents/agentProfiles';
 import { agentLogo } from './agents/agentLogos';
 import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
@@ -474,7 +474,41 @@ export function activate(ctx: vscode.ExtensionContext) {
   // Claude Code agents' last message from you, for their rows (herdr.agentDescription = request; pollRequests).
   const requests = new Map<string, string>();
   const sessionRequests = new SessionRequests();
+
+  // The Herdr tab you're in, or were in last: its row is highlighted (PaneView.active).
+  let lastActivePane: string | undefined;
+  let renderedActive = '';
+  function activePane(): ViewInputs['activePane'] {
+    const term = vscode.window.activeTerminal;
+    const pane = terms.paneOf(term);
+    if (!term || !pane) {
+      if (lastActivePane) {
+        return { id: lastActivePane, now: false };
+      }
+      return undefined;
+    }
+    lastActivePane = pane.paneId;
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    let now: boolean;
+    if (tab?.input instanceof vscode.TabInputTerminal) {
+      now = tab.label === term.name;
+    } else {
+      // In the panel, not the editor area: VS Code doesn't say whether the panel has the focus, so it counts.
+      now = !vscode.window.tabGroups.all.some((g) => g.tabs.some((t) => t.input instanceof vscode.TabInputTerminal && t.label === term.name));
+    }
+    return { id: pane.paneId, now };
+  }
+  /** Redraw only when the tab you're in changed (tab events come often). */
+  function activeChanged() {
+    const a = activePane();
+    const key = `${a?.id}:${a?.now}`;
+    if (key !== renderedActive) {
+      render();
+    }
+  }
   function render() {
+    const active = activePane();
+    renderedActive = `${active?.id}:${active?.now}`;
     flow.noteFolders(model);
     scheduleHubStatus();
     panel.update(
@@ -506,6 +540,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         needsYou: cfg().get<boolean>('showNeedsYou', false),
         thisWindow: thisWindowView(),
         worktrees: backend.capabilities.worktrees,
+        activePane: active,
       }),
     );
   }
@@ -1051,6 +1086,9 @@ export function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(
     vscode.window.onDidChangeActiveTerminal(terminalContext),
     vscode.window.onDidChangeActiveTerminal((t) => markSeen(t)),
+    vscode.window.onDidChangeActiveTerminal(activeChanged),
+    vscode.window.tabGroups.onDidChangeTabs(activeChanged),
+    vscode.window.tabGroups.onDidChangeTabGroups(activeChanged),
     vscode.window.onDidOpenTerminal(() => setTimeout(terminalContext, 200)), // adopted a moment after it opens
     vscode.commands.registerCommand('herdr.terminal.find', tabAction('find')),
     vscode.commands.registerCommand('herdr.terminal.findNext', tabAction('find-next')),

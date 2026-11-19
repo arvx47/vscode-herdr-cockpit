@@ -36,6 +36,11 @@ export interface PaneView {
   since?: number;
   /** Herdr's focused pane. */
   focused: boolean;
+  /**
+   * Its tab is the one you're in, in this window (`now`), or the last Herdr tab you were in while you're elsewhere,
+   * like a file (`recent`): the row is highlighted, `recent` more faintly.
+   */
+  active?: 'now' | 'recent';
   /** An attach terminal for this pane is open in VS Code. */
   attached: boolean;
   /** Tab label when it adds information (not a bare number, not the name, nor the agent's). */
@@ -172,6 +177,8 @@ export interface ViewState {
    * "This window" and "Other spaces", with a card offering to create or add a space when none is open here.
    */
   thisWindow?: { name: string };
+  /** The row of the tab you're in (PaneView.active `now`): the sidebar unfolds what hides it and scrolls to it. */
+  activeRow?: { id: string; spaceId: string; kind: 'agent' | 'shell'; group: 'here' | 'elsewhere' | 'others' };
 }
 
 export interface ViewInputs {
@@ -207,6 +214,8 @@ export interface ViewInputs {
   needsYou?: boolean;
   /** See ViewState.thisWindow. */
   thisWindow?: { name: string };
+  /** The pane of the Herdr tab you're in, or were in last (`now` false): see PaneView.active. */
+  activePane?: { id: string; now: boolean };
 }
 
 /**
@@ -644,6 +653,27 @@ export function buildViewState(i: ViewInputs): ViewState {
       a.framed = a.needs || a.status === 'working';
     }
   }
+  let activeRow: ViewState['activeRow'];
+  if (i.activePane) {
+    for (const s of spaces) {
+      const row = [...s.agents, ...s.shells].find((p) => p.id === i.activePane!.id);
+      if (!row) {
+        continue;
+      }
+      if (i.activePane.now) {
+        row.active = 'now';
+        let group: 'here' | 'elsewhere' | 'others' = 'others';
+        if (s.here) {
+          group = 'here';
+        } else if (s.elsewhere) {
+          group = 'elsewhere';
+        }
+        activeRow = { id: row.id, spaceId: s.id, kind: row.kind, group };
+      } else {
+        row.active = 'recent';
+      }
+    }
+  }
   let attention: PaneView[] = [];
   if (needsYou) {
     attention = spaces
@@ -667,6 +697,7 @@ export function buildViewState(i: ViewInputs): ViewState {
     versions: i.versions,
     worktrees: i.worktrees ?? true,
     thisWindow: i.thisWindow,
+    activeRow,
   };
 }
 
