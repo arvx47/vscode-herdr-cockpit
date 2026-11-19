@@ -89,6 +89,8 @@ export interface SpaceView {
   mounted: boolean;
   /** Open in this window (its own space, or one of its folders): listed under "This window". */
   here: boolean;
+  /** Not here but open in another window of this editor: listed under "Other windows". */
+  elsewhere: boolean;
   /** Unfolded until you fold it: open here, Herdr's focused space, or an agent needs you. */
   defaultOpen: boolean;
   /** The Shells group starts unfolded when it's short. */
@@ -136,9 +138,9 @@ export interface UsageView extends ProviderUsage {
 
 /** How the Spaces list is split. */
 export interface SpacesLayout {
-  /** "This window" on top and "Other spaces" folded below; else one plain list. */
+  /** "This window" on top, then "Other windows" and "Other spaces" folded below; else one plain list. */
   split: boolean;
-  /** "Other spaces" starts unfolded (this window has no space of its own). */
+  /** "Other windows" and "Other spaces" start unfolded (this window has no space of its own). */
   othersOpenByDefault: boolean;
   /** This window has folders but no space for them: the card offering to create or add one. */
   noSpaceHere?: { name: string; canAdd: boolean };
@@ -182,6 +184,8 @@ export interface ViewInputs {
   activity(paneId: string): PaneActivity | undefined;
   /** An agent's last message from you (agents/sessionText.ts), when herdr.agentDescription is request. */
   request?(paneId: string): string | undefined;
+  /** herdr.agentDescription: with `request`, an agent's row shows only your last message (nothing from its screen). */
+  description?: 'request' | 'screen' | 'summary';
   /** An agent's summary (agents/summaries.ts), when herdr.agentDescription is summary and one was written. */
   summary?(paneId: string): { text: string; at: number } | undefined;
   usage: ProviderUsage[];
@@ -197,6 +201,8 @@ export interface ViewInputs {
   worktrees?: boolean;
   /** Whether a space is open in this window; without it, none are. */
   here?(space: Space): boolean;
+  /** Whether another window of this editor has the space open (see SpaceView.elsewhere); without it, none do. */
+  elsewhere?(space: Space): boolean;
   /** herdr.showNeedsYou: list blocked and done agents in a "Needs you" section (default false, as the setting). */
   needsYou?: boolean;
   /** See ViewState.thisWindow. */
@@ -493,8 +499,14 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   const chips = [p.tokens.model, ...Object.entries(p.tokens).filter(([k]) => k !== 'model').map(([, v]) => v)].filter(
     (x): x is string => !!x,
   );
-  const gist = headline(lines);
-  const preview = status === 'blocked' ? lines.slice(-5) : status === 'done' ? lines.slice(-3) : [];
+  let gist = headline(lines);
+  let preview = status === 'blocked' ? lines.slice(-5) : status === 'done' ? lines.slice(-3) : [];
+  if (i.description === 'request') {
+    // Only your last message: no task title, recap or screen lines, even when there's no message to show.
+    detail = undefined;
+    gist = undefined;
+    preview = [];
+  }
   const cwd = ownCwd(p, space);
   const request = i.request?.(p.id);
   const summary = i.summary?.(p.id);
@@ -599,6 +611,7 @@ export function buildViewState(i: ViewInputs): ViewState {
     totals.agents += agents.length;
     totals.shells += shells.length;
     const mounted = i.mounted(sp);
+    const here = !!i.here?.(sp);
     return {
       id: sp.id,
       label: sp.label,
@@ -606,7 +619,8 @@ export function buildViewState(i: ViewInputs): ViewState {
       status: sp.status,
       focused: sp.focused,
       mounted,
-      here: !!i.here?.(sp),
+      here,
+      elsewhere: !here && !!i.elsewhere?.(sp),
       defaultOpen: mounted || sp.focused || sp.counts.blocked + sp.counts.done > 0,
       shellsDefaultOpen: shells.length <= 3,
       counts: { ...sp.counts },
@@ -657,14 +671,17 @@ export function buildViewState(i: ViewInputs): ViewState {
 }
 
 /**
- * This window's spaces on top and the rest under "Other spaces" when both exist; a window with folders of its
- * own and no space for them always splits, with a card saying so and the other spaces unfolded.
+ * This window's spaces on top, then those open in other windows ("Other windows"), then the rest ("Other spaces"),
+ * when more than one of these has spaces; a window with folders of its own and no space for them always splits,
+ * with a card saying so. With nothing here the other two start unfolded, so the list never looks empty.
  */
 export function spacesLayout(spaces: SpaceView[], thisWindow: { name: string } | undefined): SpacesLayout {
   const here = spaces.filter((s) => s.here).length;
-  const others = spaces.length - here;
+  const elsewhere = spaces.filter((s) => !s.here && s.elsewhere).length;
+  const others = spaces.length - here - elsewhere;
   if (thisWindow && !here) {
-    return { split: true, othersOpenByDefault: true, noSpaceHere: { name: thisWindow.name, canAdd: others > 0 } };
+    return { split: true, othersOpenByDefault: true, noSpaceHere: { name: thisWindow.name, canAdd: elsewhere + others > 0 } };
   }
-  return { split: here > 0 && others > 0, othersOpenByDefault: false };
+  const groups = [here, elsewhere, others].filter((n) => n > 0).length;
+  return { split: groups > 1, othersOpenByDefault: groups > 1 && !here };
 }

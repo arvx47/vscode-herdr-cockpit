@@ -487,6 +487,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         attached: (id) => terms.has(id),
         activity: (id) => activity.get(id),
         request: (id) => requests.get(id),
+        description: cfg().get<'request' | 'screen' | 'summary'>('agentDescription', 'request'),
         summary: (id) => {
           if (!summariesOn()) {
             return undefined;
@@ -501,6 +502,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: versions(),
         here: (sp) => flow.isOpenHere(sp),
+        elsewhere: (sp) => flow.isOpenElsewhere(sp),
         needsYou: cfg().get<boolean>('showNeedsYou', false),
         thisWindow: thisWindowView(),
         worktrees: backend.capabilities.worktrees,

@@ -100,6 +100,18 @@ assert.ok(hidden.spaces.every((x) => x.shells.length === 0));
 console.log('✓ view state from real snapshot');
 
 {
+  // herdr.agentDescription = request (the default): only your last message, never the screen's title, recap or lines.
+  const req = buildViewState({
+    model, showShells: true, since: () => undefined, git: () => undefined, mounted: () => false, attached: () => false,
+    activity: (id) => acts[id], usage: [], connection: { kind: 'connected', expectedProtocol: 22 }, description: 'request',
+  });
+  const kiroRow = req.spaces.find((x) => x.id === 'w4')!.agents[0];
+  assert.deepStrictEqual([kiroRow.detail, kiroRow.headline, kiroRow.preview], [undefined, undefined, []], 'no screen text without a message');
+  assert.ok(req.spaces.flatMap((x) => x.agents).every((a) => !a.detail && !a.headline && !a.preview.length));
+  console.log('✓ request mode: rows show only your last message');
+}
+
+{
   // Rows you dragged: in your order, then the ones you didn't place (new panes) in Herdr's; the other list keeps its own.
   const rows = ['a', 'b', 'c', 'd'].map((id) => ({ id }));
   assert.deepStrictEqual(applyPaneOrder(rows, ['c', 'a']).map((r) => r.id), ['c', 'a', 'b', 'd']);
@@ -218,7 +230,19 @@ console.log('✓ a window with its own folders is marked for the "no space here"
   assert.deepStrictEqual(spacesLayout([card('b', false)], undefined), { split: false, othersOpenByDefault: false }, 'Cockpit or empty window: plain list');
   assert.deepStrictEqual(spacesLayout([card('b', false)], { name: 'repo' }), { split: true, othersOpenByDefault: true, noSpaceHere: { name: 'repo', canAdd: true } });
   assert.deepStrictEqual(spacesLayout([], { name: 'repo' }).noSpaceHere, { name: 'repo', canAdd: false }, 'nothing to add');
-  console.log('✓ spaces layout: split, no-space card, other spaces unfolded');
+  const far = (id: string) => ({ id, here: false, elsewhere: true }) as any;
+  assert.deepStrictEqual(spacesLayout([card('a', true), far('c')], undefined), { split: true, othersOpenByDefault: false }, 'this window + other windows');
+  assert.deepStrictEqual(spacesLayout([far('c'), card('b', false)], undefined), { split: true, othersOpenByDefault: true }, 'nothing here: both unfolded');
+  assert.deepStrictEqual(spacesLayout([far('c')], undefined), { split: false, othersOpenByDefault: false }, 'all in other windows: plain list');
+  assert.deepStrictEqual(spacesLayout([far('c')], { name: 'repo' }).noSpaceHere, { name: 'repo', canAdd: true }, 'another window\'s space can be added');
+  const [s1, s2] = all.spaces.map((x) => x.id);
+  const ev = buildViewState({ ...inputs, here: (sp) => sp.id === s1, elsewhere: (sp) => sp.id === s1 || sp.id === s2 });
+  assert.deepStrictEqual(
+    [ev.spaces.find((x) => x.id === s1)!.elsewhere, ev.spaces.find((x) => x.id === s2)!.elsewhere],
+    [false, true],
+    'open here wins over another window',
+  );
+  console.log('✓ spaces layout: split, no-space card, other windows, other spaces unfolded');
 
   const v = buildViewState({ ...inputs, mounted: (sp) => sp.id === 'w2' });
   const w2 = v.spaces.find((x) => x.id === 'w2')!;

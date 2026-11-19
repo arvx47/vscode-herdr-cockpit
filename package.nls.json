@@ -104,7 +104,7 @@
   "setting.autoAttachShells.description": "Open shell panes too, not only agents, when you switch to a space.",
   "setting.autoAttachShells.deprecationMessage": "Replaced by herdr.autoAttach (false = \"agents\"). Still read until herdr.autoAttach is set.",
   "setting.agentDescription.description": "What an agent's sidebar row says under its name. Machine setting (summary sends screen text out): ignored in workspace and folder settings.",
-  "setting.agentDescription.enumDescriptions.request": "Your last message to the agent, so the row says what the session is about. Claude Code only, read from its session file on this computer; other agents, and a session that can't be found, show what's on screen.",
+  "setting.agentDescription.enumDescriptions.request": "Your last message to the agent, so the row says what the session is about. Claude Code only, read from its session file on this computer; other agents, and a session that can't be found, show nothing under the name.",
   "setting.agentDescription.enumDescriptions.screen": "What's on the agent's screen: Claude's latest recap, else its last line of output.",
   "setting.agentNames.description": "How agent tabs and sidebar rows are named.",
   "setting.agentNames.enumDescriptions.title": "An agent you haven't named shows its terminal title, e.g. Claude Code's session name. Default titles (\"Claude Code\") and folder paths are skipped.",

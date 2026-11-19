@@ -32,6 +32,7 @@ export interface UiState {
   expanded: Record<string, boolean>;
   usageOpen?: boolean;
   othersOpen?: boolean;
+  elsewhereOpen?: boolean;
 }
 
 function loadUi(): UiState {
@@ -42,6 +43,7 @@ function loadUi(): UiState {
     expanded: saved.expanded ?? {},
     usageOpen: saved.usageOpen,
     othersOpen: saved.othersOpen,
+    elsewhereOpen: saved.elsewhereOpen,
   };
 }
 

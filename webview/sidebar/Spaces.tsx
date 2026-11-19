@@ -286,6 +286,10 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
     section = 'space-mounted';
   }
   const agentOrder = reorderOf(sp, 'agents');
+  let openTitle = "Open this space: its folder and its agents' and shells' tabs (in its own window or this one)";
+  if (sp.elsewhere) {
+    openTitle = 'Bring forward the window that has this space open';
+  }
   const openSpace = () => {
     setOpen(true);
     post('switch', { spaceId: sp.id });
@@ -319,7 +323,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
         {!sp.here && (
           <button
             className="open-btn"
-            title="Open this space: its folder and its agents' and shells' tabs (in its own window or this one)"
+            title={openTitle}
             onClick={(e) => {
               e.stopPropagation();
               openSpace();
@@ -378,18 +382,31 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
   let body: ReactNode;
   if (layout.split) {
     const here = state.spaces.filter((sp) => sp.here);
-    const others = state.spaces.filter((sp) => !sp.here);
+    const elsewhere = state.spaces.filter((sp) => !sp.here && sp.elsewhere);
+    const others = state.spaces.filter((sp) => !sp.here && !sp.elsewhere);
+    const elsewhereOpen = ui.elsewhereOpen ?? layout.othersOpenByDefault;
     const othersOpen = ui.othersOpen ?? layout.othersOpenByDefault;
     body = (
       <>
-        <div className="sub-label">This window</div>
+        {(here.length > 0 || layout.noSpaceHere) && <div className="sub-label">This window</div>}
         {layout.noSpaceHere && <NoSpaceCard name={layout.noSpaceHere.name} canAdd={layout.noSpaceHere.canAdd} />}
         {here.map(card)}
+        {elsewhere.length > 0 && (
+          <FoldHeading
+            className="sub-label others-label"
+            open={elsewhereOpen}
+            title="Spaces open in another window: Open brings that window forward"
+            onToggle={() => update((u) => ({ ...u, elsewhereOpen: !elsewhereOpen }))}
+          >
+            Other windows <span className="count">{elsewhere.length}</span>
+          </FoldHeading>
+        )}
+        {elsewhereOpen && elsewhere.map(card)}
         {others.length > 0 && (
           <FoldHeading
             className="sub-label others-label"
             open={othersOpen}
-            title="Spaces open in another window or not open yet"
+            title="Spaces in Herdr that no window has open yet"
             onToggle={() => update((u) => ({ ...u, othersOpen: !othersOpen }))}
           >
             Other spaces <span className="count">{others.length}</span>

@@ -65,11 +65,13 @@
     to fold it to one line of numbers, and use the <span class="codicon codicon-add"></span> next to <b>Spaces</b> to create
     a space. When some spaces are open in this window (its own space, the spaces whose folders it has, or whose folder is
     inside one of them, like a shell that went into <code>my-repo/src</code>) and others
-    aren't, the list puts this window's under <b>This window</b>, at the top, and the rest under <b>Other spaces</b>,
-    folded until you click it (it stays the way you leave it, per window). A window with a folder open but no space for
-    it shows a card under <b>This window</b> ("No Herdr space for <i>my-repo</i>") with <b>Create space here</b> (a new
-    space in that folder) and <b>Add a space…</b> (open an existing space here), and <b>Other spaces</b> starts unfolded.
-    The Cockpit window splits the same way once a space is open in it; a window with no folder lists every space. Every
+    aren't, the list puts this window's under <b>This window</b>, at the top, the spaces another window of this editor
+    has open under <b>Other windows</b> (their <b>Open</b> brings that window forward), and the spaces no window has open
+    under <b>Other spaces</b>. Both are folded until you click them (they stay the way you leave them, per window). A
+    window with a folder open but no space for it shows a card under <b>This window</b> ("No Herdr space for
+    <i>my-repo</i>") with <b>Create space here</b> (a new space in that folder) and <b>Add a space…</b> (open an existing
+    space here), and the other two start unfolded, as they do in any window with no space of its own. The Cockpit
+    window splits the same way; a window where every space is in one group lists them all. Every
     action is also in the Command Palette (<!--PALETTE-->) under <b>Herdr Cockpit:</b>, for example <b>Herdr Cockpit: New
     Space…</b></p>
 </section>
@@ -252,7 +254,7 @@
     <dt>Ring, corner dot and pill</dt><dd>The status, in the colors below. The dot pulses while an agent is working or blocked.</dd>
     <dt>Grey name after the name</dt><dd>Which agent it is, when the row shows its session's title instead (<b>Rate limiting</b> · <b>Codex (work)</b>): the agent's name in your agent list, so you can tell accounts apart.</dd>
     <dt>Time in the pill</dt><dd>How long the agent has been in this status, counted from when VS Code noticed the change (it restarts when the window reloads).</dd>
-    <dt>Second line</dt><dd>For Claude Code: your last message to it, so the row says what the session is about (read from its session file on this computer; open the row to read all of it). Otherwise, and with <code>herdr.agentDescription</code> set to <code>screen</code>: the task title the agent set; without one, the gist of its latest reply (such as Claude's "recap"). With <code>summary</code>: a short summary
+    <dt>Second line</dt><dd>Your last message to the agent, so the row says what the session is about (Claude Code only, read from its session file on this computer; open the row to read all of it). Other agents, and a session that can't be found, have no second line. With <code>herdr.agentDescription</code> set to <code>screen</code>: the task title the agent set; without one, the gist of its latest reply (such as Claude's "recap"). With <code>summary</code>: a short summary
       of what the agent is doing, written by Claude Haiku, marked <span class="codicon codicon-sparkle"></span> (open the row to
       read all of it, with its age).</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the rest: the full summary of the latest reply (or, for a blocked or done agent, the end of its screen), chips for the Herdr tab, model and other metadata, and the working folder. Click again (or press <kbd>←</kbd>) to hide. Each row remembers its choice. A row with nothing more to show has no chevron.</dd>

@@ -115,6 +115,11 @@ export class WindowFlow {
    * opens, without tabs or memory of it (a shell that `cd`'d into `repo/src` moves its space's folder there).
    * Not linked worktrees: they live in their own folder (~/.herdr/worktrees) and get a window of their own.
    */
+  /** Another window of this editor has the space open (the sidebar lists it under "Other windows"). */
+  isOpenElsewhere(space: Space): boolean {
+    return !!this.otherWindow(space);
+  }
+
   private isInsideFolder(space: Space): boolean {
     if (!space.cwd || space.worktree?.is_linked_worktree) {
       return false;
