@@ -31,6 +31,9 @@ import {
   windowWithSpace,
   spacesWorkspaceFile,
   writeWindowRecord,
+  labelWriter,
+  readTabLabels,
+  writeTabLabels,
 } from '../windows/hubFiles';
 import { EXTENSION_NAME } from '../util/brand';
 import { findTool, toolDirs } from '../util/tools';
@@ -175,6 +178,20 @@ assert.ok(!fs.existsSync(path.join(home, '.herdr-cockpit', 'windows', 'vscode-4.
 removeWindowRecord('vscode', 2, home);
 assert.strictEqual(windowWithSpace({ cwd: '/repos/web', label: 'web' }, self, home, alive), undefined, 'removed on close');
 console.log('✓ windows: the one with a space, by folder or label, same editor and session, live only');
+
+// ---------- Herdr tab labels: one writer, records shared ----------
+// Left: window 1 (/s) and 3 (/other); 4 quit.
+writeWindowRecord(win(7, { scheme: 'cursor' }), home);
+assert.strictEqual(labelWriter({ pid: 1, socket: '/s' }, home, alive), true, 'the lowest live pid on the session');
+assert.strictEqual(labelWriter({ pid: 7, socket: '/s' }, home, alive), false, 'another editor too: one writer for the session');
+assert.strictEqual(labelWriter({ pid: 9, socket: '/other' }, home, alive), false, 'per session');
+assert.strictEqual(labelWriter({ pid: 2, socket: '/s' }, home, (pid) => pid !== 1 && pid !== 4), true, 'the next one when it quits');
+assert.deepStrictEqual(readTabLabels('/s', home), {}, 'none yet');
+writeTabLabels('/s', { 'w1:t1': { wrote: 'Claude: x', original: '1' } }, home);
+assert.deepStrictEqual(readTabLabels('/s', home), { 'w1:t1': { wrote: 'Claude: x', original: '1' } });
+assert.deepStrictEqual(readTabLabels('/other', home), {}, 'kept per session');
+removeWindowRecord('cursor', 7, home);
+console.log('✓ Herdr tab labels: one writer per session, records shared');
 
 // ---------- workspace files for windows with several spaces ----------
 const wsA = spacesWorkspaceFile([{ path: '/repos/api/' }, { path: '/repos/web', name: '⬢ web' }], { 'editor.tabSize': 2 }, home);

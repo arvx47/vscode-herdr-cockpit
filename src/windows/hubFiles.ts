@@ -361,6 +361,49 @@ export function windowWithSpace(
   return others.find((w) => !!cwd && w.folders.includes(cwd)) ?? others.find((w) => w.spaces.includes(space.label));
 }
 
+// ---------- Herdr tab labels we wrote ----------
+// Herdr's tab labels follow our tab names (herdrTabLabel in viewState.ts). What each label was before and what we
+// wrote is kept here, shared by every window, so a label someone typed is never mistaken for ours.
+
+/** A Herdr tab's label as we left it (`wrote`), and the one it had before (`original`). */
+export interface TabLabelRecord {
+  wrote: string;
+  original: string;
+}
+
+const labelsFile = (socket: string, home?: string) =>
+  path.join(hubDir(home), 'labels', `${crypto.createHash('sha256').update(socket).digest('hex').slice(0, 24)}.json`);
+
+/** The records for this Herdr session, by tab id. */
+export function readTabLabels(socket: string, home?: string): Record<string, TabLabelRecord> {
+  const raw = readJson(labelsFile(socket, home));
+  const out: Record<string, TabLabelRecord> = {};
+  if (!raw || typeof raw !== 'object') {
+    return out;
+  }
+  for (const [id, r] of Object.entries(raw as Record<string, any>)) {
+    if (typeof r?.wrote === 'string' && typeof r?.original === 'string') {
+      out[id] = { wrote: r.wrote, original: r.original };
+    }
+  }
+  return out;
+}
+
+export function writeTabLabels(socket: string, records: Record<string, TabLabelRecord>, home?: string) {
+  writeJson(labelsFile(socket, home), records);
+}
+
+/**
+ * Only one window renames Herdr's tabs, so windows with other settings (another editor, another agent list) can't
+ * undo each other and a title change costs one rename: the live window on this session with the lowest pid, any editor.
+ */
+export function labelWriter(me: { pid: number; socket: string }, home?: string, isAlive = alive): boolean {
+  const pids = readWindowRecords(home, isAlive)
+    .filter((w) => w.socket === me.socket)
+    .map((w) => w.pid);
+  return pids.every((pid) => pid >= me.pid);
+}
+
 /** The window of this editor whose extension host is `pid` (for drivers whose sessions are per window). */
 export function windowOfPid(scheme: string, pid: number, home?: string, isAlive = alive): WindowRecord | undefined {
   return readWindowRecords(home, isAlive).find((w) => w.scheme === scheme && w.pid === pid);

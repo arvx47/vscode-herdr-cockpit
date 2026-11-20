@@ -485,6 +485,70 @@ export function tabName(tab: Tab | undefined, p: Pane): string {
   return herdrTabName(paneName(tab, p));
 }
 
+/** A Herdr tab's label as we left it, and the one it had before (hubFiles.ts TabLabelRecord). */
+export interface LabelRecord {
+  wrote: string;
+  original: string;
+}
+
+/** Herdr's tab bar is narrow: longer names are cut, with an ellipsis. */
+const MAX_HERDR_LABEL = 40;
+
+/** The name an agent's Herdr tab gets: its tab name ("Claude: Fix login"), cut to fit Herdr's tab bar. */
+export function herdrLabelFor(tab: Tab, p: Pane): string {
+  const name = tabName(tab, p);
+  if (name.length <= MAX_HERDR_LABEL) {
+    return name;
+  }
+  return `${name.slice(0, MAX_HERDR_LABEL - 1).trimEnd()}…`;
+}
+
+/**
+ * What to do with a Herdr tab's label so Herdr shows the same name as our tab: undefined = nothing; else `rename`
+ * (when set) and the record to keep (`record` undefined = forget the tab).
+ * - A tab we labeled (`rec`) whose label you changed since: yours now, forgotten, never touched again.
+ * - Still ours and holding just that agent: follows the agent's name.
+ * - Still ours but split, or the agent quit: the label it had before comes back (not for an empty one: Herdr shows its id).
+ * - Not labeled by us yet: only a tab holding just an agent, still labeled with the agent's name (what New tab gives
+ *   it), Herdr's number, or nothing. A label you typed in Herdr, like "OUT-9702", is left alone.
+ */
+export function herdrTabLabel(tab: Tab, rec: LabelRecord | undefined): { rename?: string; record?: LabelRecord } | undefined {
+  const p = tab.panes[0];
+  const single = tab.panes.length === 1 && !!p?.isAgent;
+  if (rec) {
+    if (tab.label !== rec.wrote) {
+      return {};
+    }
+    if (!single) {
+      if (rec.original === tab.id) {
+        return {};
+      }
+      return { rename: rec.original };
+    }
+    const want = herdrLabelFor(tab, p);
+    if (want === rec.wrote) {
+      return undefined;
+    }
+    return { rename: want, record: { wrote: want, original: rec.original } };
+  }
+  if (!single) {
+    return undefined;
+  }
+  const names = [agentNameParts(p).base];
+  if (p.agentKind) {
+    names.push(agentTitle(p.agentKind));
+  }
+  const fresh = tab.label === tab.id || /^\d+$/.test(tab.label) || names.includes(tab.label);
+  if (!fresh) {
+    return undefined;
+  }
+  const want = herdrLabelFor(tab, p);
+  if (want === tab.label) {
+    return undefined;
+  }
+  return { rename: want, record: { wrote: want, original: tab.label } };
+}
+
 function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): PaneView {
   const kind = p.agentKind;
   const name = paneName(tab, p);
@@ -504,7 +568,12 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     agentName = parts.base;
   }
   // A tab named after the agent ("claude", "Claude (work)") says nothing its logo and name don't.
-  const tabLabel = meaningfulTab(tab, name, parts.base, kind);
+  // Not the label we keep in step with the tab's name (herdrTabLabel): that's the name again.
+  let herdrLabel: string | undefined;
+  if (tab) {
+    herdrLabel = herdrLabelFor(tab, p);
+  }
+  const tabLabel = meaningfulTab(tab, name, parts.base, kind, tabName(tab, p), herdrLabel);
   const chips = [p.tokens.model, ...Object.entries(p.tokens).filter(([k]) => k !== 'model').map(([, v]) => v)].filter(
     (x): x is string => !!x,
   );

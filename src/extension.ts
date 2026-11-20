@@ -10,7 +10,7 @@ import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } fr
 import { HerdrPanel, PanelAction } from './sidebar/panel';
 import { SessionSync } from './state/sync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './state/activity';
-import { AgentNames, agentNameParts, buildViewState, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
+import { AgentNames, agentNameParts, buildViewState, herdrTabLabel, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
 import { AgentProfile, readAgentList, startingTable } from './agents/agentProfiles';
 import { agentLogo } from './agents/agentLogos';
 import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
@@ -20,7 +20,7 @@ import { TabAction } from './drivers/paneTab';
 import { agentSlug } from './agents/agentNames';
 import { findFileRefs } from './terminal/termLinks';
 import { binaryFound, diagnose, herdrEnv, resolveBinary, startServer } from './drivers/herdr/connection';
-import { claimant, hubDir, hubOpen, hubWorkspaceFile, legacyHubWorkspaceFile, OfferHubSetting, readClaim, removeClaim, windowKey, writeClaim, shouldOfferHub, normPath } from './windows/hubFiles';
+import { claimant, hubDir, labelWriter, readTabLabels, type TabLabelRecord, writeTabLabels, hubOpen, hubWorkspaceFile, legacyHubWorkspaceFile, OfferHubSetting, readClaim, removeClaim, windowKey, writeClaim, shouldOfferHub, normPath } from './windows/hubFiles';
 import { HERDR_PROTOCOL } from './drivers/herdr/herdrTypes';
 import { reviewChanges } from './commands/review';
 import { TabRestore } from './terminal/tabRestore';
@@ -717,10 +717,78 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
   }
 
+  // Herdr's tab labels in step with our tab names (herdrTabLabel), from one window (labelWriter), with what we wrote
+  // shared in ~/.herdr-cockpit/labels. A rename is recorded once Herdr confirms it, so a failed one is tried again.
+  const renamingTabs = new Set<string>();
+  function syncHerdrLabels(m: Model | undefined) {
+    if (!m || !backend.capabilities.server) {
+      return;
+    }
+    const socket = socketPath();
+    let records: Record<string, TabLabelRecord>;
+    try {
+      if (!labelWriter({ pid: process.pid, socket })) {
+        return;
+      }
+      records = readTabLabels(socket);
+    } catch (e) {
+      logError('herdr tab labels')(e);
+      return;
+    }
+    let changed = false;
+    const live = new Set<string>();
+    for (const sp of m.spaces)
+      for (const tab of sp.tabs) {
+        live.add(tab.id);
+        if (renamingTabs.has(tab.id)) {
+          continue;
+        }
+        const step = herdrTabLabel(tab, records[tab.id]);
+        if (!step) {
+          continue;
+        }
+        if (step.rename === undefined) {
+          delete records[tab.id];
+          changed = true;
+          continue;
+        }
+        const record = step.record;
+        renamingTabs.add(tab.id);
+        backend.actions
+          .renameTab(tab.id, step.rename)
+          .then(() => {
+            const now = readTabLabels(socket);
+            if (record) {
+              now[tab.id] = record;
+            } else {
+              delete now[tab.id];
+            }
+            writeTabLabels(socket, now);
+          })
+          .catch(logError('herdr tab label'))
+          .finally(() => renamingTabs.delete(tab.id));
+      }
+    // Tabs gone from Herdr (closed, or a restart that changed ids): their ids can come back on another tab.
+    for (const id of Object.keys(records)) {
+      if (!live.has(id) && !renamingTabs.has(id)) {
+        delete records[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      try {
+        writeTabLabels(socket, records);
+      } catch (e) {
+        logError('herdr tab labels')(e);
+      }
+    }
+  }
+
   function apply(next: Model) {
     const prev = model;
     model = next;
     syncNames(next);
+    syncHerdrLabels(next);
     renderStatus();
 
     // Notifications on agent transitions.
@@ -1023,6 +1091,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         setAgentNames(cfg().get<AgentNames>('agentNames', 'title'));
         if (model) {
           syncNames(model);
+          syncHerdrLabels(model);
         }
       }
       if (e.affectsConfiguration('herdr.agents') || e.affectsConfiguration('herdr.agentProfiles')) {
@@ -1035,6 +1104,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         agentProfiles();
         if (model) {
           syncNames(model);
+          syncHerdrLabels(model);
         }
         pollUsage(); // the Claude Code accounts may have changed
       }

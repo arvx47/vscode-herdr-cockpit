@@ -9,7 +9,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../state/model';
 import type { Space } from '../state/model';
 import { ago, left } from '../util/format';
-import { applyPaneOrder, buildViewState, folderLine, headline, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
+import { applyPaneOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
 import type { PaneActivity } from '../state/activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
 
@@ -257,6 +257,29 @@ console.log('✓ a window with its own folders is marked for the "no space here"
   assert.strictEqual(lastTab.activeRow, undefined, 'nothing to unfold for the last tab');
   assert.strictEqual(buildViewState({ ...inputs, activePane: { id: 'gone', now: true } }).activeRow, undefined, 'a pane no longer in Herdr');
   console.log('✓ the tab you are in: row highlighted, the last one faintly');
+
+  // Herdr's tab label follows our tab's name: a tab we labeled, or a fresh one holding just an agent.
+  const ag = { ...model.spaces.flatMap((x) => x.agents)[0], isAgent: true, agentKind: 'claude', terminalTitle: 'Fix login', raw: { agent: { name: 'claude-2' } } } as any;
+  const sh = { ...ag, id: 'other', isAgent: false, agentKind: undefined };
+  const tabOf = (label: string, panes = [ag]) => ({ id: 'w1:t1', workspaceId: 'w', label, panes }) as any;
+  const rec = (wrote: string, original = 'Claude') => ({ wrote, original });
+  const ours = { rename: 'Claude: Fix login', record: rec('Claude: Fix login') };
+  assert.deepStrictEqual(herdrTabLabel(tabOf('Claude'), undefined), ours, 'labeled with the agent name by New tab');
+  assert.deepStrictEqual(herdrTabLabel(tabOf('3'), undefined), { ...ours, record: rec('Claude: Fix login', '3') }, "Herdr's number");
+  assert.deepStrictEqual(herdrTabLabel(tabOf('w1:t1'), undefined)?.rename, 'Claude: Fix login', 'no label (Herdr shows its id)');
+  assert.strictEqual(herdrTabLabel(tabOf('OUT-9702'), undefined), undefined, 'a label you typed');
+  assert.strictEqual(herdrTabLabel(tabOf('Claude: auth spike'), undefined), undefined, "a label you typed that looks like ours");
+  assert.strictEqual(herdrTabLabel(tabOf('Claude', [ag, sh]), undefined), undefined, 'a tab with a split');
+  assert.deepStrictEqual(herdrTabLabel(tabOf('Claude: Old'), rec('Claude: Old')), ours, 'the title changed: follows it');
+  assert.strictEqual(herdrTabLabel(tabOf('Claude: Fix login'), rec('Claude: Fix login')), undefined, 'already the same');
+  assert.deepStrictEqual(herdrTabLabel(tabOf('Mine'), rec('Claude: Fix login')), {}, 'renamed since: yours, forgotten');
+  assert.deepStrictEqual(herdrTabLabel(tabOf('Claude: Fix login', [ag, sh]), rec('Claude: Fix login')), { rename: 'Claude' }, 'split: its old label back');
+  assert.deepStrictEqual(herdrTabLabel(tabOf('Claude: Fix login', [sh]), rec('Claude: Fix login')), { rename: 'Claude' }, 'the agent quit: its old label back');
+  assert.deepStrictEqual(herdrTabLabel(tabOf('Claude: Fix login', [sh]), rec('Claude: Fix login', 'w1:t1')), {}, 'no label to give back: forgotten');
+  const long = { ...ag, terminalTitle: 'A very long session title that goes on and on' };
+  const cut = herdrTabLabel(tabOf('Claude', [long]), undefined)!.rename!;
+  assert.ok(cut.length <= 40 && cut.endsWith('…'), cut);
+  console.log('✓ Herdr tab labels follow our tab names, never a label you typed');
 
   const v = buildViewState({ ...inputs, mounted: (sp) => sp.id === 'w2' });
   const w2 = v.spaces.find((x) => x.id === 'w2')!;
