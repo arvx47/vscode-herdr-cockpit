@@ -33,7 +33,8 @@ export interface ProfileDeps extends ManageDeps {
   /** Which space a new terminal goes to; undefined when Herdr isn't reachable or none was chosen. */
   targetSpace(): Promise<Space | undefined>;
   newPty(target: () => Promise<string>): PaneTab;
-  adopt(paneId: string, spaceId: string, term: vscode.Terminal, pty: PaneTab, name: string): void;
+  /** startingAs: the agent kind about to start in it (its tab already has that agent's icon). */
+  adopt(paneId: string, spaceId: string, term: vscode.Terminal, pty: PaneTab, name: string, startingAs?: string): void;
   /** The pane a tab shows, if it's a Herdr tab. */
   paneOf(term: vscode.Terminal | undefined): { paneId: string; spaceId: string } | undefined;
   startHerdr(): Promise<boolean>;
@@ -133,7 +134,7 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
       if (kind) {
         tabTitle = name;
       }
-      if (term) deps.adopt(paneId, space.id, term, pty, tabTitle);
+      if (term) deps.adopt(paneId, space.id, term, pty, tabTitle, kind);
       if (kind) startAgent(deps, paneId, kind, space.label, { profile });
       return paneId;
     });

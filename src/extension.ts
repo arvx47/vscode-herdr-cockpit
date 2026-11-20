@@ -699,11 +699,31 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   // ---------- applying a new snapshot ----------
   /** Renamed in Herdr (TUI, CLI, sidebar), a new terminal title or herdr.agentNames: rename its tab here too, without focusing it. */
+  // Tabs to swap for one with the right icon (an agent started in a shell, or quit back to it), once the pane has
+  // stayed that way 1.5s: Herdr can take a moment to settle on what runs in it.
+  const iconSwaps = new Map<string, NodeJS.Timeout>();
+  function checkIcon(p: Pane) {
+    if (iconSwaps.has(p.id) || !terms.staleIcon(p)) {
+      return;
+    }
+    iconSwaps.set(
+      p.id,
+      setTimeout(() => {
+        iconSwaps.delete(p.id);
+        const now = findPane(model, p.id)?.pane;
+        if (now && terms.staleIcon(now)) {
+          void terms.reicon(now).catch(logError('tab icon'));
+        }
+      }, 1500),
+    );
+  }
+
   function syncNames(m: Model) {
     const seen = new Set<string>();
     for (const sp of m.spaces)
       for (const tab of sp.tabs)
         for (const p of tab.panes) {
+          checkIcon(p);
           const n = tabName(tab, p);
           const was = paneNames.get(p.id);
           if (was !== undefined && was !== n && terms.has(p.id)) terms.rename(p.id, n);
@@ -1051,7 +1071,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       ...manage,
       targetSpace: () => commands.targetSpace(),
       newPty: (target) => terms.newPty(target),
-      adopt: (paneId, spaceId, term, pty, name) => terms.adopt(paneId, spaceId, term, pty, name),
+      adopt: (paneId, spaceId, term, pty, name, startingAs) => terms.adopt(paneId, spaceId, term, pty, name, startingAs),
       paneOf: (term) => terms.paneOf(term),
       startHerdr: () => startHerdr(),
     }),

@@ -20,6 +20,19 @@ interface Entry {
   name?: string;
   /** terminal.name when last polled: renames only show up there (VS Code has no rename event). */
   seen?: string;
+  /** What its icon shows (iconKind). */
+  icon?: string;
+  /** Opened with an agent's icon for an agent still starting in it: the shell it is meanwhile doesn't count. */
+  starting?: boolean;
+}
+
+/** What a pane's tab icon shows: its agent's logo, or a shell. */
+function iconKind(pane: Pane, startingAs?: string): string {
+  // As the tab's look picks its icon (extension.ts): the agent running, else the one being started.
+  if (pane.isAgent) {
+    return pane.agentKind ?? 'agent';
+  }
+  return startingAs ?? 'shell';
 }
 
 /** The tab still shows the pane: open, and its stream hasn't ended. */
@@ -294,7 +307,7 @@ export class AttachTerminals implements vscode.Disposable {
   }
 
   /** Close the pane's tab and open a new one, keeping its place in the opening order. */
-  replace(pane: Pane, opts: { preserveFocus?: boolean; polite?: boolean } = {}): vscode.Terminal | undefined {
+  replace(pane: Pane, opts: { preserveFocus?: boolean; polite?: boolean; column?: vscode.ViewColumn } = {}): vscode.Terminal | undefined {
     const order = [...this.byPane.keys()];
     const e = this.byPane.get(pane.id);
     if (e) {
@@ -311,6 +324,59 @@ export class AttachTerminals implements vscode.Disposable {
     };
     this.byPane = new Map([...this.byPane].sort(([a], [b]) => at(a) - at(b)));
     return term;
+  }
+
+  /**
+   * The pane's tab shows the wrong icon: you started an agent in a shell (or it quit back to the shell) after the
+   * tab opened. VS Code can't change a tab's icon, so `reicon` swaps the tab.
+   */
+  staleIcon(pane: Pane): boolean {
+    const e = this.byPane.get(pane.id);
+    if (!e || !live(e)) {
+      return false;
+    }
+    const kind = iconKind(pane);
+    if (e.starting) {
+      if (kind !== 'shell') {
+        e.starting = false;
+      } else {
+        return false;
+      }
+    }
+    return e.icon !== kind;
+  }
+
+  /**
+   * Swap the pane's tab for a new one with the right icon. The tab you're in stays in front, in its place in its
+   * group; one you aren't in opens without taking the focus.
+   */
+  async reicon(pane: Pane) {
+    const e = this.byPane.get(pane.id);
+    if (!e) {
+      return;
+    }
+    const inFront = vscode.window.activeTerminal === e.term;
+    let index: number | undefined;
+    const group = vscode.window.tabGroups.activeTabGroup;
+    const tab = group.activeTab;
+    if (inFront && tab?.input instanceof vscode.TabInputTerminal && tab.label === e.term.name) {
+      index = group.tabs.indexOf(tab);
+    }
+    // The group it's in, so it doesn't move to the one holding most Herdr tabs.
+    let column = e.column;
+    if (index !== undefined) {
+      column = group.viewColumn;
+    }
+    this.replace(pane, { preserveFocus: !inFront, column });
+    if (index === undefined) {
+      return;
+    }
+    // Wait for the new tab to open (it's created at the end of the group), then put it back.
+    await sleep(200);
+    const now = vscode.window.tabGroups.activeTabGroup;
+    if (now.activeTab?.input instanceof vscode.TabInputTerminal && now.tabs.indexOf(now.activeTab) !== index) {
+      await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: index + 1 });
+    }
   }
 
   /** Some tab lost its pane (Herdr stopped under it). */
@@ -342,7 +408,7 @@ export class AttachTerminals implements vscode.Disposable {
    * Open (or show) the pane's tab. You asked for it here, so a tab showing it read-only takes control back;
    * `polite` (follow mode) leaves a pane another editor window has to that window and shows it read-only.
    */
-  attach(pane: Pane, opts: { preserveFocus?: boolean; startingAs?: string; polite?: boolean } = {}): vscode.Terminal | undefined {
+  attach(pane: Pane, opts: { preserveFocus?: boolean; startingAs?: string; polite?: boolean; column?: vscode.ViewColumn } = {}): vscode.Terminal | undefined {
     const existing = this.byPane.get(pane.id);
     if (existing && live(existing)) {
       if (!opts.polite) existing.pty?.takeBack();
@@ -364,7 +430,7 @@ export class AttachTerminals implements vscode.Disposable {
         column = vscode.ViewColumn.Two;
       }
     } else if (where !== 'panel') {
-      column = this.editorColumn();
+      column = opts.column ?? this.editorColumn();
     }
     let location: vscode.TerminalOptions['location'] = vscode.TerminalLocation.Panel;
     if (column !== undefined) {
@@ -373,7 +439,16 @@ export class AttachTerminals implements vscode.Disposable {
     const { name, iconPath } = this.look(pane, opts.startingAs);
     const pty = this.newPty(pane.id, { polite: opts.polite });
     const term = vscode.window.createTerminal({ name, pty, iconPath, location, isTransient: true });
-    this.byPane.set(pane.id, { term, spaceId: pane.workspaceId, pty, column, name, seen: name });
+    this.byPane.set(pane.id, {
+      term,
+      spaceId: pane.workspaceId,
+      pty,
+      column,
+      name,
+      seen: name,
+      icon: iconKind(pane, opts.startingAs),
+      starting: !!opts.startingAs && !pane.isAgent,
+    });
     if (where === 'editor' && column) this.lastColumn = column;
     this.changed();
     // An editor-area tab opens where `location` says. show() again could move it to the active group, so
@@ -386,13 +461,13 @@ export class AttachTerminals implements vscode.Disposable {
    * Track a terminal the editor created itself (the "+" button with a Herdr profile), so it counts as
    * attached, closes on space switch and is reused when you click its row.
    */
-  adopt(paneId: string, spaceId: string, term: vscode.Terminal, pty?: PaneTab, name = term.name) {
+  adopt(paneId: string, spaceId: string, term: vscode.Terminal, pty?: PaneTab, name = term.name, startingAs?: string) {
     // A tab the pane already had (e.g. one whose stream ended) would be left open and untracked: close it.
     const old = this.byPane.get(paneId);
     if (old && old.term !== term) {
       old.term.dispose();
     }
-    this.byPane.set(paneId, { term, spaceId, pty, name, seen: term.name });
+    this.byPane.set(paneId, { term, spaceId, pty, name, seen: term.name, icon: startingAs ?? 'shell', starting: !!startingAs });
     if (name !== term.name) {
       pty?.setName(name);
     }
