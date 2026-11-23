@@ -333,9 +333,16 @@ export class AttachTerminals implements vscode.Disposable {
     const e = this.byPane.get(pane.id);
     if (e) {
       this.byPane.delete(pane.id);
+    }
+    // Put back where it was (reicon): the new tab first, so closing the old one can't close its group (a group's
+    // only tab) and send the new one to the next group. Otherwise the old one first, as before.
+    if (e && !opts.place) {
       e.term.dispose();
     }
     const term = this.attach(pane, opts);
+    if (e && opts.place) {
+      e.term.dispose();
+    }
     const at = (paneId: string) => {
       const i = order.indexOf(paneId);
       if (i < 0) {
@@ -404,6 +411,8 @@ export class AttachTerminals implements vscode.Disposable {
     // A tab you aren't in opens politely: a pane another window controls stays with it (this tab may only have been
     // watching it). The one you're in takes it back, like a click: you're typing into it.
     this.replace(pane, { preserveFocus: !inFront, polite: !inFront, place });
+    // Only the tab you're in goes back to its position: moving one in another group would mean activating that group,
+    // which takes the focus. Elsewhere the new tab is the group's last.
     if (index === undefined) {
       return true;
     }

@@ -295,8 +295,8 @@ export interface ClosedTab {
 export function closedTab(space: Space, pane: Pane): ClosedTab {
   const tab = space.tabs.find((t) => t.id === pane.tabId);
   let tabLabel = tab?.label;
-  // Herdr numbers unnamed tabs ("3"); a new tab gets its own number.
-  if (tabLabel && /^\d+$/.test(tabLabel)) {
+  // Herdr numbers unnamed tabs ("3") or shows their id ("w1:t3"); a new tab gets its own.
+  if (tabLabel && (/^\d+$/.test(tabLabel) || tabLabel === pane.tabId)) {
     tabLabel = undefined;
   }
   return {

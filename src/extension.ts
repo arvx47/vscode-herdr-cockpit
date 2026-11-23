@@ -147,8 +147,12 @@ export function activate(ctx: vscode.ExtensionContext) {
       env: () => herdrEnvNow(),
       log: (line) => log.appendLine(line),
       // Herdr doesn't say who took a pane over: windows record the panes they take (hubFiles.ts, claims).
-      claim: (paneId) => writeClaim(socketPath(), paneId, { editor: vscode.env.appName, scheme: vscode.env.uriScheme, pid: process.pid, at: Date.now(), window: thisWindow }),
-      unclaim: (paneId) => removeClaim(socketPath(), paneId, process.pid),
+      claim: (paneId) => {
+        const at = Date.now();
+        writeClaim(socketPath(), paneId, { editor: vscode.env.appName, scheme: vscode.env.uriScheme, pid: process.pid, at, window: thisWindow });
+        return at;
+      },
+      unclaim: (paneId, at) => removeClaim(socketPath(), paneId, process.pid, undefined, at),
       holder: (paneId, since) => claimant(readClaim(socketPath(), paneId), { scheme: vscode.env.uriScheme, pid: process.pid, window: thisWindow }, since),
       onTakenOver: (paneId, who, expected) => {
         if (!expected) {
@@ -301,7 +305,8 @@ export function activate(ctx: vscode.ExtensionContext) {
         const record = readTabLabels(socketPath())[closed.tabId];
         if (record && record.wrote === closed.tabLabel) {
           closed.tabLabel = undefined;
-          if (record.original && !/^\d+$/.test(record.original)) {
+          // Herdr shows an unlabeled tab by its id (or a number): that's no label of its own.
+          if (record.original && record.original !== closed.tabId && !/^\d+$/.test(record.original)) {
             closed.tabLabel = record.original;
           }
         }
@@ -1016,12 +1021,11 @@ export function activate(ctx: vscode.ExtensionContext) {
     namesAfterAccounts = true;
     void checked.then(() => {
       namesAfterAccounts = false;
-      if (model) {
+      // Tab names and Herdr's labels only from names known to be current (not while a check after a loss hasn't
+      // answered: they'd flip to the plain name and back).
+      if (model && !accountsStale) {
         syncNames(model);
-        // Herdr's labels only from names known to be current (not while a check after a loss hasn't answered).
-        if (!accountsStale) {
-          syncHerdrLabels(model);
-        }
+        syncHerdrLabels(model);
       }
     });
   }

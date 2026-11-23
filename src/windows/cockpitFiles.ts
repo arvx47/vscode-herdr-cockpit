@@ -84,14 +84,9 @@ export class CockpitFiles implements vscode.Disposable {
   private recordWindow() {
     const me = { scheme: this.scheme, pid: process.pid };
     try {
+      // A window with no folder is recorded too (no folders, no spaces: nothing opens there), so labelWriter()
+      // counts it: otherwise it would rename Herdr's tabs alongside the window it can't see.
       const folders = this.deps.myFolders();
-      if (!folders.length) {
-        if (this.lastWindowRecord) {
-          removeWindowRecord(me.scheme, me.pid);
-        }
-        this.lastWindowRecord = '';
-        return;
-      }
       const wsf = vscode.workspace.workspaceFile;
       // What brings this window forward: its workspace file, or its single folder.
       let focus: string | undefined;

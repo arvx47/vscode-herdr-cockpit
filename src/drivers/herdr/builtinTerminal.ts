@@ -24,10 +24,10 @@ export interface BuiltinDeps {
   log(line: string): void;
   /** The stream ended on its own (Herdr stopped, the pane closed). */
   onEnded(): void;
-  /** This tab is taking control of the pane: record it, so a window that loses it can say who has it. */
-  claim?(paneId: string): void;
-  /** This tab gave the pane up (closed, or lost it). */
-  unclaim?(paneId: string): void;
+  /** This tab is taking control of the pane: record it, so a window that loses it can say who has it. Returns its time. */
+  claim?(paneId: string): number | undefined;
+  /** This tab gave the pane up (closed, or lost it): its claim of `at`, not a newer one of another tab here. */
+  unclaim?(paneId: string, at?: number): void;
   /** Which other editor window has the pane (its claim), if any; `since`: only claims newer than that. */
   holder?(paneId: string, since?: number): string | undefined;
   /**
@@ -97,6 +97,8 @@ export class HerdrPty implements PaneTab {
   private holderName?: string;
   /** When this tab last took control (claims older than that aren't the one who took it from us). */
   private controlSince = 0;
+  /** When this tab wrote its claim on the pane: it removes only that one (BuiltinDeps.unclaim). */
+  private claimAt?: number;
   private resizeTimer?: NodeJS.Timeout;
   /** Scrolling while a drag is held on the top or bottom row. */
   private auto?: { dir: ScrollDir; since: number; timer?: NodeJS.Timeout };
@@ -185,7 +187,7 @@ export class HerdrPty implements PaneTab {
     if (mode === 'control') {
       // Before Herdr hands it over, so the window losing it can read who took it.
       this.controlSince = Date.now();
-      this.deps.claim?.(target);
+      this.claimAt = this.deps.claim?.(target);
     }
     const stream: HerdrStream = new HerdrStream(this.deps.binary(), target, { cols, rows }, this.deps.env(), {
       onFrame: (bytes) => {
@@ -608,7 +610,9 @@ export class HerdrPty implements PaneTab {
     clearTimeout(this.toastTimer);
     clearTimeout(this.resizeTimer);
     clearTimeout(this.repaintTimer);
-    if (this.mode === 'control' && this.paneId) this.deps.unclaim?.(this.paneId);
+    if (this.mode === 'control' && this.paneId) {
+      this.deps.unclaim?.(this.paneId, this.claimAt);
+    }
     this.stream?.release();
     this.screen?.dispose();
     this.writer.dispose();
@@ -620,7 +624,7 @@ export class HerdrPty implements PaneTab {
     if (this.closedByUser) return;
     this.stopAutoScroll();
     if (this.mode === 'control' && this.paneId) {
-      this.deps.unclaim?.(this.paneId);
+      this.deps.unclaim?.(this.paneId, this.claimAt);
       if (isTakenOver(reason)) return this.lostControl(this.paneId);
     }
     this.ended = true;

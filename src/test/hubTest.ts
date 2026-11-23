@@ -239,6 +239,12 @@ removeClaim(sock, 'w1:p1', 100, home);
 assert.ok(readClaim(sock, 'w1:p1', home), "another window's claim is kept");
 removeClaim(sock, 'w1:p1', 200, home);
 assert.strictEqual(readClaim(sock, 'w1:p1', home), undefined, 'its own window removes it');
+// A tab of the same window that claimed the pane later (an icon swap's new tab) keeps its claim when the old tab goes.
+writeClaim(sock, 'w1:p3', { editor: 'Visual Studio Code', scheme: 'vscode', pid: 100, at: 50 }, home);
+removeClaim(sock, 'w1:p3', 100, home, 40);
+assert.strictEqual(readClaim(sock, 'w1:p3', home)?.at, 50, "an older tab's removal leaves the newer claim");
+removeClaim(sock, 'w1:p3', 100, home, 50);
+assert.strictEqual(readClaim(sock, 'w1:p3', home), undefined, 'the tab that wrote it removes it');
 fs.mkdirSync(path.join(home, '.herdr-cockpit', 'claims'), { recursive: true });
 writeClaim(sock, 'w1:p2', { editor: 'Kiro', scheme: 'kiro', pid: 200, at: 1 }, home);
 const [cf] = fs.readdirSync(path.join(home, '.herdr-cockpit', 'claims'));

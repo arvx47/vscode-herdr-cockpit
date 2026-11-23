@@ -222,9 +222,20 @@ export function readClaim(socket: string, pane: string, home?: string): PaneClai
 }
 
 /** Drop this window's claim (it released the pane, or lost it); another window's newer claim stays. */
-export function removeClaim(socket: string, pane: string, pid: number, home?: string) {
+/**
+ * Remove this window's claim on the pane. `at`: only the claim written then (a tab of this window that opened
+ * meanwhile, like an icon swap's new tab, has its own and keeps it).
+ */
+export function removeClaim(socket: string, pane: string, pid: number, home?: string, at?: number) {
   const f = claimFile(socket, pane, home);
-  if (readJson(f)?.pid === pid) fs.rmSync(f, { force: true });
+  const claim = readJson(f);
+  if (claim?.pid !== pid) {
+    return;
+  }
+  if (at !== undefined && claim.at !== at) {
+    return;
+  }
+  fs.rmSync(f, { force: true });
 }
 
 /** Remove claims whose window is gone (they'd only pile up: windows that quit can't remove their own). */
