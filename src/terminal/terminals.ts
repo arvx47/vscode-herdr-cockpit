@@ -378,12 +378,18 @@ export class AttachTerminals implements vscode.Disposable {
         index = placed.index;
       }
     } else {
-      // A panel tab: in front when it's the active terminal (the panel's focus isn't exposed).
-      inFront = vscode.window.activeTerminal === e.term;
+      // A panel tab: VS Code doesn't say whether the panel has the keyboard, so never assume you're typing in it
+      // (taking the focus then would send your typing from a file into the pane). It's shown again below instead.
+      inFront = false;
     }
+    const shownInPanel = !placed && vscode.window.activeTerminal === e.term;
     // A tab you aren't in opens politely: a pane another window controls stays with it (this tab may only have been
     // watching it). The one you're in takes it back, like a click: you're typing into it.
-    this.replace(pane, { preserveFocus: !inFront, column, polite: !inFront });
+    const term = this.replace(pane, { preserveFocus: !inFront, column, polite: !inFront });
+    if (shownInPanel) {
+      // It was the panel's tab on show: it stays the one shown, without the keyboard.
+      term?.show(true);
+    }
     if (index === undefined) {
       return;
     }

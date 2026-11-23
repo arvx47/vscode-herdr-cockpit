@@ -11,7 +11,7 @@ import { HerdrPanel, PanelAction } from './sidebar/panel';
 import { SessionSync } from './state/sync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './state/activity';
 import { AgentNames, agentNameParts, buildViewState, herdrTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
-import { AgentProfile, profileOfAgent, profileOfConfigDir, readAgentList, startingTable } from './agents/agentProfiles';
+import { AgentProfile, isAccountRow, profileOfAgent, profileOfConfigDir, readAgentList, startingTable } from './agents/agentProfiles';
 import { agentLogo } from './agents/agentLogos';
 import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
 import { isMounted, PREFIX } from './windows/folders';
@@ -873,7 +873,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     const rows = agentProfiles();
     // Only rows of their own (not plain) name agents: without one, nothing to look up.
     const candidates: Pane[] = [];
-    if (rows.some((r) => r.kind === 'claude' && !r.plain)) {
+    if (rows.some((r) => isAccountRow(r) && !r.plain)) {
       for (const { pane } of allPanes(m)) {
         if (pane.agentKind === 'claude' && !profileOfAgent(rows, pane.raw.agent?.name ?? undefined)) {
           candidates.push(pane);
@@ -899,8 +899,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       const got = await Promise.all(batch.map((p) => backend.processInfo(p.id).catch(() => undefined)));
       batch.forEach((p, j) => infos.set(p.id, got[j]));
     }
-    // Herdr answered none of them (it's down): nothing learned, so nothing changes and the next snapshot asks again.
-    if (candidates.length && ![...infos.values()].some((info) => info !== undefined)) {
+    // Herdr is down (no answer at all): nothing learned, so nothing changes and the next snapshot asks again. While
+    // connected, a pane that can't be asked just has no account row, and the check counts as done.
+    if (candidates.length && !sync.connected && ![...infos.values()].some((info) => info !== undefined)) {
       accountsKey = '';
       accountsAt = 0;
       return;

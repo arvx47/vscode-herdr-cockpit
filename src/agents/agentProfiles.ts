@@ -225,7 +225,7 @@ export function profileOfConfigDir(profiles: readonly AgentProfile[], dir: strin
   const norm = normPath;
   const target = norm(dir);
   const defaultDir = norm(path.join(home, '.claude'));
-  const claude = profiles.filter((p) => p.kind === 'claude' && !p.args.length && Object.keys(p.env).every((k) => k === 'CLAUDE_CONFIG_DIR'));
+  const claude = profiles.filter(isAccountRow);
   let row: AgentProfile | undefined;
   if (target === defaultDir) {
     row = claude.find((p) => !p.env.CLAUDE_CONFIG_DIR || norm(p.env.CLAUDE_CONFIG_DIR) === defaultDir);
@@ -236,6 +236,14 @@ export function profileOfConfigDir(profiles: readonly AgentProfile[], dir: strin
     return undefined;
   }
   return row;
+}
+
+/**
+ * A Claude row an account can stand for: it sets nothing but CLAUDE_CONFIG_DIR, no arguments (profileOfConfigDir()
+ * only returns these, and only the not-plain ones; without any, there's nothing to look an account up for).
+ */
+export function isAccountRow(p: AgentProfile): boolean {
+  return p.kind === 'claude' && !p.args.length && Object.keys(p.env).every((k) => k === 'CLAUDE_CONFIG_DIR');
 }
 
 /** The profile an agent was started with, from its name in Herdr ("claude-work" or "claude-work-2"). */

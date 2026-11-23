@@ -374,7 +374,9 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
     if (closed.agentKind) {
       const taken = deps.agentNames();
       let name = closed.agentName;
-      if (!name || taken.includes(name)) {
+      // A row found by its account (the agent had Herdr's plain name): named after the row now, so it's recognized.
+      const rowLost = !!profile && !profileOfAgent(deps.agentProfiles(), name);
+      if (!name || taken.includes(name) || rowLost) {
         name = agentName(profile?.slug ?? closed.agentKind, taken);
       }
       startAgent(deps, paneId, closed.agentKind, where, { name, args: resumeArgs(closed.agentKind, closed.session), profile });

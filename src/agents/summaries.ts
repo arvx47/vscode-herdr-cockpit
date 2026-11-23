@@ -245,6 +245,11 @@ export function summaryEnv(base: NodeJS.ProcessEnv, profiles: readonly AgentProf
   return { env: { ...env, ...row?.env }, row: row?.name };
 }
 
+/** A pane's foreground pids from Herdr's pane.process_info (what accountOfProcess() looks up). */
+export function foregroundPids(info: { foreground_processes?: { pid?: unknown }[] | null } | undefined): number[] {
+  return (info?.foreground_processes ?? []).map((x) => x.pid).filter((x): x is number => typeof x === 'number');
+}
+
 /**
  * Which Claude Code account (its config folder) a pane's Claude runs in: each running Claude Code writes
  * `<config dir>/sessions/<pid>.json` ({pid, sessionId, cwd, name, …}) in its own account's folder, so the account is
@@ -252,11 +257,6 @@ export function summaryEnv(base: NodeJS.ProcessEnv, profiles: readonly AgentProf
  * inside the pane (quit `claude`, start `claude-work`): the new Claude has its own pid. Conversation folders
  * (`projects/`) can't tell: accounts may share them (a link from one to the other).
  */
-/** A pane's foreground pids from Herdr's pane.process_info (what accountOfProcess() looks up). */
-export function foregroundPids(info: { foreground_processes?: { pid?: unknown }[] | null } | undefined): number[] {
-  return (info?.foreground_processes ?? []).map((x) => x.pid).filter((x): x is number => typeof x === 'number');
-}
-
 export function accountOfProcess(pids: readonly number[], configDirs: readonly string[]): string | undefined {
   // A Claude that crashed leaves its record behind, and a new process can get its pid: of every record matching one
   // of the pane's pids, the most recently started one is the Claude running now.

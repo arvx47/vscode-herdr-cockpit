@@ -353,10 +353,10 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .sh-failed .term { color: var(--st-failed); }
 
 /* attention cards reuse rows, framed; so does an agent in its space that's working, or blocked or done when
-   Needs you is off (PaneView.framed) */
+   Needs you is off (PaneView.framed). In a space the frame is the border only, and the row hovers like any row:
+   a row's background only means the tab you're in. The Needs you cards also get a fill. */
 .attention { padding: 0 8px; }
 .attention .row, .row.framed {
-  background: color-mix(in srgb, var(--c) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--c) 28%, transparent);
   margin: 6px 0 0;
   /* Taller than a plain row, but the same sides once the border counts (a plain row: 6px left, 4px right), so
@@ -364,16 +364,14 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   padding: 8px 3px 8px 5px;
 }
 .row.framed { margin: 4px 0; }
-.attention .row:hover, .row.framed:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
+.attention .row { background: color-mix(in srgb, var(--c) 7%, transparent); }
+.attention .row:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .attention .where { font-size: var(--fs-sm); color: var(--muted); }
-/* In a space, a framed row (working, or blocked/done with Needs you off) keeps its border but no fill, and hovers
-   like any row: a row's background only means the tab you're in. The Needs you cards keep theirs. */
-.row.framed { background: none; }
-.row.framed:hover { background: var(--hover); }
 
-/* The Herdr tab you're in: the row looks hovered; the one you were in last, half as much. */
-.row.active-now, .row.framed.active-now { background: var(--hover); }
-.row.active-recent, .row.framed.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
+/* The Herdr tab you're in: the row looks hovered; the one you were in last, half as much (fully when hovered). */
+.row.active-now { background: var(--hover); }
+.row.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
+.row.active-recent:hover { background: var(--hover); }
 
 /* shells group */
 .group {

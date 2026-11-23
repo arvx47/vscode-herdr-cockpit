@@ -203,6 +203,9 @@ export class SessionRequests {
     if (known.offset >= size) {
       return { title: known.title, done: true }; // nothing added since
     }
+    if (budget.bytes <= 0) {
+      return { title: known.title, done: false }; // this poll's reading is spent: not even opened
+    }
     const fh = await fs.promises.open(file, 'r');
     try {
       while (known.offset < size && budget.bytes > 0) {
