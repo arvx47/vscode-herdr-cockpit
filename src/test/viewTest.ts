@@ -9,7 +9,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../state/model';
 import type { Space } from '../state/model';
 import { ago, left } from '../util/format';
-import { applyPaneOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, paneName, setAccountRows, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
+import { applyPaneOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
 import type { PaneActivity } from '../state/activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
 
@@ -455,5 +455,13 @@ console.log('✓ usage: the Today line and Codex credits');
   setProfileNames([]);
   console.log("✓ a profile's agents: the session name, else the profile's name; tabs say agent: session; rows name the agent; no chevron without details");
 }
+
+// A tab's own label, for reuse on a new tab: not its id, not Herdr's number, not empty.
+assert.strictEqual(ownTabLabel('OUT-9702', 'w1:t3'), 'OUT-9702');
+assert.strictEqual(ownTabLabel('w1:t3', 'w1:t3'), undefined, "its id is Herdr's name for no label");
+assert.strictEqual(ownTabLabel('3', 'w1:t3'), undefined, "Herdr's number");
+assert.strictEqual(ownTabLabel('', 'w1:t3'), undefined);
+assert.strictEqual(ownTabLabel(undefined, 'w1:t3'), undefined);
+console.log("✓ a tab's own label");
 
 console.log('\nview tests passed');

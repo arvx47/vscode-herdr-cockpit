@@ -110,16 +110,16 @@ export class WindowFlow {
     return this.deps.terms.spaces().includes(space.id) && !!folder && this.myFolders().includes(folder);
   }
 
-  /**
-   * The space's folder is a subfolder of one of this window's: it belongs here from the first time the window
-   * opens, without tabs or memory of it (a shell that `cd`'d into `repo/src` moves its space's folder there).
-   * Not linked worktrees: they live in their own folder (~/.herdr/worktrees) and get a window of their own.
-   */
   /** Another window of this editor has the space open (the sidebar lists it under "Other windows"). */
   isOpenElsewhere(space: Space): boolean {
     return !!this.otherWindow(space);
   }
 
+  /**
+   * The space's folder is a subfolder of one of this window's: it belongs here from the first time the window
+   * opens, without tabs or memory of it (a shell that `cd`'d into `repo/src` moves its space's folder there).
+   * Not linked worktrees: they live in their own folder (~/.herdr/worktrees) and get a window of their own.
+   */
   private isInsideFolder(space: Space): boolean {
     if (!space.cwd || space.worktree?.is_linked_worktree) {
       return false;

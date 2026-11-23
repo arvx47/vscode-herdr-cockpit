@@ -221,7 +221,6 @@ export function readClaim(socket: string, pane: string, home?: string): PaneClai
   return claim;
 }
 
-/** Drop this window's claim (it released the pane, or lost it); another window's newer claim stays. */
 /**
  * Remove this window's claim on the pane. `at`: only the claim written then (a tab of this window that opened
  * meanwhile, like an icon swap's new tab, has its own and keeps it).

@@ -11,7 +11,7 @@ import { errorText } from '../util/errors';
 import type { AgentSessionInfo } from '../drivers/herdr/herdrTypes';
 import { repoSpace } from '../state/model';
 import type { Pane, Space } from '../state/model';
-import { agentRowOf, paneName, tabName } from '../sidebar/viewState';
+import { agentRowOf, ownTabLabel, paneName, tabName } from '../sidebar/viewState';
 import { branchFromInput, branchProblem } from './branchName';
 import { ClosedWorktree, closedWorktrees, herdrWorktreeRepos, worktreeLabel, worktreeListFolders } from './worktreeList';
 import { tildePath } from '../util/paths';
@@ -294,11 +294,8 @@ export interface ClosedTab {
 
 export function closedTab(space: Space, pane: Pane): ClosedTab {
   const tab = space.tabs.find((t) => t.id === pane.tabId);
-  let tabLabel = tab?.label;
   // Herdr numbers unnamed tabs ("3") or shows their id ("w1:t3"); a new tab gets its own.
-  if (tabLabel && (/^\d+$/.test(tabLabel) || tabLabel === pane.tabId)) {
-    tabLabel = undefined;
-  }
+  const tabLabel = ownTabLabel(tab?.label, pane.tabId);
   return {
     paneId: pane.id,
     closedInHerdr: false,
@@ -629,9 +626,12 @@ export async function reopenWorktree(deps: ManageDeps, from?: Space) {
     if (repos.size > 1 && prev?.w?.repoFolder !== w.repoFolder) {
       items.push({ label: w.repoName, kind: vscode.QuickPickItemKind.Separator });
     }
-    let description = w.branch;
+    // The label is the branch already: the description only adds what it doesn't say.
+    let description: string | undefined;
     if (!w.branch) {
       description = 'detached';
+    } else if (path.basename(w.path) !== worktreeLabel(w)) {
+      description = path.basename(w.path);
     }
     items.push({ label: worktreeLabel(w), description, detail: tildePath(w.path), iconPath: new vscode.ThemeIcon('repo-forked'), w });
   }

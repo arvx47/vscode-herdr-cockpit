@@ -410,7 +410,7 @@ export class AttachTerminals implements vscode.Disposable {
     }
     // A tab you aren't in opens politely: a pane another window controls stays with it (this tab may only have been
     // watching it). The one you're in takes it back, like a click: you're typing into it.
-    this.replace(pane, { preserveFocus: !inFront, polite: !inFront, place });
+    const term = this.replace(pane, { preserveFocus: !inFront, polite: !inFront, place });
     // Only the tab you're in goes back to its position: moving one in another group would mean activating that group,
     // which takes the focus. Elsewhere the new tab is the group's last.
     if (index === undefined) {
@@ -418,8 +418,10 @@ export class AttachTerminals implements vscode.Disposable {
     }
     // Wait for the new tab to open (it's created at the end of the group), then put it back.
     await sleep(200);
+    // Only the new tab: if it's slow to open, or you clicked another tab meanwhile, nothing else is moved.
     const now = vscode.window.tabGroups.activeTabGroup;
-    if (now.activeTab?.input instanceof vscode.TabInputTerminal && now.tabs.indexOf(now.activeTab) !== index) {
+    const isNew = !!term && vscode.window.activeTerminal === term && now.activeTab?.label === term.name;
+    if (isNew && now.activeTab?.input instanceof vscode.TabInputTerminal && now.tabs.indexOf(now.activeTab) !== index) {
       await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: index + 1 });
     }
     return true;

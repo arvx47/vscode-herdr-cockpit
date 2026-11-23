@@ -560,6 +560,18 @@ export function herdrLabelFor(tab: Tab, p: Pane): string {
  * - Not labeled by us yet: only a tab holding just an agent, still labeled with the agent's name (what New tab gives
  *   it), Herdr's number, or nothing. A label you typed in Herdr, like "OUT-9702", is left alone.
  */
+/**
+ * A Herdr tab's label when it's one of its own: not empty, not its id (what normalize() shows for no label) and not
+ * Herdr's number ("3"; a new tab gets its own). The one rule for reusing a label on another tab (Reopen Closed Tab)
+ * and for telling a label someone gave the tab from Herdr's default.
+ */
+export function ownTabLabel(label: string | undefined, tabId: string): string | undefined {
+  if (!label || label === tabId || /^\d+$/.test(label)) {
+    return undefined;
+  }
+  return label;
+}
+
 export function herdrTabLabel(tab: Tab, rec: LabelRecord | undefined): { rename?: string; record?: LabelRecord } | undefined {
   const p = tab.panes[0];
   const single = tab.panes.length === 1 && !!p?.isAgent;
@@ -568,6 +580,7 @@ export function herdrTabLabel(tab: Tab, rec: LabelRecord | undefined): { rename?
       return {};
     }
     if (!single) {
+      // Back to what it had. Herdr's number is restored too (it's this same tab); only its id means no label.
       if (rec.original === tab.id) {
         return {};
       }
@@ -586,7 +599,7 @@ export function herdrTabLabel(tab: Tab, rec: LabelRecord | undefined): { rename?
   if (p.agentKind) {
     names.push(agentTitle(p.agentKind));
   }
-  const fresh = tab.label === tab.id || /^\d+$/.test(tab.label) || names.includes(tab.label);
+  const fresh = !ownTabLabel(tab.label, tab.id) || names.includes(tab.label);
   if (!fresh) {
     return undefined;
   }

@@ -10,7 +10,7 @@ import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } fr
 import { HerdrPanel, PanelAction } from './sidebar/panel';
 import { SessionSync } from './state/sync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './state/activity';
-import { AgentNames, agentNameParts, buildViewState, herdrTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
+import { AgentNames, agentNameParts, buildViewState, herdrTabLabel, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
 import { AgentProfile, isAccountRow, profileOfAgent, profileOfConfigDir, readAgentList, startingTable } from './agents/agentProfiles';
 import { agentLogo } from './agents/agentLogos';
 import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
@@ -304,11 +304,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       try {
         const record = readTabLabels(socketPath())[closed.tabId];
         if (record && record.wrote === closed.tabLabel) {
-          closed.tabLabel = undefined;
           // Herdr shows an unlabeled tab by its id (or a number): that's no label of its own.
-          if (record.original && record.original !== closed.tabId && !/^\d+$/.test(record.original)) {
-            closed.tabLabel = record.original;
-          }
+          closed.tabLabel = ownTabLabel(record.original, closed.tabId);
         }
       } catch (e) {
         logError('herdr tab labels')(e);
