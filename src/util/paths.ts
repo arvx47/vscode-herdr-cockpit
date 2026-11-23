@@ -14,6 +14,11 @@ export function expandHome(p: string, home = os.homedir()): string {
   return p;
 }
 
+/** A path made absolute, without a trailing slash (but `/` stays `/`): how folders are compared everywhere. */
+export function normPath(p: string): string {
+  return path.resolve(p).replace(/(.)\/+$/, '$1');
+}
+
 /** The other way: a path in the home folder written with `~` (as dialogs and the sidebar show it). */
 export function tildePath(p: string, home = os.homedir()): string {
   if (home && (p === home || p.startsWith(home + path.sep))) {

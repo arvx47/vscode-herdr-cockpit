@@ -43,15 +43,24 @@ export function agentSlug(text: string): string | undefined {
     .replace(/^[^a-z]+/, '')
     .slice(0, 32)
     .replace(/-+$/, '');
-  return AGENT_NAME.test(s) ? s : undefined;
+  if (!AGENT_NAME.test(s)) {
+    return undefined;
+  }
+  return s;
 }
 
 /** A free agent name for a new agent of this kind: "claude", then "claude-2", "claude-3", ... */
 export function agentName(kind: string, taken: Iterable<string>): string {
   const base = kind.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^[^a-z]+/, '').slice(0, 28) || 'agent';
   const used = new Set(taken);
-  if (!used.has(base)) return base;
-  for (let n = 2; ; n++) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+  if (!used.has(base)) {
+    return base;
+  }
+  for (let n = 2; ; n++) {
+    if (!used.has(`${base}-${n}`)) {
+      return `${base}-${n}`;
+    }
+  }
 }
 
 /** "claude" -> "Claude"; unknown kinds are title-cased. */

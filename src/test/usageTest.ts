@@ -148,6 +148,11 @@ require('readline').createInterface({ input: process.stdin }).on('line', (l) => 
   assert.strictEqual(todayDelta([{ ts: 10, value: 4 }], 5), 4, 'started today');
   assert.strictEqual(todayDelta([{ ts: 1, value: 3 }], 5), 0, 'nothing today');
   assert.strictEqual(todayDelta([{ ts: 1, value: 9 }, { ts: 10, value: 2 }], 5), 2, 'a total that went down started over');
+  assert.strictEqual(
+    todayDelta([{ ts: 1, value: 1 }, { ts: 6, value: 9 }, { ts: 7, value: 0 }, { ts: 8, value: 3 }], 5),
+    11,
+    'grew 8, started over, grew 3: both count',
+  );
   const home2 = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-usage-today-'));
   const put2 = (rel: string, body: string) => {
     fs.mkdirSync(path.dirname(path.join(home2, rel)), { recursive: true });

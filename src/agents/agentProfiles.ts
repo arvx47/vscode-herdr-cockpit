@@ -4,8 +4,9 @@
 // CLAUDE_CONFIG_DIR=~/.claude-work`, what an alias such as `claude-work="CLAUDE_CONFIG_DIR=~/.claude-work claude"`
 // does). Herdr gives a new pane the row's variables (tab.create / pane.split / workspace.create take `env`), then
 // starts the agent in it. No vscode imports (test/agentProfilesTest.ts).
+import * as path from 'path';
 import { agentSlug, agentTitle } from './agentNames';
-import { expandHome } from '../util/paths';
+import { expandHome, normPath } from '../util/paths';
 
 export interface AgentProfile {
   /** As the pickers show it, e.g. "Claude (work)". */
@@ -52,7 +53,10 @@ export function readAgentProfiles(raw: unknown, home: string): { profiles: Agent
       return;
     }
     const e = entry as Record<string, unknown>;
-    const name = typeof e.name === 'string' ? e.name.trim() : '';
+    let name = '';
+    if (typeof e.name === 'string') {
+      name = e.name.trim();
+    }
     const slug = agentSlug(name);
     if (!name || !slug) {
       problems.push(`${where}: needs a "name" with a letter in it`);
@@ -73,7 +77,10 @@ export function readAgentProfiles(raw: unknown, home: string): { profiles: Agent
         env[k] = expandHome(v, home);
       }
     }
-    const args = Array.isArray(e.args) ? e.args.filter((a): a is string => typeof a === 'string') : [];
+    let args: string[] = [];
+    if (Array.isArray(e.args)) {
+      args = e.args.filter((a): a is string => typeof a === 'string');
+    }
     const plain = !Object.keys(env).length && !args.length && name === agentTitle(kind);
     profiles.push({ name, kind, env, args, slug, plain });
   });
@@ -205,6 +212,30 @@ function profileTable(list: unknown[]): Record<string, string> {
     table[e.name.trim()] = parts.join(' ');
   }
   return table;
+}
+
+/**
+ * The Claude Code row of a config folder (the account a running Claude is in, accountOfProcess() in summaries.ts):
+ * the row whose CLAUDE_CONFIG_DIR is that folder, or for `~/.claude` the first Claude row without one. Only rows that
+ * name their agents (not plain), like profileOfAgent(), and set nothing else: other variables or arguments can't be
+ * told from the process, so such a row isn't assumed (nor brought back by Reopen Closed Tab). It names agents Herdr
+ * has no name for: an alias typed in a shell (`claude-work`), or one Herdr resumed after a restart.
+ */
+export function profileOfConfigDir(profiles: readonly AgentProfile[], dir: string, home: string): AgentProfile | undefined {
+  const norm = normPath;
+  const target = norm(dir);
+  const defaultDir = norm(path.join(home, '.claude'));
+  const claude = profiles.filter((p) => p.kind === 'claude' && !p.args.length && Object.keys(p.env).every((k) => k === 'CLAUDE_CONFIG_DIR'));
+  let row: AgentProfile | undefined;
+  if (target === defaultDir) {
+    row = claude.find((p) => !p.env.CLAUDE_CONFIG_DIR || norm(p.env.CLAUDE_CONFIG_DIR) === defaultDir);
+  } else {
+    row = claude.find((p) => !!p.env.CLAUDE_CONFIG_DIR && norm(p.env.CLAUDE_CONFIG_DIR) === target);
+  }
+  if (!row || row.plain) {
+    return undefined;
+  }
+  return row;
 }
 
 /** The profile an agent was started with, from its name in Herdr ("claude-work" or "claude-work-2"). */

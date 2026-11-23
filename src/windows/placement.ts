@@ -57,7 +57,9 @@ export type PlaceDecision = 'here' | 'add' | 'stay' | 'window' | 'askHub' | 'ask
 export function insideFolders(p: string, folders: readonly string[]): boolean {
   return folders.some((f) => {
     const rel = path.relative(f, p);
-    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+    // Outside: "..", or "../…" (not a folder named "..scratch").
+    const outside = rel === '..' || rel.startsWith('..' + path.sep);
+    return rel !== '' && !outside && !path.isAbsolute(rel);
   });
 }
 

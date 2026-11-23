@@ -180,10 +180,16 @@ export class ActivityWatcher {
   private async pollOne(t: ActivityTarget): Promise<boolean> {
     try {
       const shell = t.kind === 'shell';
-      const [info, text] = await Promise.all([
-        shell ? this.reader.processInfo(t.paneId) : undefined,
-        this.reader.readText(t.paneId, shell ? 'recent_unwrapped' : 'detection', shell ? 40 : 60),
-      ]);
+      // Shells: their foreground process and plain recent output; agents: what Herdr's detection reads.
+      let infoRead: Promise<PaneProcessInfo | undefined> = Promise.resolve(undefined);
+      let textRead: Promise<string>;
+      if (shell) {
+        infoRead = this.reader.processInfo(t.paneId);
+        textRead = this.reader.readText(t.paneId, 'recent_unwrapped', 40);
+      } else {
+        textRead = this.reader.readText(t.paneId, 'detection', 60);
+      }
+      const [info, text] = await Promise.all([infoRead, textRead]);
       const summary =
         t.kind === 'shell' ? summarizeShell(info, text) : { output: summarizeAgent(text, t.status ?? 'unknown'), failed: false };
       const prev = this.byPane.get(t.paneId);

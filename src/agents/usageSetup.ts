@@ -191,7 +191,9 @@ export async function setUpClaudeUsage(home: string, log: (m: string) => void, a
     },
     'Set Up',
   );
-  if (!ok) return false;
+  if (!ok) {
+    return false;
+  }
 
   // Read it again: Claude Code may have saved its own changes while the question was open.
   const settings = await readSettings(settingsFile);
@@ -203,8 +205,11 @@ export async function setUpClaudeUsage(home: string, log: (m: string) => void, a
   }
   try {
     const script = await writeScript();
-    if (fs.existsSync(settingsFile)) await fs.promises.copyFile(settingsFile, `${settingsFile}.herdr-backup`);
-    else await fs.promises.mkdir(path.dirname(settingsFile), { recursive: true });
+    if (fs.existsSync(settingsFile)) {
+      await fs.promises.copyFile(settingsFile, `${settingsFile}.herdr-backup`);
+    } else {
+      await fs.promises.mkdir(path.dirname(settingsFile), { recursive: true });
+    }
     settings.statusLine = { type: 'command', command: `sh ${shQuote(script)}` };
     await fs.promises.writeFile(settingsFile, JSON.stringify(settings, null, 2) + '\n');
     log(`claude usage: status line installed (${script}); backup at ${settingsFile}.herdr-backup`);

@@ -9,9 +9,17 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../state/model';
 import type { Space } from '../state/model';
 import { ago, left } from '../util/format';
-import { applyPaneOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, paneName, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
+import { applyPaneOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, paneName, setAccountRows, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
 import type { PaneActivity } from '../state/activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
+
+/** `value` when `yes`, else undefined (the inputs' per-pane lookups). */
+function onlyFor<T>(yes: boolean, value: T): T | undefined {
+  if (yes) {
+    return value;
+  }
+  return undefined;
+}
 
 const zsh: PaneProcessInfo = { pane_id: 'w2:p5', foreground_process_group_id: 1, foreground_processes: [{ pid: 1, name: 'zsh', argv: ['-zsh'] }] };
 const P = 'dev@laptop api-service %';
@@ -121,7 +129,7 @@ console.log('✓ view state from real snapshot');
   const w2 = model.spaces.find((x) => x.id === 'w2')!;
   const shellIds = vs.spaces.find((x) => x.id === 'w2')!.shells.map((x) => x.id);
   const moved = [shellIds[2], shellIds[0]];
-  const ordered = buildViewState({ ...base, paneOrder: (s) => (s.label === w2.label ? moved : undefined) });
+  const ordered = buildViewState({ ...base, paneOrder: (s) => onlyFor(s.label === w2.label, moved) });
   const ow2 = ordered.spaces.find((x) => x.id === 'w2')!;
   assert.deepStrictEqual(ow2.shells.map((x) => x.id), [...moved, ...shellIds.filter((id) => !moved.includes(id))]);
   assert.deepStrictEqual(ow2.agents.map((x) => x.id), sp('w2').agents.map((x) => x.id), 'agents keep their order');
@@ -164,7 +172,13 @@ assert.ok(off.spaces.flatMap((x) => x.agents).every((a) => a.needs), 'with the s
 assert.ok(allNeedy.spaces.flatMap((x) => x.agents).every((a) => !a.needs), 'with it on, they are not');
 assert.ok(off.spaces.flatMap((x) => x.agents).every((a) => a.framed), 'agents needing you are framed in their space');
 const allWorking = (x: (typeof model.spaces)[number]) => {
-  const tabs = x.tabs.map((t) => ({ ...t, panes: t.panes.map((p) => (p.isAgent ? { ...p, status: 'working' as const } : p)) }));
+  const working = (p: (typeof x.tabs)[number]['panes'][number]) => {
+    if (p.isAgent) {
+      return { ...p, status: 'working' as const };
+    }
+    return p;
+  };
+  const tabs = x.tabs.map((t) => ({ ...t, panes: t.panes.map(working) }));
   return { ...x, tabs, agents: tabs.flatMap((t) => t.panes.filter((p) => p.isAgent)) };
 };
 const working = buildViewState({ ...needy, model: { ...model, spaces: model.spaces.map(allWorking) } });
@@ -413,7 +427,7 @@ console.log('✓ usage: the Today line and Codex credits');
   const withRequest = (text: string) =>
     buildViewState({
       ...inputs,
-      request: (id) => (id === 'w1:px' ? text : undefined),
+      request: (id) => onlyFor(id === 'w1:px', text),
       model: { ...model, spaces: [{ ...model.spaces[0], tabs: [{ ...model.spaces[0].tabs[0], label: 'claude', panes: [{ ...titled('claude-work', 'Fix the login bug'), id: 'w1:px', tokens: {}, status: 'idle', cwd: model.spaces[0].cwd }] }] }] } as any,
     }).spaces.flatMap((sp) => sp.agents)[0];
   assert.deepStrictEqual([withRequest('add a test')?.request, withRequest('add a test')?.more], ['add a test', false]);
@@ -421,10 +435,23 @@ console.log('✓ usage: the Today line and Codex credits');
   // herdr.agentDescription = summary: Claude Haiku's summary comes through, and the row always opens to show it whole.
   const withSummary = buildViewState({
     ...inputs,
-    summary: (id) => (id === 'w1:px' ? { text: 'Fixing the login retry.', at: 5 } : undefined),
+    summary: (id) => onlyFor(id === 'w1:px', { text: 'Fixing the login retry.', at: 5 }),
     model: { ...model, spaces: [{ ...model.spaces[0], tabs: [{ ...model.spaces[0].tabs[0], label: 'claude', panes: [{ ...titled('claude-work', 'Fix the login bug'), id: 'w1:px', tokens: {}, status: 'idle', cwd: model.spaces[0].cwd }] }] }] } as any,
   }).spaces.flatMap((sp) => sp.agents)[0];
   assert.deepStrictEqual([withSummary?.summary, withSummary?.more], [{ text: 'Fixing the login retry.', at: 5 }, true]);
+  // An agent Herdr has no row's name for (the alias typed in a shell, or resumed by Herdr) takes the row of the
+  // account its Claude runs in (setAccountRows()); a row's name and a name someone chose still win.
+  const typed = (id: string, name: string | null, terminalTitle?: string) => ({ ...agent(name as string), id, terminalTitle }) as any;
+  setAccountRows(new Map([['w1:pa', 'Claude (work)'], ['w1:pb', 'Claude (work)'], ['w1:pc', 'Claude (other)']]));
+  assert.strictEqual(paneName(undefined, typed('w1:pa', null)), 'Claude (work)', 'no name in Herdr: the account names it');
+  assert.strictEqual(tabName(undefined, typed('w1:pa', null, 'Fix the login bug')), 'Claude (work): Fix the login bug');
+  assert.strictEqual(paneName(undefined, typed('w1:pb', 'claude-2')), 'Claude (work)', "Herdr's generated name");
+  assert.strictEqual(paneName(undefined, typed('w1:pc', 'claude-work')), 'Claude (work)', "the row's name wins");
+  assert.strictEqual(tabName(undefined, typed('w1:pb', 'fixer')), 'Claude (work): fixer', 'a chosen name stays its own');
+  assert.strictEqual(paneName(undefined, typed('w1:pz', null)), 'Claude', 'no account row: the agent kind');
+  const codex = { ...typed('w1:pa', null), agentKind: 'codex', label: 'Codex' } as any;
+  assert.strictEqual(paneName(undefined, codex), 'Codex', "an id reused by another agent kind doesn't take the row");
+  setAccountRows(new Map());
   setProfileNames([]);
   console.log("✓ a profile's agents: the session name, else the profile's name; tabs say agent: session; rows name the agent; no chevron without details");
 }

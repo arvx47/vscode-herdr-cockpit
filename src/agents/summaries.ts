@@ -11,6 +11,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { profileOfAgent } from './agentProfiles';
+import { errorText } from '../util/errors';
 import type { AgentProfile } from './agentProfiles';
 
 /** The model, as Claude Code's alias for the current Haiku (Claude Haiku 5.5 on 2026-11-16). */
@@ -49,6 +50,8 @@ interface Entry {
   key?: string;
   summary?: Summary;
   lastRun: number;
+  /** When its screen was last read for a summary, sent or not (0: never): due() waits everyMs from it. */
+  lastLook: number;
   lastStatus?: string;
   /** Its status changed to something other than working since the last summary: a turn ended. */
   turnEnded: boolean;
@@ -136,21 +139,26 @@ export class Summaries {
     if (this.queue.some((r) => r.paneId === paneId) || this.running === paneId) {
       return false;
     }
-    const since = this.now() - e.lastRun;
+    // From the last summary or look, whichever is later: a look that ran nothing (a blank screen) counts too.
+    const since = this.now() - Math.max(e.lastRun, e.lastLook);
     // After failures, wait longer (up to 30 min) before trying again, whatever happened.
     if (e.failures) {
       return since >= Math.min(30 * 60_000, this.everyMs * 2 ** e.failures);
     }
-    return !e.summary || e.turnEnded || since >= this.everyMs;
+    // Never looked at, a turn ended, or everyMs since the last look (an unchanged or empty screen counts as a look,
+    // so an idle agent isn't read again on every poll).
+    return e.lastLook === 0 || e.turnEnded || since >= this.everyMs;
   }
 
   /** A pane's screen, read because due() said so: summarized unless it's what was summarized last. */
   consider(req: SummaryRequest) {
     const screen = trimScreen(req.screen);
+    const e = this.entry(req.paneId);
+    e.lastLook = this.now();
     if (!screen) {
+      e.turnEnded = false;
       return;
     }
-    const e = this.entry(req.paneId);
     if (keyOf(req.status, screen) === e.key) {
       e.turnEnded = false;
       return;
@@ -163,7 +171,7 @@ export class Summaries {
   private entry(paneId: string): Entry {
     let e = this.entries.get(paneId);
     if (!e) {
-      e = { lastRun: 0, failures: 0, turnEnded: false };
+      e = { lastRun: 0, lastLook: 0, failures: 0, turnEnded: false };
       this.entries.set(paneId, e);
     }
     return e;
@@ -205,7 +213,7 @@ export class Summaries {
         e.failures++;
         e.key = undefined;
       }
-      this.opts.log?.(`summary of ${req.paneId}: ${err instanceof Error ? err.message : String(err)}`);
+      this.opts.log?.(`summary of ${req.paneId}: ${errorText(err)}`);
     } finally {
       this.busy = false;
       this.running = undefined;
@@ -244,23 +252,38 @@ export function summaryEnv(base: NodeJS.ProcessEnv, profiles: readonly AgentProf
  * inside the pane (quit `claude`, start `claude-work`): the new Claude has its own pid. Conversation folders
  * (`projects/`) can't tell: accounts may share them (a link from one to the other).
  */
+/** A pane's foreground pids from Herdr's pane.process_info (what accountOfProcess() looks up). */
+export function foregroundPids(info: { foreground_processes?: { pid?: unknown }[] | null } | undefined): number[] {
+  return (info?.foreground_processes ?? []).map((x) => x.pid).filter((x): x is number => typeof x === 'number');
+}
+
 export function accountOfProcess(pids: readonly number[], configDirs: readonly string[]): string | undefined {
+  // A Claude that crashed leaves its record behind, and a new process can get its pid: of every record matching one
+  // of the pane's pids, the most recently started one is the Claude running now.
+  let best: { dir: string; startedAt: number } | undefined;
   for (const pid of pids) {
     if (!Number.isInteger(pid) || pid <= 1) {
       continue;
     }
     for (const dir of configDirs) {
       try {
-        const rec = JSON.parse(fs.readFileSync(path.join(dir, 'sessions', `${pid}.json`), 'utf8')) as { pid?: unknown };
-        if (rec.pid === pid) {
-          return dir;
+        const rec = JSON.parse(fs.readFileSync(path.join(dir, 'sessions', `${pid}.json`), 'utf8')) as { pid?: unknown; startedAt?: unknown };
+        if (rec.pid !== pid) {
+          continue;
+        }
+        let startedAt = 0;
+        if (typeof rec.startedAt === 'number') {
+          startedAt = rec.startedAt;
+        }
+        if (!best || startedAt > best.startedAt) {
+          best = { dir, startedAt };
         }
       } catch {
         // No record of this pid in that account.
       }
     }
   }
-  return undefined;
+  return best?.dir;
 }
 
 /**

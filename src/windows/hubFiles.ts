@@ -17,6 +17,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { normPath } from '../util/paths';
 import { EXTENSION_NAME } from '../util/brand';
 
 /** Bump when the link format changes incompatibly; the plugin compares it with what it speaks. */
@@ -307,19 +308,43 @@ export interface WindowRecord {
   updated: number;
 }
 
-export const normPath = (p: string) => path.resolve(p).replace(/(.)\/+$/, '$1');
+// The one normPath, in util/paths.ts; kept exported here for the files that import it from here.
+export { normPath };
 const windowFile = (scheme: string, pid: number, home?: string) => path.join(hubDir(home), 'windows', `${scheme}-${pid}.json`);
 
 export function writeWindowRecord(w: WindowRecord, home?: string) {
   writeJson(windowFile(w.scheme, w.pid, home), w);
+  recentRecords.clear();
 }
 
 export function removeWindowRecord(scheme: string, pid: number, home?: string) {
   fs.rmSync(windowFile(scheme, pid, home), { force: true });
+  recentRecords.clear();
 }
+
+/**
+ * The records read in the last RECORDS_MS, per home folder: a redraw asks once per space (isOpenElsewhere()), and
+ * records only change on a window's 30s heartbeat. Only with the real pid check (tests pass their own).
+ */
+const RECORDS_MS = 1000;
+const recentRecords = new Map<string, { at: number; records: WindowRecord[] }>();
 
 /** Live windows' records; those of windows that quit are removed. */
 function readWindowRecords(home?: string, isAlive = alive): WindowRecord[] {
+  if (isAlive !== alive) {
+    return readRecordFiles(home, isAlive);
+  }
+  const key = hubDir(home);
+  const recent = recentRecords.get(key);
+  if (recent && Date.now() - recent.at < RECORDS_MS) {
+    return recent.records;
+  }
+  const records = readRecordFiles(home, isAlive);
+  recentRecords.set(key, { at: Date.now(), records });
+  return records;
+}
+
+function readRecordFiles(home: string | undefined, isAlive: (pid: number) => boolean): WindowRecord[] {
   const dir = path.join(hubDir(home), 'windows');
   let names: string[] = [];
   try {
@@ -448,7 +473,9 @@ export function parseLink(linkPath: string, query: string): LinkRequest {
   const action = linkPath.replace(/^\/+|\/+$/g, '');
   const q = new URLSearchParams(query);
   const v = Number(q.get('v') ?? LINK_VERSION);
-  if (v > LINK_VERSION) throw new Error(`the link needs a newer ${EXTENSION_NAME} (link version ${v}, this one understands ${LINK_VERSION})`);
+  if (v > LINK_VERSION) {
+    throw new Error(`the link needs a newer ${EXTENSION_NAME} (link version ${v}, this one understands ${LINK_VERSION})`);
+  }
   const id = (k: string) => {
     const x = q.get(k);
     if (x === null || x === '') return undefined;

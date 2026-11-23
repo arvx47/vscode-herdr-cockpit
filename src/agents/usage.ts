@@ -88,26 +88,33 @@ const dayStart = (now: number) => {
 };
 
 /**
- * How much a running total grew today: its last value today minus its last value before today (0 when it
- * started today). A total that went down (a new session in the same file) counts from zero.
+ * How much a running total grew today: every increase since its last value before today, added up (0 when nothing
+ * came today). A total that went down (a new session in the same file) starts again from zero: its new value counts.
  */
 export function todayDelta(points: readonly { ts: number; value: number }[], start: number): number {
-  let before = 0;
-  let last: number | undefined;
+  let prev = 0;
+  let grew = 0;
   for (const p of points) {
     if (p.ts < start) {
-      before = p.value;
-    } else {
-      last = p.value;
+      prev = p.value;
+      continue;
     }
+    if (p.value < prev) {
+      grew += p.value;
+    } else {
+      grew += p.value - prev;
+    }
+    prev = p.value;
   }
-  if (last === undefined) {
-    return 0;
+  return grew;
+}
+
+/** A text field of a JSON record, else undefined. */
+function textOrUndefined(v: unknown): string | undefined {
+  if (typeof v === 'string') {
+    return v;
   }
-  if (last < before) {
-    return last;
-  }
-  return last - before;
+  return undefined;
 }
 
 export const claudeCaptureFile = (home: string) => path.join(hubDir(home), 'claude-usage.json');
@@ -213,7 +220,7 @@ export function codexLiveUsage(bin: string, timeoutMs = 10_000): Promise<Provide
             .filter((w) => w && typeof w.usedPercent === 'number')
             .map((w) => window(windowLabel(w.windowDurationMins ?? 0), w.usedPercent, w.resetsAt, now))
             .filter((w): w is UsageWindow => !!w);
-          finish({ id: 'codex', name: 'Codex', plan: typeof rl.planType === 'string' ? rl.planType : undefined, windows, asOf: now, live: true, codexCredits: codexCredits(rl.credits) });
+          finish({ id: 'codex', name: 'Codex', plan: textOrUndefined(rl.planType), windows, asOf: now, live: true, codexCredits: codexCredits(rl.credits) });
         }
       }
     });
@@ -323,7 +330,7 @@ async function codexUsage(home: string, now = Date.now()): Promise<ProviderUsage
         .filter((w) => w && typeof w.window_minutes === 'number')
         .map((w) => window(windowLabel(w.window_minutes), w.used_percent, w.resets_at, now))
         .filter((w): w is UsageWindow => !!w);
-      return { id: 'codex', name: 'Codex', plan: typeof rl.plan_type === 'string' ? rl.plan_type : undefined, windows, asOf: Date.parse(o.timestamp) || undefined, codexCredits: codexCredits(rl.credits) };
+      return { id: 'codex', name: 'Codex', plan: textOrUndefined(rl.plan_type), windows, asOf: Date.parse(o.timestamp) || undefined, codexCredits: codexCredits(rl.credits) };
     }
   }
   return files.length ? { id: 'codex', name: 'Codex', windows: [] } : undefined;
@@ -530,7 +537,9 @@ export function claudeAccountCaptureFile(home: string, key: string): string {
 
 async function claudeUsage(home: string, now = Date.now(), account: ClaudeAccount = { configDir: path.join(home, '.claude'), name: 'Claude Code' }): Promise<ProviderUsage | undefined> {
   const projects = path.join(account.configDir, 'projects');
-  if (!(await exists(account.configDir))) return;
+  if (!(await exists(account.configDir))) {
+    return;
+  }
   const key = claudeAccountKey(account.configDir, home);
   let id = 'claude';
   if (key) {
@@ -602,7 +611,9 @@ async function claudeUsage(home: string, now = Date.now(), account: ClaudeAccoun
       cacheRead: inWindow.reduce((s, e) => s + e.cacheRead, 0),
       exact: true,
     };
-  } else usage.block = currentBlock(entries, now);
+  } else {
+    usage.block = currentBlock(entries, now);
+  }
   return usage;
 }
 
@@ -670,12 +681,18 @@ export interface UsageOptions {
 /** Usage of each agent with data, in a stable order. Agents outside `only` aren't read at all. */
 export async function readUsage(home: string, now = Date.now(), opts: UsageOptions = {}): Promise<ProviderUsage[]> {
   const want = (id: string) => !opts.only || opts.only.has(id);
+  const reads: Promise<ProviderUsage | undefined>[] = [];
+  if (want('claude')) {
+    reads.push(...(opts.claudeAccounts ?? [undefined]).map((a) => claudeUsage(home, now, a)));
+  }
+  if (want('codex')) {
+    reads.push(codexWithToday(home, now, opts.codexLive));
+  }
+  if (want('kiro')) {
+    reads.push(kiroUsage(home, now, opts.kiroMonthlyCredits));
+  }
   const all = await Promise.all(
-    [
-      ...(want('claude') ? (opts.claudeAccounts ?? [undefined]).map((a) => claudeUsage(home, now, a)) : []),
-      want('codex') ? codexWithToday(home, now, opts.codexLive) : undefined,
-      want('kiro') ? kiroUsage(home, now, opts.kiroMonthlyCredits) : undefined,
-    ].map((p) => (p ?? Promise.resolve(undefined)).catch(() => undefined)),
+    reads.map((p) => p.catch(() => undefined)),
   );
   return all.filter((u): u is ProviderUsage => !!u);
 }

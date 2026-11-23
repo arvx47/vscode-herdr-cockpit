@@ -22,9 +22,17 @@ interface Entry {
   seen?: string;
   /** What its icon shows (iconKind). */
   icon?: string;
-  /** Opened with an agent's icon for an agent still starting in it: the shell it is meanwhile doesn't count. */
+  /**
+   * Opened with an agent's icon for an agent still starting in it: the shell it is meanwhile doesn't count, for
+   * STARTING_MS at most (an agent that never started leaves a shell, whose icon it then gets).
+   */
   starting?: boolean;
+  /** When it opened while `starting`. */
+  startingAt?: number;
 }
+
+/** How long a tab opened for a starting agent waits for it before its icon follows the pane again. */
+const STARTING_MS = 30_000;
 
 /** What a pane's tab icon shows: its agent's logo, or a shell. */
 function iconKind(pane: Pane, startingAs?: string): string {
@@ -337,7 +345,7 @@ export class AttachTerminals implements vscode.Disposable {
     }
     const kind = iconKind(pane);
     if (e.starting) {
-      if (kind !== 'shell') {
+      if (kind !== 'shell' || Date.now() - (e.startingAt ?? 0) > STARTING_MS) {
         e.starting = false;
       } else {
         return false;
@@ -355,19 +363,27 @@ export class AttachTerminals implements vscode.Disposable {
     if (!e) {
       return;
     }
-    const inFront = vscode.window.activeTerminal === e.term;
+    // Where the tab really is now (a tab dragged to another group, or opened with "+", which never stored one), from
+    // the tab bar. In front: the editor tab you're in; activeTerminal alone stays set after you click into a file,
+    // and taking the focus then would send your typing to the terminal.
+    const placed = this.placedTabs().find((t) => t.paneId === pane.id);
+    let column: vscode.ViewColumn | undefined;
     let index: number | undefined;
-    const group = vscode.window.tabGroups.activeTabGroup;
-    const tab = group.activeTab;
-    if (inFront && tab?.input instanceof vscode.TabInputTerminal && tab.label === e.term.name) {
-      index = group.tabs.indexOf(tab);
+    let inFront: boolean;
+    if (placed) {
+      column = placed.column;
+      const group = vscode.window.tabGroups.activeTabGroup;
+      inFront = vscode.window.activeTerminal === e.term && group.viewColumn === placed.column && group.activeTab === placed.tab;
+      if (inFront) {
+        index = placed.index;
+      }
+    } else {
+      // A panel tab: in front when it's the active terminal (the panel's focus isn't exposed).
+      inFront = vscode.window.activeTerminal === e.term;
     }
-    // The group it's in, so it doesn't move to the one holding most Herdr tabs.
-    let column = e.column;
-    if (index !== undefined) {
-      column = group.viewColumn;
-    }
-    this.replace(pane, { preserveFocus: !inFront, column });
+    // A tab you aren't in opens politely: a pane another window controls stays with it (this tab may only have been
+    // watching it). The one you're in takes it back, like a click: you're typing into it.
+    this.replace(pane, { preserveFocus: !inFront, column, polite: !inFront });
     if (index === undefined) {
       return;
     }
@@ -448,6 +464,7 @@ export class AttachTerminals implements vscode.Disposable {
       seen: name,
       icon: iconKind(pane, opts.startingAs),
       starting: !!opts.startingAs && !pane.isAgent,
+      startingAt: Date.now(),
     });
     if (where === 'editor' && column) this.lastColumn = column;
     this.changed();
@@ -467,7 +484,7 @@ export class AttachTerminals implements vscode.Disposable {
     if (old && old.term !== term) {
       old.term.dispose();
     }
-    this.byPane.set(paneId, { term, spaceId, pty, name, seen: term.name, icon: startingAs ?? 'shell', starting: !!startingAs });
+    this.byPane.set(paneId, { term, spaceId, pty, name, seen: term.name, icon: startingAs ?? 'shell', starting: !!startingAs, startingAt: Date.now() });
     if (name !== term.name) {
       pty?.setName(name);
     }

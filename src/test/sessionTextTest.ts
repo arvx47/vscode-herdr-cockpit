@@ -40,7 +40,7 @@ async function main() {
     write('a.jsonl', title('Fix login') + human('fix the login bug') + reply + human('now add a test') + toolResult + title('Fix login'), 10);
     write('b.jsonl', title('Docs') + human('update the README') + reply, 5);
     write('r.jsonl', title('Auto title') + line({ type: 'custom-title', customTitle: 'OUT-1' }) + human('check the ticket') + title('Auto title'), 7);
-    const r = new SessionRequests();
+    const r = new SessionRequests(0);
     const dirs = [path.join(tmp, '.claude'), work];
     assert.strictEqual(await r.find(dirs, cwd, 'Fix login'), 'now add a test', 'the session with that title, your last message');
     assert.strictEqual(await r.find(dirs, cwd, 'Docs'), 'update the README');
@@ -60,6 +60,26 @@ async function main() {
     const filler = Array.from({ length: 300 }, () => line({ type: 'assistant', message: { content: [{ type: 'text', text: big }] } })).join('');
     write('d.jsonl', title('Long') + human('refactor everything') + filler + title('Long'), 0);
     assert.strictEqual(await r.find(dirs, cwd, 'Long'), 'refactor everything', 'found further back in a big transcript');
+    // A session renamed long ago: its /rename name is far before the end, behind later titles and a message of yours.
+    const renamed = write('e.jsonl', line({ type: 'custom-title', customTitle: 'OUT-2' }) + title('Auto') + filler + human('ship it') + title('Auto'), 0);
+    assert.strictEqual(await r.find(dirs, cwd, 'OUT-2'), 'ship it', 'a /rename name more than the tail back still counts');
+    assert.strictEqual(await r.find(dirs, cwd, 'Auto'), undefined, "its later automatic title isn't its name");
+    fs.appendFileSync(renamed, line({ type: 'custom-title', customTitle: 'OUT-3' }) + human('and merge it'));
+    assert.strictEqual(await r.find(dirs, cwd, 'OUT-3'), 'and merge it', 'a rename added later, read from where it stopped');
+    // Panes in one folder share its listing within a poll: a file added meanwhile shows up on the next one.
+    const shared = new SessionRequests(60_000);
+    assert.strictEqual(await shared.find(dirs, cwd, 'Docs'), 'and the changelog');
+    write('f.jsonl', title('Fresh') + human('new session') + reply, 0);
+    assert.strictEqual(await shared.find(dirs, cwd, 'Fresh'), undefined, 'the same listing within the poll');
+    assert.strictEqual(await new SessionRequests(0).find(dirs, cwd, 'Fresh'), 'new session');
+    // An account whose projects folder links to another's: its files are counted once, so 20 distinct sessions fit.
+    const linked = path.join(tmp, '.claude-linked');
+    fs.mkdirSync(linked);
+    fs.symlinkSync(path.join(work, 'projects'), path.join(linked, 'projects'));
+    for (let i = 0; i < 15; i++) {
+      write(`n${i}.jsonl`, title(`New ${i}`) + human(`task ${i}`) + reply, -10 - i); // newer than the rest
+    }
+    assert.strictEqual(await new SessionRequests(0).find([...dirs, linked], cwd, 'Docs'), 'and the changelog', 'still among the 20 newest');
     console.log('✓ the session matched by folder and title, newest first, re-read when it grows, big transcripts');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

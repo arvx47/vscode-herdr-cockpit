@@ -134,8 +134,12 @@ export function registerProfiles(deps: ProfileDeps): vscode.Disposable {
       if (kind) {
         tabTitle = name;
       }
-      if (term) deps.adopt(paneId, space.id, term, pty, tabTitle, kind);
-      if (kind) startAgent(deps, paneId, kind, space.label, { profile });
+      if (term) {
+        deps.adopt(paneId, space.id, term, pty, tabTitle, kind);
+      }
+      if (kind) {
+        startAgent(deps, paneId, kind, space.label, { profile });
+      }
       return paneId;
     });
     // No shell process in the tab, so extensions that type into new terminals (Python Environments'

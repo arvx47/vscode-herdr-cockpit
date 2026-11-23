@@ -10,8 +10,8 @@ import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } fr
 import { HerdrPanel, PanelAction } from './sidebar/panel';
 import { SessionSync } from './state/sync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './state/activity';
-import { AgentNames, agentNameParts, buildViewState, herdrTabLabel, paneName, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
-import { AgentProfile, readAgentList, startingTable } from './agents/agentProfiles';
+import { AgentNames, agentNameParts, buildViewState, herdrTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
+import { AgentProfile, profileOfAgent, profileOfConfigDir, readAgentList, startingTable } from './agents/agentProfiles';
 import { agentLogo } from './agents/agentLogos';
 import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
 import { isMounted, PREFIX } from './windows/folders';
@@ -37,8 +37,8 @@ import type { BuiltinDeps } from './drivers/herdr/builtinTerminal';
 import { closedTab, ManageDeps } from './commands/manage';
 import { registerProfiles, SHELL_PROFILE_TITLE } from './terminal/profiles';
 import { ClaudeAccount, codexBinary, codexLiveUsage, ProviderUsage, readUsage } from './agents/usage';
-import { claudeProjectDir, SessionRequests } from './agents/sessionText';
-import { claudeCliRunner, paneSummaryEnv, Summaries } from './agents/summaries';
+import { claudeProjectDir, readBudget, SessionRequests } from './agents/sessionText';
+import { accountOfProcess, claudeCliRunner, foregroundPids, paneSummaryEnv, Summaries } from './agents/summaries';
 import { findTool } from './util/tools';
 import { errorText } from './util/errors';
 import { expandHome } from './util/paths';
@@ -106,7 +106,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       return;
     }
     const id = PANEL_COMMANDS[a.command];
-    if (id) vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId, account: a.account } satisfies Target);
+    if (id) {
+      vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId, account: a.account } satisfies Target);
+    }
   });
   const activity = new ActivityWatcher(backend);
   const logoUri = (f: string) => vscode.Uri.joinPath(ctx.extensionUri, 'media', 'agent-logos', `${f}.svg`);
@@ -241,7 +243,16 @@ export function activate(ctx: vscode.ExtensionContext) {
     onSnapshot: (next) => apply(next),
     onConnected() {
       notifications.connected();
-      tabs.restore();
+      if (accountsStale) {
+        // Back after a loss: the names kept for the greyed view may be other panes' now. Plain names until the
+        // check answers, so restored tabs aren't matched or named with them.
+        accountRows = new Map();
+        setAccountRows(accountRows);
+        scheduleRender();
+      }
+      // After the account rows: a restored tab is matched by its name (tabName()).
+      // At most 2s: a slow Herdr shouldn't hold the window's tabs back for names only some of them need.
+      void Promise.race([syncAccountRows().catch(logError('agent accounts')), sleep(2000)]).then(() => tabs.restore());
       const lost = lostSpace;
       lostSpace = undefined;
       if (lost) {
@@ -249,6 +260,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
     },
     onLost() {
+      // Herdr may come back restarted, with pane ids that mean other panes: look again then, keeping the names meanwhile.
+      resetAccountCheck();
+      accountsStale = true;
       const sp = model?.spaces.find((s) => s.id === terms.spaces()[0]);
       lostSpace = sp ? { id: sp.id, label: sp.label } : undefined;
     },
@@ -298,16 +312,26 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (backend.capabilities.server) {
         keep = `Keep Running leaves it${where}; click it in the sidebar to open it again.`;
       }
+      const why: string[] = [];
+      if (pane.isAgent) {
+        why.push(`${name} is an agent: closing it${where} stops it.`);
+      } else if (running) {
+        why.push(`It's running ${running}.`);
+      }
+      if (last) {
+        why.push(`It's the last tab of "${space.label}", so the space closes too.`);
+      }
       const detail = [
-        pane.isAgent ? `${name} is an agent: closing it${where} stops it.` : running ? `It's running ${running}.` : undefined,
-        last ? `It's the last tab of "${space.label}", so the space closes too.` : undefined,
+        ...why,
         keep,
       ]
         .filter(Boolean)
         .join(' ');
       const close = `Close${where}`;
       const pick = await vscode.window.showWarningMessage(`Close ${name}${where} too?`, { modal: true, detail }, close, 'Keep Running');
-      if (pick !== close) return;
+      if (pick !== close) {
+        return;
+      }
     }
     await manage.actions.closePane(paneId);
     closed.closedInHerdr = true;
@@ -331,9 +355,13 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (hit.pane.isAgent) {
       // Herdr agent names are identifiers (they're also CLI targets).
       const slug = agentSlug(label);
-      if (!slug) return void vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: agent names use lowercase letters, digits, - and _; "${label}" stays a VS Code tab name only.`);
+      if (!slug) {
+        return void vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: agent names use lowercase letters, digits, - and _; "${label}" stays a VS Code tab name only.`);
+      }
       await manage.actions.renameAgent(paneId, slug);
-    } else await manage.actions.renamePane(paneId, label);
+    } else {
+      await manage.actions.renamePane(paneId, label);
+    }
     log.appendLine(`renamed ${paneId} in Herdr: "${label}" (tab renamed)`);
     kick();
   }
@@ -346,20 +374,28 @@ export function activate(ctx: vscode.ExtensionContext) {
     terms.disposeExited();
     // Pane (and possibly space) ids change when Herdr restarts; fall back to the name.
     const sp = model?.spaces.find((s) => s.id === lost.id) ?? model?.spaces.find((s) => s.label === lost.label);
-    if (sp) await flow.switchTo(sp);
-    else vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: "${lost.label}" isn't in Herdr anymore.`);
+    if (sp) {
+      await flow.switchTo(sp);
+    } else {
+      vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: "${lost.label}" isn't in Herdr anymore.`);
+    }
   }
 
   /** Start the headless server in the background (it outlives VS Code), then connect. */
   async function startHerdr(): Promise<boolean> {
     if (isConnected()) return true;
     // A driver without a server has nothing to start: its session is in this window.
-    if (!backend.capabilities.server) return true;
+    if (!backend.capabilities.server) {
+      return true;
+    }
     const bin = binary();
     if (!binaryFound(bin)) {
       const pick = await vscode.window.showErrorMessage(`Herdr isn't installed (looked for ${bin}).`, 'Install Herdr', 'Settings');
-      if (pick === 'Install Herdr') vscode.commands.executeCommand('herdr.openInstallDocs');
-      else if (pick === 'Settings') vscode.commands.executeCommand('herdr.openSettings');
+      if (pick === 'Install Herdr') {
+        vscode.commands.executeCommand('herdr.openInstallDocs');
+      } else if (pick === 'Settings') {
+        vscode.commands.executeCommand('herdr.openSettings');
+      }
       return false;
     }
     const prev = sync.beginStarting();
@@ -387,7 +423,9 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   /** The Cockpit window opened with Herdr stopped: start it, per herdr.startServer (asked once, then remembered). */
   async function maybeAutoStart() {
-    if (!backend.capabilities.server || !isHubWindow() || sync.conn.kind !== 'down' || (sync.conn.reason !== 'not-running' && sync.conn.reason !== 'crashed')) return;
+    if (!backend.capabilities.server || !isHubWindow() || sync.conn.kind !== 'down' || (sync.conn.reason !== 'not-running' && sync.conn.reason !== 'crashed')) {
+      return;
+    }
     const mode = cfg().get<'ask' | 'always' | 'never'>('startServer', 'ask');
     if (mode === 'never') return;
     if (mode === 'always') {
@@ -403,7 +441,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (pick === 'Always Start Herdr') {
       await cfg().update('startServer', 'always', vscode.ConfigurationTarget.Global);
       await startHerdr();
-    } else if (pick === 'Never') await cfg().update('startServer', 'never', vscode.ConfigurationTarget.Global);
+    } else if (pick === 'Never') {
+      await cfg().update('startServer', 'never', vscode.ConfigurationTarget.Global);
+    }
   }
 
   /** Herdr isn't connected: offer to start it. True once connected. */
@@ -468,7 +508,10 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (!backend.capabilities.server) {
       return { cockpit, driver: backend.capabilities.label };
     }
-    return { cockpit, herdr: sync.conn.kind === 'connected' ? (sync.conn.version ?? undefined) : undefined };
+    if (sync.conn.kind === 'connected') {
+      return { cockpit, herdr: sync.conn.version ?? undefined };
+    }
+    return { cockpit, herdr: undefined };
   }
 
   // Claude Code agents' last message from you, for their rows (herdr.agentDescription = request; pollRequests).
@@ -565,8 +608,29 @@ export function activate(ctx: vscode.ExtensionContext) {
   }
 
   // What shells are running and what agents last said, polled only while the sidebar is visible.
+  // One poll at a time: a slow one (big transcripts on the first look) must not overlap the next tick, or the same
+  // files are read twice and an older run's results land after a newer one's. A poll asked for meanwhile runs after.
+  let activityRunning = false;
+  let activityAgain = false;
   async function pollActivity() {
-    if (!model || !panel.visible) return;
+    if (activityRunning) {
+      activityAgain = true;
+      return;
+    }
+    activityRunning = true;
+    try {
+      do {
+        activityAgain = false;
+        await pollActivityOnce().catch(logError('activity'));
+      } while (activityAgain);
+    } finally {
+      activityRunning = false;
+    }
+  }
+  async function pollActivityOnce() {
+    if (!model || !panel.visible) {
+      return;
+    }
     const targets: ActivityTarget[] = model.spaces.flatMap((sp) =>
       sp.tabs.flatMap((t) =>
         t.panes
@@ -576,7 +640,9 @@ export function activate(ctx: vscode.ExtensionContext) {
     );
     void pollSummaries().catch(logError('summaries'));
     const changed = await activity.poll(targets);
-    if ((await pollRequests()) || changed) scheduleRender();
+    if ((await pollRequests()) || changed) {
+      scheduleRender();
+    }
   }
   const activityTimer = setInterval(pollActivity, 4000);
 
@@ -605,17 +671,38 @@ export function activate(ctx: vscode.ExtensionContext) {
     () => scheduleRender(),
   );
   /** Agents of the spaces open in this window whose summary is due: their screen read, and summarized if it changed. */
+  let summariesRunning = false;
   async function pollSummaries() {
-    if (!model || !summariesOn()) return;
+    // One at a time: an agent's summary stays due while its screen is read, so an overlapping poll would read it twice.
+    if (summariesRunning) {
+      return;
+    }
+    summariesRunning = true;
+    try {
+      await pollSummariesOnce();
+    } finally {
+      summariesRunning = false;
+    }
+  }
+  async function pollSummariesOnce() {
+    if (!model || !summariesOn()) {
+      return;
+    }
     summaries.keep(allPanes(model).map(({ pane }) => pane.id));
     for (const sp of model.spaces.filter((s) => flow.isOpenHere(s))) {
       for (const a of sp.agents) {
         const status = a.status ?? 'unknown';
-        if (!summaries.due(a.id, status)) continue;
-        const screen = await backend.readText(a.id, 'recent_unwrapped', 120).catch(() => '');
+        if (!summaries.due(a.id, status)) {
+          continue;
+        }
+        // A read that failed is tried again on the next poll: it isn't a look at the screen.
+        const screen = await backend.readText(a.id, 'recent_unwrapped', 120).catch(() => undefined);
+        if (screen === undefined) {
+          continue;
+        }
         // Its foreground processes: the Claude Code running there tells which account it's in.
         const info = await backend.processInfo(a.id).catch(() => undefined);
-        const pids = (info?.foreground_processes ?? []).map((x) => x.pid).filter((x): x is number => typeof x === 'number');
+        const pids = foregroundPids(info);
         const tab = sp.tabs.find((t) => t.id === a.tabId);
         summaries.consider({
           paneId: a.id,
@@ -636,12 +723,14 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (model && cfg().get<string>('agentDescription', 'request') === 'request') {
       const dirs = claudeAccounts().map((a) => a.configDir);
       const projects = new Set<string>();
+      // One /rename reading budget for the whole poll, however many panes (sessionText.ts).
+      const budget = readBudget();
       for (const { pane } of allPanes(model)) {
         if (pane.agentKind !== 'claude' || !pane.cwd) {
           continue;
         }
         for (const d of dirs) projects.add(claudeProjectDir(d, pane.cwd));
-        const text = await sessionRequests.find(dirs, pane.cwd, pane.terminalTitle).catch((e) => {
+        const text = await sessionRequests.find(dirs, pane.cwd, pane.terminalTitle, budget).catch((e) => {
           log.appendLine(`session of ${pane.id}: ${errorText(e)}`);
           return undefined;
         });
@@ -737,6 +826,159 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
   }
 
+  // The agent list row of Claude agents Herdr has no row's name for (`claude-work` typed in a shell, an agent Herdr
+  // resumed after a restart), from the account their process runs in (accountOfProcess()): setAccountRows(). Tab
+  // names, Herdr's labels and the first tab restore wait for it, so they never use the agent kind's name meanwhile.
+  let accountRows = new Map<string, string>();
+  let accountsRun: Promise<void> | undefined;
+  let accountsAgain = false;
+  let accountsKey = '';
+  let accountsAt = 0;
+  /** Bumped by forgetAccounts(): a check that started before it drops its answer (it's about the old panes). */
+  let accountsGeneration = 0;
+  /**
+   * Herdr went away and came back, maybe restarted with pane ids that now mean other panes: the names are kept for
+   * the greyed view, but until a check completes they aren't applied to tabs nor kept when a pane can't be asked.
+   */
+  let accountsStale = false;
+  /**
+   * The same panes are checked again at most this often (a switch inside a pane shows up then): every 10s while the
+   * sidebar shows, every minute otherwise, since every window runs this. New panes are checked at once.
+   */
+  const ACCOUNTS_RECHECK_MS = 10_000;
+  const ACCOUNTS_RECHECK_HIDDEN_MS = 60_000;
+  function syncAccountRows(): Promise<void> {
+    if (accountsRun) {
+      accountsAgain = true;
+      return accountsRun;
+    }
+    accountsRun = (async () => {
+      try {
+        do {
+          accountsAgain = false;
+          await checkAccounts();
+        } while (accountsAgain);
+      } finally {
+        accountsRun = undefined;
+      }
+    })();
+    return accountsRun;
+  }
+  async function checkAccounts() {
+    const generation = accountsGeneration;
+    const m = model;
+    if (!m) {
+      return;
+    }
+    const rows = agentProfiles();
+    // Only rows of their own (not plain) name agents: without one, nothing to look up.
+    const candidates: Pane[] = [];
+    if (rows.some((r) => r.kind === 'claude' && !r.plain)) {
+      for (const { pane } of allPanes(m)) {
+        if (pane.agentKind === 'claude' && !profileOfAgent(rows, pane.raw.agent?.name ?? undefined)) {
+          candidates.push(pane);
+        }
+      }
+    }
+    const key = candidates.map((p) => p.id).join();
+    let recheck = ACCOUNTS_RECHECK_HIDDEN_MS;
+    if (panel.visible) {
+      recheck = ACCOUNTS_RECHECK_MS;
+    }
+    if (key === accountsKey && Date.now() - accountsAt < recheck) {
+      return;
+    }
+    accountsKey = key;
+    accountsAt = Date.now();
+    const dirs = claudeAccounts().map((a) => a.configDir);
+    const next = new Map<string, string>();
+    // A few at a time, like the activity poll: tab restore and renames wait for this.
+    const infos = new Map<string, Awaited<ReturnType<typeof backend.processInfo>> | undefined>();
+    for (let i = 0; i < candidates.length; i += 6) {
+      const batch = candidates.slice(i, i + 6);
+      const got = await Promise.all(batch.map((p) => backend.processInfo(p.id).catch(() => undefined)));
+      batch.forEach((p, j) => infos.set(p.id, got[j]));
+    }
+    // Herdr answered none of them (it's down): nothing learned, so nothing changes and the next snapshot asks again.
+    if (candidates.length && ![...infos.values()].some((info) => info !== undefined)) {
+      accountsKey = '';
+      accountsAt = 0;
+      return;
+    }
+    for (const pane of candidates) {
+      const info = infos.get(pane.id);
+      if (!info) {
+        // Herdr didn't answer this time: keep what we knew, so names don't flip back and forth (not after a loss).
+        let known: string | undefined;
+        if (!accountsStale) {
+          known = accountRows.get(pane.id);
+        }
+        if (known) {
+          next.set(pane.id, known);
+        }
+        continue;
+      }
+      const pids = foregroundPids(info);
+      const dir = accountOfProcess(pids, dirs);
+      let row: AgentProfile | undefined;
+      if (dir) {
+        row = profileOfConfigDir(rows, dir, os.homedir());
+      }
+      if (row) {
+        next.set(pane.id, row.name);
+      }
+    }
+    if (generation !== accountsGeneration) {
+      return;
+    }
+    accountsStale = false;
+    const changed = next.size !== accountRows.size || [...next].some(([id, r]) => accountRows.get(id) !== r);
+    if (changed) {
+      accountRows = next;
+      setAccountRows(next);
+      scheduleRender();
+    }
+  }
+  /** Forget the account rows: Herdr went away or this is another session, so the pane ids mean other panes now. */
+  function forgetAccounts() {
+    resetAccountCheck();
+    accountRows = new Map();
+    setAccountRows(accountRows);
+  }
+  /** A check running now drops its answer, and the next one runs at once. */
+  function resetAccountCheck() {
+    accountsGeneration++;
+    accountsKey = '';
+    accountsAt = 0;
+  }
+  /**
+   * Tab names now (a tab opened meanwhile is then renamed when its account is known), and Herdr's labels once the
+   * account rows are current (they'd be written twice otherwise); one follow-up however many snapshots came meanwhile.
+   */
+  let namesAfterAccounts = false;
+  function syncTabNames() {
+    // After a lost connection the names may be about other panes: wait for the check.
+    if (model && !accountsStale) {
+      syncNames(model);
+    }
+    // Always ask (a check running now looks again for this snapshot); one follow-up for all of them.
+    const checked = syncAccountRows().catch(logError('agent accounts'));
+    if (namesAfterAccounts) {
+      return;
+    }
+    namesAfterAccounts = true;
+    void checked.then(() => {
+      namesAfterAccounts = false;
+      if (model) {
+        syncNames(model);
+        // Herdr's labels only from names known to be current (not while a check after a loss hasn't answered).
+        if (!accountsStale) {
+          syncHerdrLabels(model);
+        }
+      }
+    });
+  }
+
   // Herdr's tab labels in step with our tab names (herdrTabLabel), from one window (labelWriter), with what we wrote
   // shared in ~/.herdr-cockpit/labels. A rename is recorded once Herdr confirms it, so a failed one is tried again.
   const renamingTabs = new Set<string>();
@@ -807,8 +1049,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   function apply(next: Model) {
     const prev = model;
     model = next;
-    syncNames(next);
-    syncHerdrLabels(next);
+    syncTabNames();
     renderStatus();
 
     // Notifications on agent transitions.
@@ -947,13 +1188,13 @@ export function activate(ctx: vscode.ExtensionContext) {
   function claudeAccounts(): ClaudeAccount[] {
     const home = os.homedir();
     const claude = agentProfiles().filter((p) => p.kind === 'claude');
-    const defaultDir = path.join(home, '.claude');
-    const named = claude.find((p) => !p.env.CLAUDE_CONFIG_DIR || path.resolve(p.env.CLAUDE_CONFIG_DIR) === defaultDir);
+    const defaultDir = normPath(path.join(home, '.claude'));
+    const named = claude.find((p) => !p.env.CLAUDE_CONFIG_DIR || normPath(p.env.CLAUDE_CONFIG_DIR) === defaultDir);
     const accounts: ClaudeAccount[] = [{ configDir: defaultDir, name: named?.name ?? 'Claude Code' }];
     for (const p of claude) {
       const dir = p.env.CLAUDE_CONFIG_DIR;
-      if (dir && !accounts.some((a) => a.configDir === path.resolve(dir))) {
-        accounts.push({ configDir: path.resolve(dir), name: p.name });
+      if (dir && !accounts.some((a) => a.configDir === normPath(dir))) {
+        accounts.push({ configDir: normPath(dir), name: p.name });
       }
     }
     return accounts;
@@ -964,7 +1205,10 @@ export function activate(ctx: vscode.ExtensionContext) {
   }
   let agentKindsCache: { version?: string; kinds: Promise<string[]> } | undefined;
   function herdrAgentKinds(): Promise<string[]> {
-    const version = sync.conn.kind === 'connected' ? sync.conn.version : undefined;
+    let version: string | undefined;
+    if (sync.conn.kind === 'connected') {
+      version = sync.conn.version ?? undefined;
+    }
     if (!agentKindsCache || agentKindsCache.version !== version) {
       const kinds = backend.actions.agentKinds().catch((e) => {
         log.appendLine(`agent manifests: ${errorText(e)}`);
@@ -990,7 +1234,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       for (let i = 0; i < 15; i++) {
         await refresh();
         const space = model?.spaces.find((s) => s.id === spaceId);
-        if (space?.tabs[0]?.panes[0]) return space;
+        if (space?.tabs[0]?.panes[0]) {
+          return space;
+        }
         await sleep(200);
       }
     },
@@ -1122,18 +1368,21 @@ export function activate(ctx: vscode.ExtensionContext) {
         }
         profiles = undefined;
         agentProfiles();
+        accountsAt = 0; // the rows changed: look again now
         if (model) {
-          syncNames(model);
-          syncHerdrLabels(model);
+          syncTabNames();
         }
         pollUsage(); // the Claude Code accounts may have changed
       }
       if (e.affectsConfiguration('herdr.socketPath')) {
         // Another session: watch its socket folder, take its events instead of the old one's, and connect now.
+        forgetAccounts();
         void sync.socketChanged();
       }
       render();
-      if (e.affectsConfiguration('herdr.showShellPanes') || e.affectsConfiguration('herdr.agentDescription')) pollActivity();
+      if (e.affectsConfiguration('herdr.showShellPanes') || e.affectsConfiguration('herdr.agentDescription')) {
+        pollActivity();
+      }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => render()),
     vscode.workspace.onDidGrantWorkspaceTrust(() => render()),
@@ -1167,8 +1416,11 @@ export function activate(ctx: vscode.ExtensionContext) {
   const terminalContext = () => void vscode.commands.executeCommand('setContext', 'herdr.terminalActive', !!terms.ptyOf(vscode.window.activeTerminal)?.ownKeys);
   const tabAction = (a: TabAction) => () => {
     const pty = terms.ptyOf(vscode.window.activeTerminal);
-    if (pty) pty.action(a);
-    else void vscode.window.showInformationMessage('Focus a Herdr terminal tab first.');
+    if (pty) {
+      pty.action(a);
+    } else {
+      void vscode.window.showInformationMessage('Focus a Herdr terminal tab first.');
+    }
   };
   /** Opening a file from a tab in the editor area puts it beside the tab, not over it. */
   const besideTerminal = () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTerminal ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active);
@@ -1318,8 +1570,11 @@ export function activate(ctx: vscode.ExtensionContext) {
       "Don't Ask Again",
     );
     // An empty window becomes the hub; one with your project keeps it and the hub opens in a new window.
-    if (pick === OPEN_HERE) await links.openHub(hasFolder);
-    else if (pick === "Don't Ask Again") await cfg().update('offerHubOnStartup', 'never', vscode.ConfigurationTarget.Global);
+    if (pick === OPEN_HERE) {
+      await links.openHub(hasFolder);
+    } else if (pick === "Don't Ask Again") {
+      await cfg().update('offerHubOnStartup', 'never', vscode.ConfigurationTarget.Global);
+    }
   }
 }
 

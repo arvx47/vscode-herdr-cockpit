@@ -3,7 +3,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { closedWorktrees, herdrWorktreeFolders, worktreeLabel, worktreeListFolders } from '../commands/worktreeList';
+import { closedWorktrees, herdrWorktreeRepos, worktreeLabel, worktreeListFolders } from '../commands/worktreeList';
 import type { WorktreeInfo, WorktreeListResult } from '../drivers/herdr/herdrTypes';
 
 const wt = (p: string, more: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
@@ -44,16 +44,23 @@ assert.deepStrictEqual(
       { cwd: '/r/plain' },
       {},
     ],
-    ['/wt/app/out-1', '/r/plain'],
+    ['/wt/app/out-1', '/r/plain', '/wt/web/a'],
   ),
-  ['/r/app', '/r/plain', '/wt/app/out-1'],
+  ['/r/app', '/r/plain', '/wt/web/a'],
+  "Herdr's folder of app is skipped: a space of app lives there",
 );
+const firsts = (h: string) => herdrWorktreeRepos(h).map((r) => r[0]);
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hbwl-'));
-assert.deepStrictEqual(herdrWorktreeFolders(home), [], 'no ~/.herdr/worktrees');
+assert.deepStrictEqual(firsts(home), [], 'no ~/.herdr/worktrees');
 fs.mkdirSync(path.join(home, '.herdr/worktrees/app/out-2'), { recursive: true });
 fs.mkdirSync(path.join(home, '.herdr/worktrees/app/out-1'), { recursive: true });
 fs.mkdirSync(path.join(home, '.herdr/worktrees/empty'), { recursive: true });
 fs.writeFileSync(path.join(home, '.herdr/worktrees/stray.txt'), '');
-assert.deepStrictEqual(herdrWorktreeFolders(home), [path.join(home, '.herdr/worktrees/app/out-1')], 'one checkout per repo folder');
+assert.deepStrictEqual(firsts(home), [path.join(home, '.herdr/worktrees/app/out-1')], 'one checkout per repo folder first');
+assert.deepStrictEqual(
+  herdrWorktreeRepos(home),
+  [[path.join(home, '.herdr/worktrees/app/out-1'), path.join(home, '.herdr/worktrees/app/out-2')]],
+  "each repo's checkouts, to try in turn",
+);
 fs.rmSync(home, { recursive: true, force: true });
 console.log('✓ worktree list folders: spaces per repo, then Herdr\'s worktree folders');

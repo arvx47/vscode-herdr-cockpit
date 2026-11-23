@@ -439,7 +439,9 @@ export class Commands {
             return;
           }
         }
-        if (await setUpClaudeUsage(os.homedir(), (m) => d.log(m), account)) d.pollUsage();
+        if (await setUpClaudeUsage(os.homedir(), (m) => d.log(m), account)) {
+          d.pollUsage();
+        }
       }),
       vscode.commands.registerCommand('herdr.newSpace', () => newSpace(d.manage)),
       // The agent list is one setting the Settings page edits as a table: open it there.

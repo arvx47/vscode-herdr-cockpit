@@ -45,6 +45,8 @@ console.log('✓ follow mode');
 assert.ok(insideFolders('/code/repo/src', ['/code/repo']));
 assert.ok(insideFolders('/code/repo/a/b', ['/elsewhere', '/code/repo']));
 assert.ok(!insideFolders('/code/repo', ['/code/repo']), 'the folder itself is "mounted", not inside');
+assert.ok(insideFolders('/code/repo/..scratch', ['/code/repo']), 'a subfolder whose name starts with ..');
+assert.ok(!insideFolders('/code/other', ['/code/repo']), 'a sibling is outside');
 assert.ok(!insideFolders('/code/repo-2', ['/code/repo']), 'a sibling with the same prefix is not inside');
 assert.ok(!insideFolders('/code', ['/code/repo']), 'a parent is not inside');
 console.log('✓ spaces in a subfolder of this window');

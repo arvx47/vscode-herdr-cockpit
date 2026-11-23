@@ -56,6 +56,8 @@ async function main() {
   now += 31_000;
   ask('working', '> fix login\n⏺ Editing auth.ts');
   assert.strictEqual(calls.length, 1, 'same screen as last time: not sent');
+  assert.strictEqual(s.due('w1:p1', 'working'), false, 'and that look counts: not read again on the next poll');
+  now += 61_000;
   ask('working', '> fix login\n⏺ Editing auth.ts\n⏺ Ran tests');
   assert.strictEqual(calls.length, 2, 'changed and time: sent');
   await sleep(10);
@@ -104,15 +106,15 @@ async function main() {
   // 7. Which login writes them: a Claude row by name (any case), else the first; the editor's own CLAUDE_CONFIG_DIR
   //    never decides; a name that isn't a Claude row is an error naming the rows there are.
   const row = (name: string, kind: string, env: Record<string, string> = {}) => ({ name, kind, env, args: [], slug: name.toLowerCase() }) as unknown as AgentProfile;
-  const rows = [row('Codex', 'codex'), row('Claude (Sungage)', 'claude'), row('Claude (arvx47)', 'claude', { CLAUDE_CONFIG_DIR: '/h/.claude-arvx47' })];
+  const rows = [row('Codex', 'codex'), row('Claude (main)', 'claude'), row('Claude (work)', 'claude', { CLAUDE_CONFIG_DIR: '/h/.claude-work' })];
   const base = { PATH: '/usr/bin', CLAUDE_CONFIG_DIR: '/h/.claude-editor' };
-  const picked = summaryEnv(base, rows, 'claude (ARVX47)');
-  assert.ok(!('error' in picked) && picked.env.CLAUDE_CONFIG_DIR === '/h/.claude-arvx47' && picked.row === 'Claude (arvx47)');
+  const picked = summaryEnv(base, rows, 'claude (WORK)');
+  assert.ok(!('error' in picked) && picked.env.CLAUDE_CONFIG_DIR === '/h/.claude-work' && picked.row === 'Claude (work)');
   const first = summaryEnv(base, rows, '');
-  assert.ok(!('error' in first) && first.env.CLAUDE_CONFIG_DIR === undefined && first.row === 'Claude (Sungage)', 'empty: the first Claude row, the default login');
+  assert.ok(!('error' in first) && first.env.CLAUDE_CONFIG_DIR === undefined && first.row === 'Claude (main)', 'empty: the first Claude row, the default login');
   assert.ok(!('error' in first) && first.env.PATH === '/usr/bin');
   const wrong = summaryEnv(base, rows, 'Codex');
-  assert.ok('error' in wrong && /"Codex" isn't a Claude row/.test(wrong.error) && /"Claude \(Sungage\)", "Claude \(arvx47\)"/.test(wrong.error));
+  assert.ok('error' in wrong && /"Codex" isn't a Claude row/.test(wrong.error) && /"Claude \(main\)", "Claude \(work\)"/.test(wrong.error));
   assert.strictEqual(base.CLAUDE_CONFIG_DIR, '/h/.claude-editor', "the editor's environment is left as it was");
   console.log('✓ which Claude login: a row by name, else the first; errors name the rows');
 
@@ -120,7 +122,7 @@ async function main() {
   //    switch inside the pane follows), else the row it was started from, else the fallback; other agents: fallback.
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-acc-'));
   const main = path.join(home, '.claude');
-  const alt = path.join(home, '.claude-arvx47');
+  const alt = path.join(home, '.claude-work');
   const running = (dir: string, pid: number) => {
     fs.mkdirSync(path.join(dir, 'sessions'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'sessions', `${pid}.json`), JSON.stringify({ pid, sessionId: 'x', cwd: '/r', name: 'Fix login' }));
@@ -132,18 +134,25 @@ async function main() {
   assert.strictEqual(accountOfProcess([4002], [main, alt]), alt);
   assert.strictEqual(accountOfProcess([4003], [main, alt]), undefined, 'a record for another pid');
   assert.strictEqual(accountOfProcess([0, 1, 5555], [main, alt]), undefined);
+  // A Claude that crashed left its record (pid 4100, in main); a new one in alt got the same pid, or runs beside a
+  // process that did: the most recently started record wins.
+  fs.writeFileSync(path.join(main, 'sessions', '4100.json'), JSON.stringify({ pid: 4100, startedAt: 1000 }));
+  fs.writeFileSync(path.join(alt, 'sessions', '4100.json'), JSON.stringify({ pid: 4100, startedAt: 5000 }));
+  assert.strictEqual(accountOfProcess([4100], [main, alt]), alt, 'the same pid in two accounts: the newer record');
+  fs.writeFileSync(path.join(alt, 'sessions', '4101.json'), JSON.stringify({ pid: 4101, startedAt: 6000 }));
+  assert.strictEqual(accountOfProcess([4100, 4101], [main, alt]), alt, 'the stale record of a helper pid loses to the real Claude');
   const dirs = [{ dir: main, isDefault: true }, { dir: alt, isDefault: false }];
   const pane = { paneId: 'p', kind: 'claude', name: 'n', status: 'working', screen: '' };
   const env = (r: object, fb = '') => paneSummaryEnv({ ...pane, ...r }, { PATH: '/bin', CLAUDE_CONFIG_DIR: '/editor' }, rows, dirs, fb);
-  const switched = env({ pids: [4002], agentName: 'claude-sungage' });
+  const switched = env({ pids: [4002], agentName: 'claude-main' });
   assert.ok(!('error' in switched) && switched.env.CLAUDE_CONFIG_DIR === alt, 'its running Claude wins over the name it was started with (a switch inside the pane)');
-  const onDefault = env({ pids: [4001], agentName: 'claude-arvx47' });
+  const onDefault = env({ pids: [4001], agentName: 'claude-work' });
   assert.ok(!('error' in onDefault) && onDefault.env.CLAUDE_CONFIG_DIR === undefined, 'the default account: no CLAUDE_CONFIG_DIR');
-  const sluggy = [...rows.slice(0, 2), { ...rows[2], slug: 'claude-arvx47', plain: false } as unknown as AgentProfile];
-  const byName = paneSummaryEnv({ ...pane, pids: [7777], agentName: 'claude-arvx47-2' }, {}, sluggy, dirs, '');
-  assert.ok(!('error' in byName) && byName.env.CLAUDE_CONFIG_DIR === '/h/.claude-arvx47' && /started as Claude \(arvx47\)/.test(byName.why), 'no record: the row it was started from');
-  const codex = env({ kind: 'codex', pids: [4002] }, 'Claude (arvx47)');
-  assert.ok(!('error' in codex) && codex.env.CLAUDE_CONFIG_DIR === '/h/.claude-arvx47', 'another agent: the fallback setting');
+  const sluggy = [...rows.slice(0, 2), { ...rows[2], slug: 'claude-work', plain: false } as unknown as AgentProfile];
+  const byName = paneSummaryEnv({ ...pane, pids: [7777], agentName: 'claude-work-2' }, {}, sluggy, dirs, '');
+  assert.ok(!('error' in byName) && byName.env.CLAUDE_CONFIG_DIR === '/h/.claude-work' && /started as Claude \(work\)/.test(byName.why), 'no record: the row it was started from');
+  const codex = env({ kind: 'codex', pids: [4002] }, 'Claude (work)');
+  assert.ok(!('error' in codex) && codex.env.CLAUDE_CONFIG_DIR === '/h/.claude-work', 'another agent: the fallback setting');
   assert.ok('error' in env({ kind: 'codex' }, 'Nope'));
   fs.rmSync(home, { recursive: true, force: true });
   console.log("✓ each pane's login: the account its Claude runs in, else the row it started from, else the fallback");

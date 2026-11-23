@@ -2,7 +2,7 @@
 // versions saved, and an agent recognized by the row it was started from.
 import * as assert from 'assert';
 import * as path from 'path';
-import { DEFAULT_AGENTS, parseProfileSpec, profileOfAgent, readAgentList, readAgentProfiles, startingTable } from '../agents/agentProfiles';
+import { DEFAULT_AGENTS, parseProfileSpec, profileOfAgent, profileOfConfigDir, readAgentList, readAgentProfiles, startingTable } from '../agents/agentProfiles';
 
 const home = path.join(path.sep, 'home', 'someone');
 const names = (r: { profiles: { name: string }[] }) => r.profiles.map((p) => p.name);
@@ -71,6 +71,21 @@ const names = (r: { profiles: { name: string }[] }) => r.profiles.map((p) => p.n
   assert.strictEqual(profileOfAgent(list, 'claude-work-x'), undefined);
   assert.strictEqual(profileOfAgent(list, undefined), undefined);
   console.log("✓ a row's agents recognized by name");
+}
+
+// An agent with no row's name is recognized by the Claude account it runs in (its config folder)
+{
+  const list = readAgentList({ 'Claude (main)': 'claude', 'Claude (work)': 'claude CLAUDE_CONFIG_DIR=~/.claude-work', Codex: 'codex' }, home).profiles;
+  assert.strictEqual(profileOfConfigDir(list, path.join(home, '.claude-work'), home)?.name, 'Claude (work)');
+  assert.strictEqual(profileOfConfigDir(list, path.join(home, '.claude-work') + '/', home)?.name, 'Claude (work)', 'a trailing slash');
+  assert.strictEqual(profileOfConfigDir(list, path.join(home, '.claude'), home)?.name, 'Claude (main)', 'the default account: the row without a folder');
+  assert.strictEqual(profileOfConfigDir(list, path.join(home, '.claude-other'), home), undefined, 'an account with no row');
+  const plain = readAgentList({ Claude: 'claude', 'Claude (work)': 'claude CLAUDE_CONFIG_DIR=~/.claude-work' }, home).profiles;
+  assert.strictEqual(profileOfConfigDir(plain, path.join(home, '.claude'), home), undefined, 'a plain Claude row keeps the plain name');
+  const extra = readAgentList({ 'Claude (fast)': 'claude ANTHROPIC_MODEL=haiku', 'Claude (main)': 'claude', 'Claude (w2)': 'claude CLAUDE_CONFIG_DIR=~/.claude-work FOO=1' }, home).profiles;
+  assert.strictEqual(profileOfConfigDir(extra, path.join(home, '.claude'), home)?.name, 'Claude (main)', 'a row with other variables is skipped');
+  assert.strictEqual(profileOfConfigDir(extra, path.join(home, '.claude-work'), home), undefined, 'only that row has the folder, with more');
+  console.log('✓ a row recognized by its Claude account');
 }
 
 // Entries are read safely: names, variables, duplicates

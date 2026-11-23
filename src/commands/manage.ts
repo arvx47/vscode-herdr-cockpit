@@ -1,7 +1,7 @@
 // Creating, renaming and closing Herdr spaces and tabs from VS Code: the quick picks, input boxes
 // and confirmations around src/drivers/herdr/herdrActions.ts. Every new pane opens straight away in a terminal tab.
 import * as vscode from 'vscode';
-import { MESSAGE_PREFIX } from '../util/brand';
+import { EXTENSION_NAME, MESSAGE_PREFIX } from '../util/brand';
 import * as os from 'os';
 import * as path from 'path';
 import { inDriver } from '../drivers/backend';
@@ -11,9 +11,9 @@ import { errorText } from '../util/errors';
 import type { AgentSessionInfo } from '../drivers/herdr/herdrTypes';
 import { repoSpace } from '../state/model';
 import type { Pane, Space } from '../state/model';
-import { paneName, tabName } from '../sidebar/viewState';
+import { agentRowOf, paneName, tabName } from '../sidebar/viewState';
 import { branchFromInput, branchProblem } from './branchName';
-import { ClosedWorktree, closedWorktrees, herdrWorktreeFolders, worktreeLabel, worktreeListFolders } from './worktreeList';
+import { ClosedWorktree, closedWorktrees, herdrWorktreeRepos, worktreeLabel, worktreeListFolders } from './worktreeList';
 import { tildePath } from '../util/paths';
 import { AgentProfile, profileOfAgent } from '../agents/agentProfiles';
 
@@ -232,7 +232,9 @@ async function openCreated(deps: ManageDeps, paneId: string, what: What, where: 
     return;
   }
   await deps.attach(hit.space, hit.pane, what.kind);
-  if (what.kind) startAgent(deps, hit.pane.id, what.kind, where, { profile: what.profile });
+  if (what.kind) {
+    startAgent(deps, hit.pane.id, what.kind, where, { profile: what.profile });
+  }
 }
 
 export async function newTab(deps: ManageDeps, space: Space, what?: What) {
@@ -284,6 +286,8 @@ export interface ClosedTab {
   paneLabel?: string;
   agentKind?: string;
   agentName?: string;
+  /** The agent list row it came from (by its name, or the Claude account it ran in): it comes back with its variables. */
+  agentRow?: string;
   /** The agent's own session, when Herdr stored one: reopening resumes it (resumeArgs()). */
   session?: AgentSessionInfo;
 }
@@ -305,6 +309,7 @@ export function closedTab(space: Space, pane: Pane): ClosedTab {
     paneLabel: pane.raw.pane?.label ?? undefined,
     agentKind: pane.isAgent ? pane.agentKind : undefined,
     agentName: pane.raw.agent?.name ?? undefined,
+    agentRow: agentRowOf(pane),
     session: pane.raw.agent?.agent_session ?? pane.raw.pane?.agent_session ?? undefined,
   };
 }
@@ -333,10 +338,11 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
   const space = spaces.find((s) => s.id === closed.space.id) ?? spaces.find((s) => s.label === closed.space.label && s.cwd === closed.space.cwd);
   const where = space?.label ?? closed.space.label;
   const cwd = closed.cwd ?? closed.space.cwd;
-  // An agent started from a profile comes back with its variables (recognized by its name).
+  // An agent started from a profile comes back with its variables (recognized by its name, or the account it ran in).
   let profile: AgentProfile | undefined;
   if (closed.agentKind) {
-    profile = profileOfAgent(deps.agentProfiles(), closed.agentName);
+    const rows = deps.agentProfiles();
+    profile = profileOfAgent(rows, closed.agentName) ?? rows.find((p) => !p.plain && p.name === closed.agentRow && p.kind === closed.agentKind);
   }
   const env = profile && { env: profile.env };
   try {
@@ -369,7 +375,7 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
       const taken = deps.agentNames();
       let name = closed.agentName;
       if (!name || taken.includes(name)) {
-        name = agentName(closed.agentKind, taken);
+        name = agentName(profile?.slug ?? closed.agentKind, taken);
       }
       startAgent(deps, paneId, closed.agentKind, where, { name, args: resumeArgs(closed.agentKind, closed.session), profile });
     }
@@ -419,7 +425,9 @@ async function createAndOpen(deps: ManageDeps, label: string, what: What, create
     if (what.label || what.kind) {
       // Name the first tab after what runs in it, like a new tab.
       const hit = await deps.findPane(pane.pane_id);
-      if (hit) await deps.actions.renameTab(hit.pane.tabId, tabLabelFor(what)!).catch(() => undefined);
+      if (hit) {
+        await deps.actions.renameTab(hit.pane.tabId, tabLabelFor(what)!).catch(() => undefined);
+      }
     }
     await openCreated(deps, pane.pane_id, what, label);
   } catch (e) {
@@ -536,16 +544,46 @@ async function withProfileTab(deps: ManageDeps, what: What, spaceId: string, cwd
 }
 
 /** The worktrees that exist on disk but have no space, from every repo Herdr knows (or only `from`'s). */
-async function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<ClosedWorktree[]> {
-  let folders: string[];
+async function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<{ found: ClosedWorktree[]; failed: number }> {
+  // Each entry: the folders to try in turn until worktree.list answers (one repo's checkouts), and whether it's
+  // known to be a repository (a failure there is worth saying; a space on a plain folder just has nothing).
+  let groups: { folders: string[]; repo: boolean }[];
   if (from?.cwd) {
-    folders = [from.cwd];
+    groups = [{ folders: [from.cwd], repo: true }];
   } else {
-    folders = worktreeListFolders(deps.spaces(), herdrWorktreeFolders(os.homedir()));
+    const repos = herdrWorktreeRepos(os.homedir());
+    const spaces = deps.spaces();
+    const folders = worktreeListFolders(
+      spaces,
+      repos.map((r) => r[0]),
+    );
+    const checkoutsOf = new Map(repos.map((r) => [r[0], r] as const));
+    groups = folders.map((f) => {
+      // A space's own folder first: a repo when Herdr says the space is part of one.
+      const space = spaces.find((sp) => sp.cwd === f);
+      if (space) {
+        return { folders: [f], repo: !!space.worktree };
+      }
+      // Herdr's folder of a repo, tried checkout by checkout. Not counted when it fails: a leftover folder of a
+      // repo that's gone fails every time.
+      return { folders: checkoutsOf.get(f) ?? [f], repo: false };
+    });
   }
-  // A folder that's gone or isn't a repository just has nothing to list.
-  const lists = await Promise.all(folders.map((cwd) => deps.actions.listWorktrees({ cwd }).catch(() => undefined)));
-  return closedWorktrees(lists.filter((l) => l !== undefined));
+  const listFrom = async (group: { folders: string[]; repo: boolean }) => {
+    for (const cwd of group.folders) {
+      try {
+        return await deps.actions.listWorktrees({ cwd });
+      } catch (e) {
+        if (group.repo) {
+          deps.log(`worktree.list from ${cwd}: ${err(e)}`);
+        }
+      }
+    }
+    return undefined;
+  };
+  const lists = await Promise.all(groups.map(listFrom));
+  const failed = groups.filter((g, i) => g.repo && lists[i] === undefined).length;
+  return { found: closedWorktrees(lists.filter((l) => l !== undefined)), failed };
 }
 
 /**
@@ -554,8 +592,10 @@ async function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<Clos
  * worktree (herdr.newWorktreeStartsWith).
  */
 export async function reopenWorktree(deps: ManageDeps, from?: Space) {
-  if (!(await deps.ensureConnected())) return;
-  const found = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Looking for closed worktrees…' }, () =>
+  if (!(await deps.ensureConnected())) {
+    return;
+  }
+  const { found, failed } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Looking for closed worktrees…' }, () =>
     findClosedWorktrees(deps, from),
   );
   // A worktree card stands for its repo.
@@ -567,6 +607,10 @@ export async function reopenWorktree(deps: ManageDeps, from?: Space) {
     let where = 'Every worktree Herdr knows already has a space.';
     if (repoName) {
       where = `Every worktree of ${repoName} already has a space.`;
+    }
+    if (failed) {
+      // Some repos didn't answer: don't claim there's nothing.
+      where = `Herdr couldn't list the worktrees of ${failed} folder(s); the ${EXTENSION_NAME} output shows why.`;
     }
     vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: no closed worktree to reopen. ${where}`);
     return;
@@ -589,12 +633,21 @@ export async function reopenWorktree(deps: ManageDeps, from?: Space) {
   if (repoName) {
     title = `Reopen a worktree of ${repoName}`;
   }
-  const pick = await vscode.window.showQuickPick(items, { title, placeHolder: 'Which worktree? It opens as a space again, files as you left them', matchOnDetail: true });
+  let placeHolder = 'Which worktree? It opens as a space again, files as you left them';
+  if (failed) {
+    // Some repos didn't answer: this list may be missing their worktrees.
+    placeHolder = `Which worktree? (Herdr couldn't list ${failed} folder(s); the ${EXTENSION_NAME} output shows why)`;
+  }
+  const pick = await vscode.window.showQuickPick(items, { title, placeHolder, matchOnDetail: true });
   const w = pick?.w;
-  if (!w) return;
+  if (!w) {
+    return;
+  }
   const label = worktreeLabel(w);
   const what = await worktreeStart(deps, label);
-  if (!what) return;
+  if (!what) {
+    return;
+  }
   await createAndOpen(deps, label, what, async () => {
     const opened = await deps.actions.openWorktreeSpace({ cwd: w.repoFolder, path: w.path, label });
     const spaceId = opened.workspace.workspace_id;
@@ -637,7 +690,9 @@ async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir
   }
   const where = await vscode.window.showQuickPick(items, { title, placeHolder: 'Where should the new space live?' });
   if (!where) return;
-  if (where.reopen) return { reopen: true };
+  if (where.reopen) {
+    return { reopen: true };
+  }
   if (!where.folder) return { from: where.from };
   const near = deps.spaces().find((s) => s.cwd)?.cwd;
   const [dir] =
@@ -674,8 +729,11 @@ export async function rename(deps: ManageDeps, target: { space: Space; pane?: Pa
   if (value === undefined) return;
   const name = value.trim() || null;
   try {
-    if (pane.isAgent) await deps.actions.renameAgent(pane.id, name);
-    else await deps.actions.renamePane(pane.id, name);
+    if (pane.isAgent) {
+      await deps.actions.renameAgent(pane.id, name);
+    } else {
+      await deps.actions.renamePane(pane.id, name);
+    }
     // The VS Code tab carries the same name.
     const updated = await deps.findPane(pane.id);
     if (updated) await deps.renameTerminal(pane.id, tabName(updated.space.tabs.find((t) => t.id === pane.tabId), updated.pane));
@@ -710,21 +768,29 @@ export async function closeInHerdr(deps: ManageDeps, target: { space: Space; pan
     try {
       await deps.actions.closeSpace(space.id);
     } catch (e: any) {
-      if (e?.code !== 'workspace_group_close_required') return void vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`);
+      if (e?.code !== 'workspace_group_close_required') {
+        return void vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`);
+      }
       const all = await vscode.window.showWarningMessage(
         `"${space.label}" has worktree spaces.`,
         { modal: true, detail: 'Herdr closes a space together with its worktree spaces. Their worktree folders stay on disk.' },
         'Close All',
       );
-      if (all) await deps.actions.closeSpace(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
+      if (all) {
+        await deps.actions.closeSpace(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
+      }
     }
     return;
   }
   const tab = space.tabs.find((t) => t.id === pane.tabId);
   const name = paneName(tab, pane);
+  let what = 'The shell and anything running in it';
+  if (pane.isAgent) {
+    what = 'The agent';
+  }
   const ok = await vscode.window.showWarningMessage(
     `Close "${name}"${inDriver(deps.capabilities)}?`,
-    { modal: true, detail: `${pane.isAgent ? 'The agent' : 'The shell and anything running in it'} will stop. Closing the VS Code tab instead keeps it running${keptWhere(deps)}.` },
+    { modal: true, detail: `${what} will stop. Closing the VS Code tab instead keeps it running${keptWhere(deps)}.` },
     'Close',
   );
   if (!ok) return;
@@ -752,6 +818,8 @@ async function removeWorktree(deps: ManageDeps, space: Space) {
       { modal: true, detail: `${err(e)}\n\nDelete it anyway? Uncommitted changes in ${space.cwd} will be lost.` },
       'Delete Anyway',
     );
-    if (force) await deps.actions.removeWorktree(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
+    if (force) {
+      await deps.actions.removeWorktree(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
+    }
   }
 }

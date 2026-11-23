@@ -12,10 +12,16 @@
 export function terminalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(env)) {
-    if (/^(VSCODE_|ELECTRON_|APPLICATION_INSIGHTS|CHROME_|ORIGINAL_XDG_)/.test(k) || k === '__CFBundleIdentifier') continue;
-    if ((k === 'TERM_PROGRAM' || k === 'TERM_PROGRAM_VERSION') && /vscode/i.test(env.TERM_PROGRAM ?? '')) continue;
+    if (/^(VSCODE_|ELECTRON_|APPLICATION_INSIGHTS|CHROME_|ORIGINAL_XDG_)/.test(k) || k === '__CFBundleIdentifier') {
+      continue;
+    }
+    if ((k === 'TERM_PROGRAM' || k === 'TERM_PROGRAM_VERSION') && /vscode/i.test(env.TERM_PROGRAM ?? '')) {
+      continue;
+    }
     out[k] = v;
   }
-  if (!out.Q_TERM) out.Q_TERM_DISABLED = '1';
+  if (!out.Q_TERM) {
+    out.Q_TERM_DISABLED = '1';
+  }
   return out;
 }

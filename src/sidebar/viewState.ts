@@ -229,7 +229,12 @@ export function orderByActivity(spaces: Space[], lastActive: (s: Space) => numbe
     .map((x) => x.s);
 }
 
-const tilde = (p?: string) => (p ? tildePath(p) : p);
+function tilde(p?: string): string | undefined {
+  if (!p) {
+    return p;
+  }
+  return tildePath(p);
+}
 /** The tab's label when it says something the names don't: not a bare number, not one of them in other case. */
 function meaningfulTab(tab: Tab | undefined, ...names: (string | undefined)[]): string | undefined {
   if (!tab || /^\d+$/.test(tab.label) || names.some((n) => !!n && tab.label.toLowerCase() === n.toLowerCase())) {
@@ -329,16 +334,19 @@ export function todayLines(u: ProviderUsage): string[] {
  */
 export function headline(lines: string[]): string | undefined {
   const i = lines.map((l) => l.trimStart().startsWith('※ recap:')).lastIndexOf(true);
-  if (i >= 0)
+  if (i >= 0) {
     return lines
       .slice(i)
       .map((l) => l.trim())
       .join(' ')
       .replace(/^※ recap:\s*/, '');
+  }
   // Skip timing lines like "✻ Churned for 5s · done 12:18 PM": they say when, not what.
   const content = lines.filter((l) => !STATUS_LINE.test(l.trim()));
   const last = content[content.length - 1]?.trim();
-  if (last && /^[a-z]/.test(last) && content.length > 1) return `${content[content.length - 2].trim()} ${last}`;
+  if (last && /^[a-z]/.test(last) && content.length > 1) {
+    return `${content[content.length - 2].trim()} ${last}`;
+  }
   return last || lines[lines.length - 1]?.trim() || undefined;
 }
 
@@ -367,9 +375,34 @@ export function setProfileNames(profiles: readonly AgentProfile[]): void {
   profileRows = profiles;
 }
 
+/**
+ * The row of each agent Herdr has no row's name for, from the Claude Code account its process runs in (pane id →
+ * row name, filled by extension.ts syncAccountRows()): `claude-work` typed in a shell, or an agent Herdr resumed.
+ */
+let accountRows: ReadonlyMap<string, string> = new Map();
+export function setAccountRows(rows: ReadonlyMap<string, string>): void {
+  accountRows = rows;
+}
+
 /** The row an agent was started from, by its name: "claude-work" and "claude-work-2" → "Claude (work)". */
 function profileAgentName(agentName: string | null | undefined): string | undefined {
   return profileOfAgent(profileRows, agentName ?? undefined)?.name;
+}
+
+/** A Claude agent's row from its account (an id Herdr gave another agent kind since doesn't count). */
+function accountRowOf(p: Pane): string | undefined {
+  if (p.agentKind !== 'claude') {
+    return undefined;
+  }
+  return accountRows.get(p.id);
+}
+
+/** The agent list row an agent comes from: by its name in Herdr, else by the account its process runs in. */
+export function agentRowOf(p: Pane): string | undefined {
+  if (!p.isAgent) {
+    return undefined;
+  }
+  return profileAgentName(p.raw.agent?.name) ?? accountRowOf(p);
 }
 
 /**
@@ -380,7 +413,10 @@ function profileAgentName(agentName: string | null | undefined): string | undefi
 export function agentNameParts(p: Pane): { base: string; own?: string } {
   const a = p.raw.agent;
   const kind = p.agentKind;
-  const kindTitle = kind ? agentTitle(kind) : p.label;
+  let kindTitle = p.label;
+  if (kind) {
+    kindTitle = agentTitle(kind);
+  }
   // Names we generate ("claude", "claude-2", or a row's "claude-work-2") read as "Claude" or "Claude (work)": the
   // number only keeps Herdr's names unique. Any other name was chosen by someone and wins.
   let base = kindTitle;
@@ -389,9 +425,17 @@ export function agentNameParts(p: Pane): { base: string; own?: string } {
   if (fromProfile) {
     base = fromProfile;
   } else {
-    const generated = a?.name && kind ? new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-\\d+)?$`).exec(a.name) : null;
+    // A name Herdr made from the kind ("claude", "claude-2") isn't one someone chose.
+    let generated = false;
+    if (a?.name && kind) {
+      generated = new RegExp(`^${kind.replace(/[^a-z0-9_-]/gi, '')}(?:-\\d+)?$`).test(a.name);
+    }
     if (a?.name && !generated) {
       chosen = a.name;
+    }
+    const fromAccount = accountRowOf(p);
+    if (fromAccount) {
+      base = fromAccount;
     }
   }
   if (a?.display_agent) {
@@ -415,8 +459,12 @@ export function paneName(tab: Tab | undefined, p: Pane): string {
     const { base, own } = agentNameParts(p);
     return own ?? base;
   }
-  if (p.raw.pane?.label) return p.raw.pane.label;
-  if (!tab) return 'shell';
+  if (p.raw.pane?.label) {
+    return p.raw.pane.label;
+  }
+  if (!tab) {
+    return 'shell';
+  }
   return shellTabName(tab.label);
 }
 
@@ -554,7 +602,9 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   const name = paneName(tab, p);
   // Terminal titles are often just "kiro: ~/path" — the path adds nothing next to the space.
   let detail = p.title ?? p.terminalTitle;
-  if (detail && kind && detail.toLowerCase().startsWith(kind.toLowerCase() + ':')) detail = detail.slice(kind.length + 1).trim();
+  if (detail && kind && detail.toLowerCase().startsWith(kind.toLowerCase() + ':')) {
+    detail = detail.slice(kind.length + 1).trim();
+  }
   // Paths and shell prompt titles ("user@host:~/code/app") say nothing the space doesn't, and show the user name.
   if (detail && (/^[~/]/.test(detail) || SHELL_TITLE.test(detail) || detail === name)) {
     detail = undefined;
@@ -578,7 +628,12 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     (x): x is string => !!x,
   );
   let gist = headline(lines);
-  let preview = status === 'blocked' ? lines.slice(-5) : status === 'done' ? lines.slice(-3) : [];
+  let preview: string[] = [];
+  if (status === 'blocked') {
+    preview = lines.slice(-5);
+  } else if (status === 'done') {
+    preview = lines.slice(-3);
+  }
   if (i.description === 'request') {
     // Only your last message: no task title, recap or screen lines, even when there's no message to show.
     detail = undefined;
@@ -635,9 +690,11 @@ function shellView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
   const tabLabel = meaningfulTab(tab, name);
   const chips = Object.values(p.tokens);
   const cwd = ownCwd(p, space);
-  const shell: PaneView['shell'] = act
-    ? { state: act.state ?? 'unknown', command: act.command, typed: act.typed, output: act.output, failed: act.failed, changedAt: act.changedAt }
-    : { state: 'unknown', output: [], failed: false };
+  // Nothing read yet: an unknown state with no output.
+  let shell: PaneView['shell'] = { state: 'unknown', output: [], failed: false };
+  if (act) {
+    shell = { state: act.state ?? 'unknown', command: act.command, typed: act.typed, output: act.output, failed: act.failed, changedAt: act.changedAt };
+  }
   // Collapsed, the row shows the command or else what's typed; expanded, both plus output, chips and folder.
   const more = shell.output.length > 0 || (!!shell.command && !!shell.typed) || !!tabLabel || chips.length > 0 || !!cwd;
   return {
@@ -675,15 +732,32 @@ export function applyPaneOrder<T extends { id: string }>(rows: T[], order: strin
     .map((x) => x.r);
 }
 
+/** A space's shell rows, in the saved order, when shells are shown (herdr.showShellPanes). */
+function shownShells(show: boolean | undefined, shells: PaneView[], order: string[] | undefined): PaneView[] {
+  if (!show) {
+    return [];
+  }
+  return applyPaneOrder(shells, order);
+}
+
 export function buildViewState(i: ViewInputs): ViewState {
   const totals = { ...emptyCounts(), agents: 0, shells: 0 };
   const all = i.model?.spaces ?? [];
-  const ordered = i.order === 'herdr' || !i.lastActive ? all : orderByActivity(all, i.lastActive);
+  let ordered = all;
+  if (i.order !== 'herdr' && i.lastActive) {
+    ordered = orderByActivity(all, i.lastActive);
+  }
   const spaces: SpaceView[] = ordered.map((sp) => {
     const agents: PaneView[] = [];
     const shells: PaneView[] = [];
     for (const tab of sp.tabs)
-      for (const p of tab.panes) (p.isAgent ? agents : shells).push(p.isAgent ? agentView(sp, tab, p, i) : shellView(sp, tab, p, i));
+      for (const p of tab.panes) {
+        if (p.isAgent) {
+          agents.push(agentView(sp, tab, p, i));
+        } else {
+          shells.push(shellView(sp, tab, p, i));
+        }
+      }
     const order = i.paneOrder?.(sp);
     for (const a of agents) totals[a.status ?? 'unknown']++;
     totals.agents += agents.length;
@@ -707,7 +781,7 @@ export function buildViewState(i: ViewInputs): ViewState {
       worktree: !!sp.worktree?.is_linked_worktree,
       tokens: Object.values(sp.tokens),
       agents: applyPaneOrder(agents, order),
-      shells: i.showShells ? applyPaneOrder(shells, order) : [],
+      shells: shownShells(i.showShells, shells, order),
       reordered: !!order?.length,
     };
   });

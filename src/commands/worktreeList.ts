@@ -15,17 +15,18 @@ export interface ClosedWorktree {
 }
 
 /**
- * Where Herdr puts the worktrees it creates, one folder per repo (`~/.herdr/worktrees/<repo>/<branch>`): one
- * checkout of each, since worktree.list from any checkout lists the whole repo. That finds a repo whose
- * spaces are all closed.
+ * Where Herdr puts the worktrees it creates, one folder per repo (`~/.herdr/worktrees/<repo>/<branch>`): every
+ * checkout of each, sorted. worktree.list from any checkout lists the whole repo (which finds a repo whose spaces
+ * are all closed), so the first is asked and, when it fails (a folder git already pruned, or a leftover that isn't
+ * a checkout), the next.
  */
-export function herdrWorktreeFolders(home: string): string[] {
+export function herdrWorktreeRepos(home: string): string[][] {
   const root = path.join(home, '.herdr', 'worktrees');
-  const found: string[] = [];
+  const found: string[][] = [];
   for (const repo of readDirs(root)) {
-    const [first] = readDirs(path.join(root, repo));
-    if (first) {
-      found.push(path.join(root, repo, first));
+    const checkouts = readDirs(path.join(root, repo)).map((name) => path.join(root, repo, name));
+    if (checkouts.length) {
+      found.push(checkouts);
     }
   }
   return found;
@@ -59,8 +60,10 @@ export function worktreeListFolders(spaces: { cwd?: string; worktree?: { repo_ke
     }
     folders.push(s.cwd);
   }
+  // Herdr's folder of a repo a worktree space already lives in (~/.herdr/worktrees/<repo>/…) is that repo again.
+  const covered = new Set(spaces.filter((s) => s.cwd && s.worktree).map((s) => path.dirname(s.cwd!)));
   for (const f of herdrFolders) {
-    if (!folders.includes(f)) {
+    if (!folders.includes(f) && !covered.has(path.dirname(f))) {
       folders.push(f);
     }
   }
