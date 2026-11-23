@@ -257,7 +257,9 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
       // After the account rows: a restored tab is matched by its name (tabName()).
       // At most 2s: a slow Herdr shouldn't hold the window's tabs back for names only some of them need.
-      void Promise.race([syncAccountRows().catch(logError('agent accounts')), sleep(2000)]).then(() => tabs.restore());
+      void Promise.race([syncAccountRows().catch(logError('agent accounts')), sleep(2000)])
+        .then(() => tabs.restore())
+        .catch(logError('tab restore'));
       const lost = lostSpace;
       lostSpace = undefined;
       if (lost) {
@@ -814,7 +816,6 @@ export function activate(ctx: vscode.ExtensionContext) {
   }, 15000);
 
   // ---------- applying a new snapshot ----------
-  /** Renamed in Herdr (TUI, CLI, sidebar), a new terminal title or herdr.agentNames: rename its tab here too, without focusing it. */
   // Tabs to swap for one with the right icon (an agent started in a shell, or quit back to it), once the pane has
   // stayed that way 1.5s: Herdr can take a moment to settle on what runs in it.
   const iconSwaps = new Map<string, NodeJS.Timeout>();
@@ -843,6 +844,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     );
   }
 
+  /** Renamed in Herdr (TUI, CLI, sidebar), a new terminal title or herdr.agentNames: rename its tab here too, without focusing it. */
   function syncNames(m: Model) {
     const seen = new Set<string>();
     for (const sp of m.spaces)
@@ -1035,6 +1037,10 @@ export function activate(ctx: vscode.ExtensionContext) {
       return;
     }
     const socket = socketPath();
+    // herdr.socketPath changed since this model came: its tab ids are another session's (they repeat across sessions).
+    if (m !== model || modelSocket !== socket) {
+      return;
+    }
     let records: Record<string, TabLabelRecord>;
     try {
       if (!labelWriter({ pid: process.pid, socket })) {
@@ -1094,9 +1100,12 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
   }
 
+  /** The session the current model came from: a label sync for an old session's model mustn't touch the new one. */
+  let modelSocket = '';
   function apply(next: Model) {
     const prev = model;
     model = next;
+    modelSocket = socketPath();
     syncTabNames();
     renderStatus();
 
@@ -1190,7 +1199,6 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   const paneOf = (t?: Target): { space: Space; pane: Pane } | undefined => findPane(model, t?.paneId);
   // ---------- create / rename / close ----------
-  /** Herdr's agent manifests, asked once per connection (they change only with a Herdr update). */
   /** The starting list was written into the user settings (startingTable()): from then on the table is the list. */
   const AGENT_LIST_SAVED_KEY = 'herdr.agentListSaved';
   /**
@@ -1251,6 +1259,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   if (starting) {
     void saveStartingAgents(starting).catch(logError('agents'));
   }
+  /** Herdr's agent manifests, asked once per connection (they change only with a Herdr update). */
   let agentKindsCache: { version?: string; kinds: Promise<string[]> } | undefined;
   function herdrAgentKinds(): Promise<string[]> {
     let version: string | undefined;
@@ -1403,10 +1412,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       if (!e.affectsConfiguration('herdr')) return;
       if (e.affectsConfiguration('herdr.agentNames')) {
         setAgentNames(cfg().get<AgentNames>('agentNames', 'title'));
-        if (model) {
-          syncNames(model);
-          syncHerdrLabels(model);
-        }
+        // Like a snapshot: not while the names after a reconnect aren't known yet.
+        syncTabNames();
       }
       if (e.affectsConfiguration('herdr.agents') || e.affectsConfiguration('herdr.agentProfiles')) {
         // Reset in the Settings page: write the starting list again, so its rows are back as yours.

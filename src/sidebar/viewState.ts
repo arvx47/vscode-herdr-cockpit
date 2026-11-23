@@ -544,22 +544,15 @@ const MAX_HERDR_LABEL = 40;
 
 /** The name an agent's Herdr tab gets: its tab name ("Claude: Fix login"), cut to fit Herdr's tab bar. */
 export function herdrLabelFor(tab: Tab, p: Pane): string {
-  const name = tabName(tab, p);
-  if (name.length <= MAX_HERDR_LABEL) {
-    return name;
+  // By characters, not UTF-16 units: a cut through an emoji leaves half of it, which Herdr refuses (a rename that
+  // then fails on every snapshot).
+  const chars = Array.from(tabName(tab, p));
+  if (chars.length <= MAX_HERDR_LABEL) {
+    return chars.join('');
   }
-  return `${name.slice(0, MAX_HERDR_LABEL - 1).trimEnd()}…`;
+  return `${chars.slice(0, MAX_HERDR_LABEL - 1).join('').trimEnd()}…`;
 }
 
-/**
- * What to do with a Herdr tab's label so Herdr shows the same name as our tab: undefined = nothing; else `rename`
- * (when set) and the record to keep (`record` undefined = forget the tab).
- * - A tab we labeled (`rec`) whose label you changed since: yours now, forgotten, never touched again.
- * - Still ours and holding just that agent: follows the agent's name.
- * - Still ours but split, or the agent quit: the label it had before comes back (not for an empty one: Herdr shows its id).
- * - Not labeled by us yet: only a tab holding just an agent, still labeled with the agent's name (what New tab gives
- *   it), Herdr's number, or nothing. A label you typed in Herdr, like "OUT-9702", is left alone.
- */
 /**
  * A Herdr tab's label when it's one of its own: not empty, not its id (what normalize() shows for no label) and not
  * Herdr's number ("3"; a new tab gets its own). The one rule for reusing a label on another tab (Reopen Closed Tab)
@@ -572,6 +565,15 @@ export function ownTabLabel(label: string | undefined, tabId: string): string | 
   return label;
 }
 
+/**
+ * What to do with a Herdr tab's label so Herdr shows the same name as our tab: undefined = nothing; else `rename`
+ * (when set) and the record to keep (`record` undefined = forget the tab).
+ * - A tab we labeled (`rec`) whose label you changed since: yours now, forgotten, never touched again.
+ * - Still ours and holding just that agent: follows the agent's name.
+ * - Still ours but split, or the agent quit: the label it had before comes back (not for an empty one: Herdr shows its id).
+ * - Not labeled by us yet: only a tab holding just an agent, still labeled with the agent's name (what New tab gives
+ *   it), Herdr's number, or nothing. A label you typed in Herdr, like "OUT-9702", is left alone.
+ */
 export function herdrTabLabel(tab: Tab, rec: LabelRecord | undefined): { rename?: string; record?: LabelRecord } | undefined {
   const p = tab.panes[0];
   const single = tab.panes.length === 1 && !!p?.isAgent;

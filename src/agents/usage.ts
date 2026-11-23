@@ -703,11 +703,6 @@ export function shQuote(s: string): string {
 }
 
 /**
- * The opt-in Claude Code status line: saves the `rate_limits` of the JSON Claude Code passes it and prints
- * the limits. Only rate_limits is kept (the input also has the session's folder, transcript path, ...): with
- * jq as it is, without jq just the 5h / 7d numbers, picked out with sed. The file is private (umask 077).
- */
-/**
  * Your own status line command with the capture in front of it: the script saves the plan limits and passes
  * Claude Code's input on unchanged, so the command shows what it always did. In a `{ …; }` group, so a chain
  * like `cd x && foo` still gets all of the input.
@@ -721,6 +716,11 @@ export function hasCapture(command: string, script: string): boolean {
   return command.includes(shQuote(script)) || command.includes(script);
 }
 
+/**
+ * The opt-in Claude Code status line: saves the `rate_limits` of the JSON Claude Code passes it and prints
+ * the limits. Only rate_limits is kept (the input also has the session's folder, transcript path, ...): with
+ * jq as it is, without jq just the 5h / 7d numbers, picked out with sed. The file is private (umask 077).
+ */
 export function claudeStatusLineScript(captureFile: string): string {
   // String.raw: the backslashes are the shell's and sed's. No `${` in the script (that would be interpolation).
   return String.raw`#!/bin/sh

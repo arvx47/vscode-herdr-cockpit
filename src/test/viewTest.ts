@@ -293,6 +293,10 @@ console.log('✓ a window with its own folders is marked for the "no space here"
   const long = { ...ag, terminalTitle: 'A very long session title that goes on and on' };
   const cut = herdrTabLabel(tabOf('Claude', [long]), undefined)!.rename!;
   assert.ok(cut.length <= 40 && cut.endsWith('…'), cut);
+  // An emoji where the cut falls is kept whole or left out, never split (Herdr refuses half of one).
+  const emoji = { ...ag, terminalTitle: 'Fix the login page right now!!🚀 and the signup flow' };
+  const cutEmoji = herdrTabLabel(tabOf('Claude', [emoji]), undefined)!.rename!;
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(cutEmoji), `no lone half of an emoji: ${JSON.stringify(cutEmoji)}`);
   console.log('✓ Herdr tab labels follow our tab names, never a label you typed');
 
   const v = buildViewState({ ...inputs, mounted: (sp) => sp.id === 'w2' });

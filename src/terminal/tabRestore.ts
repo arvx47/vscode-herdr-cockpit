@@ -2,6 +2,7 @@
 // Moved out of extension.ts's activate(); the tab order itself is terminals.ts (panes(), arrange()).
 import * as vscode from 'vscode';
 import { errorText } from '../util/errors';
+import { sleep } from '../util/format';
 import { allPanes, Model, Pane } from '../state/model';
 import type { ClosedTab } from '../commands/manage';
 import type { AttachTerminals } from './terminals';
@@ -25,6 +26,12 @@ export interface TabRestoreDeps {
   /** The name a pane's tab gets (tabName() in viewState.ts). */
   tabName(pane: Pane): string;
   log(line: string): void;
+}
+
+/** The terminals among `all` that run no process (pseudoterminals, like our tabs): asked at most 500ms. */
+async function drawnTerminals(all: vscode.Terminal[]): Promise<vscode.Terminal[]> {
+  const pids = await Promise.all(all.map((t) => Promise.race([Promise.resolve(t.processId), sleep(500).then(() => -1)])));
+  return all.filter((_, i) => pids[i] === undefined);
 }
 
 export class TabRestore implements vscode.Disposable {
@@ -68,7 +75,7 @@ export class TabRestore implements vscode.Disposable {
    * Reopen the tabs this window had when it was closed, once Herdr answers. Panes that are gone (closed, or
    * Herdr restarted with new ids) are skipped. A pane another window has stays there, shown read-only here.
    */
-  restore() {
+  async restore() {
     if (this.restored) {
       return;
     }
@@ -82,7 +89,9 @@ export class TabRestore implements vscode.Disposable {
     const reopened: Pane[] = [];
     // After Restart Extensions the window keeps the tabs the previous run opened, but they no longer show their
     // pane (it belonged to the extension host that stopped): close the one a reopened tab replaces, matched by name.
-    const leftovers = terms.untracked();
+    // Only terminals with no process of their own: a Herdr tab is drawn by the extension (a pseudoterminal), while
+    // your own terminals and other extensions' run a shell. Without this one you'd named "Claude" would be closed.
+    const leftovers = await drawnTerminals(terms.untracked());
     let replaced = 0;
     for (const { paneId } of saved) {
       const pane = panes.get(paneId);

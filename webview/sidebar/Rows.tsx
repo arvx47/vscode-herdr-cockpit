@@ -11,6 +11,24 @@ const LIVE_MS = 12000;
 
 export type ShellState = 'live' | 'running' | 'prompt' | 'failed' | 'unknown';
 
+/**
+ * Moving a row with the keyboard re-inserts it (React moves the focused row's node when it goes down), and the
+ * browser drops its focus: for a second, while the host sends the new order, the row takes the focus back.
+ */
+function keepFocus(paneId: string) {
+  const until = Date.now() + 1000;
+  const check = () => {
+    const el = document.querySelector<HTMLElement>(`[data-pane="${CSS.escape(paneId)}"]`);
+    if (el && document.activeElement !== el && (document.activeElement === document.body || document.activeElement === null)) {
+      el.focus();
+    }
+    if (Date.now() < until) {
+      setTimeout(check, 50);
+    }
+  };
+  setTimeout(check, 0);
+}
+
 export function shellState(p: PaneView, now: number): ShellState {
   const sh = p.shell;
   if (!sh) {
@@ -144,6 +162,7 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
         by = -1;
       }
       props.reorder.step(p.id, by);
+      keepFocus(p.id);
     } else if (!props.attention && p.more && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       props.onExpand(e.key === 'ArrowRight');
