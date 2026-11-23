@@ -366,11 +366,14 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .row.framed { margin: 4px 0; }
 .attention .row:hover, .row.framed:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .attention .where { font-size: var(--fs-sm); color: var(--muted); }
-/* The Herdr tab you're in: the row looks hovered (a framed one, its own hover); the one you were in last, half as much. */
-.row.active-now { background: var(--hover); }
-.row.framed.active-now { background: color-mix(in srgb, var(--c) 20%, transparent); }
-.row.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
-.row.framed.active-recent { background: color-mix(in srgb, var(--c) 14%, transparent); }
+/* In a space, a framed row (working, or blocked/done with Needs you off) keeps its border but no fill, and hovers
+   like any row: a row's background only means the tab you're in. The Needs you cards keep theirs. */
+.row.framed { background: none; }
+.row.framed:hover { background: var(--hover); }
+
+/* The Herdr tab you're in: the row looks hovered; the one you were in last, half as much. */
+.row.active-now, .row.framed.active-now { background: var(--hover); }
+.row.active-recent, .row.framed.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
 
 /* shells group */
 .group {
