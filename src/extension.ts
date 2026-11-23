@@ -993,6 +993,7 @@ export function activate(ctx: vscode.ExtensionContext) {
   /** Forget the account rows: Herdr went away or this is another session, so the pane ids mean other panes now. */
   function forgetAccounts() {
     resetAccountCheck();
+    renamedTabs.clear(); // another session: its tab ids are other tabs
     accountRows = new Map();
     setAccountRows(accountRows);
   }
@@ -1098,6 +1099,11 @@ export function activate(ctx: vscode.ExtensionContext) {
           .finally(() => renamingTabs.delete(tab.id));
       }
     // Tabs gone from Herdr (closed, or a restart that changed ids): their ids can come back on another tab.
+    for (const id of [...renamedTabs.keys()]) {
+      if (!live.has(id)) {
+        renamedTabs.delete(id);
+      }
+    }
     for (const id of Object.keys(records)) {
       if (!live.has(id) && !renamingTabs.has(id)) {
         delete records[id];

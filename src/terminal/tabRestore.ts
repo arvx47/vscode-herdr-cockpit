@@ -98,17 +98,26 @@ export class TabRestore implements vscode.Disposable {
     // pane (it belonged to the extension host that stopped): close the one a reopened tab replaces, matched by name.
     // Only terminals with no process of their own: a Herdr tab is drawn by the extension (a pseudoterminal), while
     // your own terminals and other extensions' run a shell. Without this one you'd named "Claude" would be closed.
-    const leftovers = await drawnTerminals(terms.untracked());
+    // Not asked when there's nothing to restore.
+    let leftovers: vscode.Terminal[] = [];
+    if (saved.some(({ paneId }) => panes.has(paneId))) {
+      leftovers = await drawnTerminals(terms.untracked());
+    }
     let replaced = 0;
     for (const { paneId } of saved) {
       const pane = panes.get(paneId);
-      if (pane && !terms.has(paneId)) {
-        const name = this.deps.tabName(pane);
-        const old = leftovers.findIndex((t) => t.name === name);
-        if (old >= 0) {
-          leftovers.splice(old, 1)[0].dispose();
-          replaced++;
-        }
+      if (!pane) {
+        continue;
+      }
+      // The previous run's tab of this pane goes, also when the pane got a new tab meanwhile (a click while restore
+      // waited): it would stay next to it, blank.
+      const name = this.deps.tabName(pane);
+      const old = leftovers.findIndex((t) => t.name === name);
+      if (old >= 0) {
+        leftovers.splice(old, 1)[0].dispose();
+        replaced++;
+      }
+      if (!terms.has(paneId)) {
         terms.attach(pane, { preserveFocus: true, polite: true });
         reopened.push(pane);
       }
