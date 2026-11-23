@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.68",
+  "version": "0.3.69",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
