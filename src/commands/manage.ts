@@ -583,7 +583,11 @@ async function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<{ fo
     }
     return undefined;
   };
-  const lists = await Promise.all(groups.map(listFrom));
+  // 6 at a time, like every other batch of Herdr requests: each runs git in Herdr.
+  const lists: Awaited<ReturnType<typeof listFrom>>[] = [];
+  for (let i = 0; i < groups.length; i += 6) {
+    lists.push(...(await Promise.all(groups.slice(i, i + 6).map(listFrom))));
+  }
   const failed = groups.filter((g, i) => g.repo && lists[i] === undefined).length;
   return { found: closedWorktrees(lists.filter((l) => l !== undefined)), failed };
 }

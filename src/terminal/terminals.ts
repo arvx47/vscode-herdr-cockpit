@@ -31,6 +31,19 @@ interface Entry {
   startingAt?: number;
 }
 
+/** How a tab opens: see attach(). */
+interface AttachOptions {
+  preserveFocus?: boolean;
+  startingAs?: string;
+  polite?: boolean;
+  column?: vscode.ViewColumn;
+  /**
+   * Exactly here, whatever herdr.terminalLocation says: an editor group (`column`) or the panel (no column), and for
+   * the panel whether to show it (reicon puts a tab back where it was).
+   */
+  place?: { column?: vscode.ViewColumn; reveal: boolean };
+}
+
 /** How long a tab opened for a starting agent waits for it before its icon follows the pane again. */
 const STARTING_MS = 30_000;
 
@@ -315,7 +328,7 @@ export class AttachTerminals implements vscode.Disposable {
   }
 
   /** Close the pane's tab and open a new one, keeping its place in the opening order. */
-  replace(pane: Pane, opts: { preserveFocus?: boolean; polite?: boolean; column?: vscode.ViewColumn } = {}): vscode.Terminal | undefined {
+  replace(pane: Pane, opts: AttachOptions = {}): vscode.Terminal | undefined {
     const order = [...this.byPane.keys()];
     const e = this.byPane.get(pane.id);
     if (e) {
@@ -358,40 +371,41 @@ export class AttachTerminals implements vscode.Disposable {
    * Swap the pane's tab for a new one with the right icon. The tab you're in stays in front, in its place in its
    * group; one you aren't in opens without taking the focus.
    */
-  async reicon(pane: Pane) {
+  async reicon(pane: Pane): Promise<boolean> {
     const e = this.byPane.get(pane.id);
     if (!e) {
-      return;
+      return false;
     }
-    // Where the tab really is now (a tab dragged to another group, or opened with "+", which never stored one), from
-    // the tab bar. In front: the editor tab you're in; activeTerminal alone stays set after you click into a file,
-    // and taking the focus then would send your typing to the terminal.
+    // Where the tab really is now (a tab dragged to another group or into the panel, or opened with "+", which never
+    // stored one), from the tab bar; not in it: a panel tab.
     const placed = this.placedTabs().find((t) => t.paneId === pane.id);
-    let column: vscode.ViewColumn | undefined;
+    let place: { column?: vscode.ViewColumn; reveal: boolean };
     let index: number | undefined;
-    let inFront: boolean;
+    let inFront = false;
     if (placed) {
-      column = placed.column;
+      const shown = vscode.window.tabGroups.all.find((g) => g.viewColumn === placed.column)?.activeTab === placed.tab;
+      if (!shown) {
+        // Behind another tab of its group: a new tab would open in front of that one. Swapped once it shows.
+        return false;
+      }
+      place = { column: placed.column, reveal: false };
+      // In front: the editor tab you're in. activeTerminal alone stays set after you click into a file, and taking
+      // the focus then would send your typing to the terminal.
       const group = vscode.window.tabGroups.activeTabGroup;
       inFront = vscode.window.activeTerminal === e.term && group.viewColumn === placed.column && group.activeTab === placed.tab;
       if (inFront) {
         index = placed.index;
       }
     } else {
-      // A panel tab: VS Code doesn't say whether the panel has the keyboard, so never assume you're typing in it
-      // (taking the focus then would send your typing from a file into the pane). It's shown again below instead.
-      inFront = false;
+      // A panel tab. VS Code doesn't say whether the panel has the keyboard, so never assume you're typing in it, and
+      // only show the new tab if this one was the panel's (it stays the one shown, without the keyboard).
+      place = { reveal: vscode.window.activeTerminal === e.term };
     }
-    const shownInPanel = !placed && vscode.window.activeTerminal === e.term;
     // A tab you aren't in opens politely: a pane another window controls stays with it (this tab may only have been
     // watching it). The one you're in takes it back, like a click: you're typing into it.
-    const term = this.replace(pane, { preserveFocus: !inFront, column, polite: !inFront });
-    if (shownInPanel) {
-      // It was the panel's tab on show: it stays the one shown, without the keyboard.
-      term?.show(true);
-    }
+    this.replace(pane, { preserveFocus: !inFront, polite: !inFront, place });
     if (index === undefined) {
-      return;
+      return true;
     }
     // Wait for the new tab to open (it's created at the end of the group), then put it back.
     await sleep(200);
@@ -399,6 +413,7 @@ export class AttachTerminals implements vscode.Disposable {
     if (now.activeTab?.input instanceof vscode.TabInputTerminal && now.tabs.indexOf(now.activeTab) !== index) {
       await vscode.commands.executeCommand('moveActiveEditor', { to: 'position', by: 'tab', value: index + 1 });
     }
+    return true;
   }
 
   /** Some tab lost its pane (Herdr stopped under it). */
@@ -430,7 +445,7 @@ export class AttachTerminals implements vscode.Disposable {
    * Open (or show) the pane's tab. You asked for it here, so a tab showing it read-only takes control back;
    * `polite` (follow mode) leaves a pane another editor window has to that window and shows it read-only.
    */
-  attach(pane: Pane, opts: { preserveFocus?: boolean; startingAs?: string; polite?: boolean; column?: vscode.ViewColumn } = {}): vscode.Terminal | undefined {
+  attach(pane: Pane, opts: AttachOptions = {}): vscode.Terminal | undefined {
     const existing = this.byPane.get(pane.id);
     if (existing && live(existing)) {
       if (!opts.polite) existing.pty?.takeBack();
@@ -445,7 +460,10 @@ export class AttachTerminals implements vscode.Disposable {
     const where = this.location();
     // editorSplit: agents in the first editor group, shells in the second (created when needed).
     let column: vscode.ViewColumn | undefined;
-    if (where === 'editorSplit') {
+    if (opts.place) {
+      // Exactly where it was (reicon), whatever the location setting says.
+      column = opts.place.column;
+    } else if (where === 'editorSplit') {
       if (pane.isAgent) {
         column = vscode.ViewColumn.One;
       } else {
@@ -476,7 +494,9 @@ export class AttachTerminals implements vscode.Disposable {
     this.changed();
     // An editor-area tab opens where `location` says. show() again could move it to the active group, so
     // only the panel needs it (createTerminal doesn't reveal the panel).
-    if (column === undefined) term.show(opts.preserveFocus);
+    if (column === undefined && (opts.place?.reveal ?? true)) {
+      term.show(opts.preserveFocus);
+    }
     return term;
   }
 

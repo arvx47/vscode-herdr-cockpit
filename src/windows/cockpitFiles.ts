@@ -101,7 +101,7 @@ export class CockpitFiles implements vscode.Disposable {
         focus = folders[0];
       }
       const spaces = (this.deps.model()?.spaces ?? []).filter((s) => this.deps.isOpenHere(s)).map((s) => s.label);
-      const rec: WindowRecord = { ...me, socket: this.deps.socketPath(), folders, spaces, ...(focus && { focus }), updated: 0 };
+      const rec: WindowRecord = { ...me, socket: this.deps.socketPath(), folders, spaces, ...(focus && { focus }), labels: true, updated: 0 };
       const key = JSON.stringify(rec);
       if (key === this.lastWindowRecord) {
         return;

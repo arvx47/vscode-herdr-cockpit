@@ -244,6 +244,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     onConnected() {
       notifications.connected();
       if (accountsStale) {
+        accountsStaleUntil = Date.now() + 15_000;
         // Back after a loss: the names kept for the greyed view may be other panes' now. Plain names until the
         // check answers, so restored tabs aren't matched or named with them.
         accountRows = new Map();
@@ -293,6 +294,21 @@ export function activate(ctx: vscode.ExtensionContext) {
       return;
     }
     const closed = closedTab(hit.space, hit.pane);
+    // A label we wrote (the agent's name, herdrTabLabel) isn't the tab's own: a reopened tab gets the one it had
+    // before, so its label follows the agent again instead of keeping a copy of ours.
+    if (backend.capabilities.server && closed.tabLabel) {
+      try {
+        const record = readTabLabels(socketPath())[closed.tabId];
+        if (record && record.wrote === closed.tabLabel) {
+          closed.tabLabel = undefined;
+          if (record.original && !/^\d+$/.test(record.original)) {
+            closed.tabLabel = record.original;
+          }
+        }
+      } catch (e) {
+        logError('herdr tab labels')(e);
+      }
+    }
     tabs.remember(closed);
     if (mode === 'never' || !isConnected()) {
       return;
@@ -689,31 +705,40 @@ export function activate(ctx: vscode.ExtensionContext) {
       return;
     }
     summaries.keep(allPanes(model).map(({ pane }) => pane.id));
+    const due: { sp: Space; a: Pane; status: string }[] = [];
     for (const sp of model.spaces.filter((s) => flow.isOpenHere(s))) {
       for (const a of sp.agents) {
         const status = a.status ?? 'unknown';
-        if (!summaries.due(a.id, status)) {
-          continue;
+        if (summaries.due(a.id, status)) {
+          due.push({ sp, a, status });
         }
-        // A read that failed is tried again on the next poll: it isn't a look at the screen.
-        const screen = await backend.readText(a.id, 'recent_unwrapped', 120).catch(() => undefined);
-        if (screen === undefined) {
-          continue;
-        }
-        // Its foreground processes: the Claude Code running there tells which account it's in.
-        const info = await backend.processInfo(a.id).catch(() => undefined);
-        const pids = foregroundPids(info);
-        const tab = sp.tabs.find((t) => t.id === a.tabId);
-        summaries.consider({
-          paneId: a.id,
-          kind: (a.agentKind ?? 'agent').toLowerCase(),
-          name: paneName(tab, a),
-          status,
-          screen,
-          pids,
-          agentName: a.raw.agent?.name ?? undefined,
-        });
       }
+    }
+    // Each agent's screen and processes together, 6 agents at a time (like the activity poll).
+    for (let i = 0; i < due.length; i += 6) {
+      await Promise.all(
+        due.slice(i, i + 6).map(async ({ sp, a, status }) => {
+          const [screen, info] = await Promise.all([
+            backend.readText(a.id, 'recent_unwrapped', 120).catch(() => undefined),
+            // Its foreground processes: the Claude Code running there tells which account it's in.
+            backend.processInfo(a.id).catch(() => undefined),
+          ]);
+          // A read that failed is tried again on the next poll: it isn't a look at the screen.
+          if (screen === undefined) {
+            return;
+          }
+          const tab = sp.tabs.find((t) => t.id === a.tabId);
+          summaries.consider({
+            paneId: a.id,
+            kind: (a.agentKind ?? 'agent').toLowerCase(),
+            name: paneName(tab, a),
+            status,
+            screen,
+            pids: foregroundPids(info),
+            agentName: a.raw.agent?.name ?? undefined,
+          });
+        }),
+      );
     }
   }
 
@@ -791,6 +816,15 @@ export function activate(ctx: vscode.ExtensionContext) {
   // Tabs to swap for one with the right icon (an agent started in a shell, or quit back to it), once the pane has
   // stayed that way 1.5s: Herdr can take a moment to settle on what runs in it.
   const iconSwaps = new Map<string, NodeJS.Timeout>();
+  // A swap still waiting when the extension stops would act on tabs of a host that's gone.
+  ctx.subscriptions.push({
+    dispose: () => {
+      for (const t of iconSwaps.values()) {
+        clearTimeout(t);
+      }
+      iconSwaps.clear();
+    },
+  });
   function checkIcon(p: Pane) {
     if (iconSwaps.has(p.id) || !terms.staleIcon(p)) {
       return;
@@ -841,6 +875,8 @@ export function activate(ctx: vscode.ExtensionContext) {
    * the greyed view, but until a check completes they aren't applied to tabs nor kept when a pane can't be asked.
    */
   let accountsStale = false;
+  /** How long after reconnecting a check waits for panes Herdr didn't tell about before it counts as done. */
+  let accountsStaleUntil = 0;
   /**
    * The same panes are checked again at most this often (a switch inside a pane shows up then): every 10s while the
    * sidebar shows, every minute otherwise, since every window runs this. New panes are checked at once.
@@ -906,9 +942,11 @@ export function activate(ctx: vscode.ExtensionContext) {
       accountsAt = 0;
       return;
     }
+    let unanswered = false;
     for (const pane of candidates) {
       const info = infos.get(pane.id);
       if (!info) {
+        unanswered = true;
         // Herdr didn't answer this time: keep what we knew, so names don't flip back and forth (not after a loss).
         let known: string | undefined;
         if (!accountsStale) {
@@ -932,7 +970,15 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (generation !== accountsGeneration) {
       return;
     }
-    accountsStale = false;
+    if (accountsStale && unanswered && Date.now() < accountsStaleUntil) {
+      // After a loss, a pane Herdr didn't tell about yet: not done, so its tab and Herdr's label keep waiting rather
+      // than flip to the plain name and back. Asked again on the next snapshot, for 15s at most (a pane that never
+      // answers mustn't hold Herdr's labels back for good).
+      accountsKey = '';
+      accountsAt = 0;
+    } else {
+      accountsStale = false;
+    }
     const changed = next.size !== accountRows.size || [...next].some(([id, r]) => accountRows.get(id) !== r);
     if (changed) {
       accountRows = next;

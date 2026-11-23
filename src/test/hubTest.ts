@@ -161,7 +161,7 @@ assert.deepStrictEqual(fs.readdirSync(path.join(home, '.herdr-cockpit')).filter(
 console.log("✓ link hand-off: aimed at a space's own window by folder; a link swapped in while taking is put back");
 
 // ---------- windows ----------
-const win = (pid: number, extra: Partial<WindowRecord> = {}): WindowRecord => ({ scheme: 'vscode', pid, socket: '/s', folders: [], spaces: [], updated: 1, ...extra });
+const win = (pid: number, extra: Partial<WindowRecord> = {}): WindowRecord => ({ scheme: 'vscode', pid, socket: '/s', folders: [], spaces: [], labels: true, updated: 1, ...extra });
 writeWindowRecord(win(1, { folders: ['/repos/api'], spaces: ['api'], focus: '/repos/api' }), home);
 writeWindowRecord(win(2, { folders: ['/home/.herdr-cockpit', '/repos/web/'], spaces: ['web', 'notes'], focus: '/home/.herdr-cockpit/herdr-cockpit.code-workspace' }), home);
 writeWindowRecord(win(3, { folders: ['/repos/db'], spaces: ['db'], socket: '/other' }), home);
@@ -186,6 +186,14 @@ assert.strictEqual(labelWriter({ pid: 1, socket: '/s' }, home, alive), true, 'th
 assert.strictEqual(labelWriter({ pid: 7, socket: '/s' }, home, alive), false, 'another editor too: one writer for the session');
 assert.strictEqual(labelWriter({ pid: 9, socket: '/other' }, home, alive), false, 'per session');
 assert.strictEqual(labelWriter({ pid: 2, socket: '/s' }, home, (pid) => pid !== 1 && pid !== 4), true, 'the next one when it quits');
+{
+  // An older version in another editor started first (lower pid) but never writes labels: it isn't the writer.
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-labels-'));
+  writeWindowRecord(win(10, { scheme: 'kiro', labels: undefined }), other);
+  writeWindowRecord(win(11), other);
+  assert.strictEqual(labelWriter({ pid: 11, socket: '/s' }, other, () => true), true, "an older window that doesn't write labels isn't the writer");
+  fs.rmSync(other, { recursive: true, force: true });
+}
 assert.deepStrictEqual(readTabLabels('/s', home), {}, 'none yet');
 writeTabLabels('/s', { 'w1:t1': { wrote: 'Claude: x', original: '1' } }, home);
 assert.deepStrictEqual(readTabLabels('/s', home), { 'w1:t1': { wrote: 'Claude: x', original: '1' } });

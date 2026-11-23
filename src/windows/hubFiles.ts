@@ -305,6 +305,8 @@ export interface WindowRecord {
   spaces: string[];
   /** What to open to bring the window forward: its workspace file, or its only folder. None for an untitled workspace. */
   focus?: string;
+  /** It keeps Herdr's tab labels in step (0.3.62+): only such a window can be the label writer (labelWriter()). */
+  labels?: boolean;
   updated: number;
 }
 
@@ -369,6 +371,7 @@ function readRecordFiles(home: string | undefined, isAlive: (pid: number) => boo
       spaces: w.spaces.filter((s: unknown): s is string => typeof s === 'string'),
       focus: typeof w.focus === 'string' ? w.focus : undefined,
       updated: typeof w.updated === 'number' ? w.updated : 0,
+      labels: w.labels === true,
     });
   }
   return out;
@@ -423,8 +426,9 @@ export function writeTabLabels(socket: string, records: Record<string, TabLabelR
  * undo each other and a title change costs one rename: the live window on this session with the lowest pid, any editor.
  */
 export function labelWriter(me: { pid: number; socket: string }, home?: string, isAlive = alive): boolean {
+  // Only windows that write labels: an older version in another editor (Kiro, Cursor) never does.
   const pids = readWindowRecords(home, isAlive)
-    .filter((w) => w.socket === me.socket)
+    .filter((w) => w.socket === me.socket && w.labels)
     .map((w) => w.pid);
   return pids.every((pid) => pid >= me.pid);
 }
