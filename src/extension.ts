@@ -1032,6 +1032,9 @@ export function activate(ctx: vscode.ExtensionContext) {
   // Herdr's tab labels in step with our tab names (herdrTabLabel), from one window (labelWriter), with what we wrote
   // shared in ~/.herdr-cockpit/labels. A rename is recorded once Herdr confirms it, so a failed one is tried again.
   const renamingTabs = new Set<string>();
+  /** Labels we just wrote, until a snapshot shows them (RENAME_SETTLE_MS at most: then a different one is yours). */
+  const renamedTabs = new Map<string, { label: string; at: number }>();
+  const RENAME_SETTLE_MS = 10_000;
   function syncHerdrLabels(m: Model | undefined) {
     if (!m || !backend.capabilities.server) {
       return;
@@ -1059,6 +1062,14 @@ export function activate(ctx: vscode.ExtensionContext) {
         if (renamingTabs.has(tab.id)) {
           continue;
         }
+        // A snapshot taken before our rename landed still shows the old label: not a label you typed, just old.
+        const pending = renamedTabs.get(tab.id);
+        if (pending) {
+          if (tab.label !== pending.label && Date.now() - pending.at < RENAME_SETTLE_MS) {
+            continue;
+          }
+          renamedTabs.delete(tab.id);
+        }
         const step = herdrTabLabel(tab, records[tab.id]);
         if (!step) {
           continue;
@@ -1069,6 +1080,7 @@ export function activate(ctx: vscode.ExtensionContext) {
           continue;
         }
         const record = step.record;
+        const label = step.rename;
         renamingTabs.add(tab.id);
         backend.actions
           .renameTab(tab.id, step.rename)
@@ -1080,6 +1092,7 @@ export function activate(ctx: vscode.ExtensionContext) {
               delete now[tab.id];
             }
             writeTabLabels(socket, now);
+            renamedTabs.set(tab.id, { label, at: Date.now() });
           })
           .catch(logError('herdr tab label'))
           .finally(() => renamingTabs.delete(tab.id));

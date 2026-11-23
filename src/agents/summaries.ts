@@ -362,7 +362,10 @@ export function claudeCliRunner(binary: string, cwd: string, envOf: (req: Summar
           reject(new Error("claude: the answer wasn't JSON"));
         }
       });
-      // The prompt goes on stdin, so the screen never shows up in process lists.
+      // The prompt goes on stdin, so the screen never shows up in process lists. A claude that can't start (not
+      // installed) or quits before reading closes the pipe: that error is the call's failure, reported by execFile,
+      // and mustn't surface as an uncaught one.
+      child.stdin?.on('error', () => undefined);
       child.stdin?.end(prompt);
     });
 }

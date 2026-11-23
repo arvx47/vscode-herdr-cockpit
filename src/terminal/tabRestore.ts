@@ -28,10 +28,17 @@ export interface TabRestoreDeps {
   log(line: string): void;
 }
 
-/** The terminals among `all` that run no process (pseudoterminals, like our tabs): asked at most 500ms. */
+/**
+ * The terminals among `all` that run no process of their own (pseudoterminals, like our tabs). VS Code reports a
+ * pseudoterminal's processId as -1 (undefined in some versions); a shell has a real pid. One that doesn't answer
+ * within 500ms (a leftover of a stopped extension host may not) counts as ours too: a shell answers at once.
+ */
 async function drawnTerminals(all: vscode.Terminal[]): Promise<vscode.Terminal[]> {
-  const pids = await Promise.all(all.map((t) => Promise.race([Promise.resolve(t.processId), sleep(500).then(() => -1)])));
-  return all.filter((_, i) => pids[i] === undefined);
+  const pids = await Promise.all(all.map((t) => Promise.race([Promise.resolve(t.processId), sleep(500).then(() => 'no answer' as const)])));
+  return all.filter((_, i) => {
+    const pid = pids[i];
+    return pid === undefined || pid === 'no answer' || pid <= 0;
+  });
 }
 
 export class TabRestore implements vscode.Disposable {

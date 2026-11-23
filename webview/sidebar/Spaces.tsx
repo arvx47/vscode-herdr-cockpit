@@ -1,6 +1,6 @@
 // The Spaces section: "This window" / "Other spaces" (or one list), space cards with their git line, agents and
 // a foldable Shells group.
-import { useEffect, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import type { SpaceView, ViewState } from '../../src/sidebar/viewState';
 import { ago } from '../../src/util/format';
 import { post, postReorder, useNow, type UiState } from './host';
@@ -382,10 +382,13 @@ function NoSpaceCard({ name, canAdd }: { name: string; canAdd: boolean }) {
  */
 function useActiveRow(state: ViewState, update: Update) {
   const row = state.activeRow;
+  // The last tab moved to: going to a file and back to the same tab isn't a move, so a card you folded stays folded.
+  const last = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!row) {
+    if (!row || row.id === last.current) {
       return;
     }
+    last.current = row.id;
     update((u) => {
       const next: UiState = { ...u, open: { ...u.open, [row.spaceId]: true } };
       if (row.kind === 'shell') {

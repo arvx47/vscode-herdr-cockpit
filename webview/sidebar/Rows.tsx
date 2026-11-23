@@ -18,7 +18,8 @@ export type ShellState = 'live' | 'running' | 'prompt' | 'failed' | 'unknown';
 function keepFocus(paneId: string) {
   const until = Date.now() + 1000;
   const check = () => {
-    const el = document.querySelector<HTMLElement>(`[data-pane="${CSS.escape(paneId)}"]`);
+    // The row in its space, not its copy in Needs you (that list has no reordering).
+    const el = [...document.querySelectorAll<HTMLElement>(`[data-pane="${CSS.escape(paneId)}"]`)].find((r) => !r.closest('.attention'));
     if (el && document.activeElement !== el && (document.activeElement === document.body || document.activeElement === null)) {
       el.focus();
     }
