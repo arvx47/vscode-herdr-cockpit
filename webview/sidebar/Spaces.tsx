@@ -376,21 +376,22 @@ function NoSpaceCard({ name, canAdd }: { name: string; canAdd: boolean }) {
   );
 }
 
-/**
- * When you move to another Herdr tab, unfold what hides its row (its group, its card, the Shells group) and scroll it
- * into view. Only on the move: fold it again afterwards and it stays folded.
- */
 /** The pane has a terminal tab in this window (its row says so). */
 function hasTab(state: ViewState, paneId: string): boolean {
   return state.spaces.some((sp) => [...sp.agents, ...sp.shells].some((p) => p.id === paneId && p.attached));
 }
 
+/**
+ * When you move to another Herdr tab, unfold what hides its row (its group, its card, the Shells group) and scroll it
+ * into view. Only on the move: fold it again afterwards and it stays folded.
+ */
 function useActiveRow(state: ViewState, update: Update) {
   const row = state.activeRow;
   // The last tab moved to: going to a file and back to the same tab isn't a move, so a card you folded stays folded.
   const last = useRef<string | undefined>(undefined);
   // That tab closed: opening the pane again is a move again.
-  if (!row && last.current && !hasTab(state, last.current)) {
+  // Only with spaces to look in: while Herdr is away there are none, and the tab you're still in isn't closed.
+  if (!row && last.current && state.spaces.length && !hasTab(state, last.current)) {
     last.current = undefined;
   }
   useEffect(() => {

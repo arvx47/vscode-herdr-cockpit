@@ -545,9 +545,11 @@ export function activate(ctx: vscode.ExtensionContext) {
     const term = vscode.window.activeTerminal;
     const pane = terms.paneOf(term);
     if (!term || !pane) {
-      if (lastActivePane) {
+      // The tab you were in last, while it's still open here (a closed one, or another session's id, isn't).
+      if (lastActivePane && terms.has(lastActivePane)) {
         return { id: lastActivePane, now: false };
       }
+      lastActivePane = undefined;
       return undefined;
     }
     lastActivePane = pane.paneId;
@@ -752,7 +754,8 @@ export function activate(ctx: vscode.ExtensionContext) {
     if (model && cfg().get<string>('agentDescription', 'request') === 'request') {
       const dirs = claudeAccounts().map((a) => a.configDir);
       const projects = new Set<string>();
-      // One /rename reading budget for the whole poll, however many panes (sessionText.ts).
+      // One /rename reading budget for the whole poll, however many panes (sessionText.ts). One pane after another:
+      // panes in the same folder read the same files, and their /rename offsets mustn't race.
       const budget = readBudget();
       for (const { pane } of allPanes(model)) {
         if (pane.agentKind !== 'claude' || !pane.cwd) {
@@ -994,6 +997,8 @@ export function activate(ctx: vscode.ExtensionContext) {
   function forgetAccounts() {
     resetAccountCheck();
     renamedTabs.clear(); // another session: its tab ids are other tabs
+    renamesGeneration++;
+    lastActivePane = undefined;
     accountRows = new Map();
     setAccountRows(accountRows);
   }
@@ -1035,6 +1040,8 @@ export function activate(ctx: vscode.ExtensionContext) {
   const renamingTabs = new Set<string>();
   /** Labels we just wrote, until a snapshot shows them (RENAME_SETTLE_MS at most: then a different one is yours). */
   const renamedTabs = new Map<string, { label: string; at: number }>();
+  /** Bumped on a session switch (forgetAccounts()): a rename that answers afterwards doesn't note its old tab id. */
+  let renamesGeneration = 0;
   const RENAME_SETTLE_MS = 10_000;
   function syncHerdrLabels(m: Model | undefined) {
     if (!m || !backend.capabilities.server) {
@@ -1082,6 +1089,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         }
         const record = step.record;
         const label = step.rename;
+        const generation = renamesGeneration;
         renamingTabs.add(tab.id);
         backend.actions
           .renameTab(tab.id, step.rename)
@@ -1093,7 +1101,10 @@ export function activate(ctx: vscode.ExtensionContext) {
               delete now[tab.id];
             }
             writeTabLabels(socket, now);
-            renamedTabs.set(tab.id, { label, at: Date.now() });
+            // Not if the session changed meanwhile: the id is another session's tab now.
+            if (generation === renamesGeneration) {
+              renamedTabs.set(tab.id, { label, at: Date.now() });
+            }
           })
           .catch(logError('herdr tab label'))
           .finally(() => renamingTabs.delete(tab.id));

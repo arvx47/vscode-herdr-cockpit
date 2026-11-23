@@ -34,7 +34,10 @@ export interface TabRestoreDeps {
  * within 500ms (a leftover of a stopped extension host may not) counts as ours too: a shell answers at once.
  */
 async function drawnTerminals(all: vscode.Terminal[]): Promise<vscode.Terminal[]> {
-  const pids = await Promise.all(all.map((t) => Promise.race([Promise.resolve(t.processId), sleep(500).then(() => 'no answer' as const)])));
+  // Each on its own: one that fails (a terminal disposed meanwhile) counts like no answer, and doesn't lose the restore.
+  const pids = await Promise.all(
+    all.map((t) => Promise.race([Promise.resolve(t.processId).catch(() => 'no answer' as const), sleep(500).then(() => 'no answer' as const)])),
+  );
   return all.filter((_, i) => {
     const pid = pids[i];
     return pid === undefined || pid === 'no answer' || pid <= 0;
