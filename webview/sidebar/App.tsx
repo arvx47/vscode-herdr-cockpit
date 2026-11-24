@@ -132,7 +132,7 @@ export function App() {
       </>
     );
   }
-  let body = 'body';
+  let body = `body frames-${state.framedRows}`;
   if (state.connection.kind === 'reconnecting') {
     body += ' stale';
   }

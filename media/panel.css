@@ -366,14 +366,22 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .row.framed { margin: 4px 0; }
 .attention .row:hover, .row.framed:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 .attention .where { font-size: var(--fs-sm); color: var(--muted); }
-/* The Herdr tab you're in: the row looks hovered (a framed one, its own hover); the one you were in last, half as much. */
-.row.active-now { background: var(--hover); }
-.row.framed.active-now { background: color-mix(in srgb, var(--c) 20%, transparent); }
-.row.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
-.row.framed.active-recent { background: color-mix(in srgb, var(--c) 14%, transparent); }
+/* herdr.framedRows = outline (ViewState.framedRows): in a space a framed row keeps its border but no fill, and hovers
+   like any row, so a row's background only means the tab you're in. The Needs you cards keep theirs. */
+.frames-outline .row.framed { background: none; }
+.frames-outline .row.framed:hover { background: var(--hover); }
+/* The Herdr tab you're in: like a hovered row but stronger, so it stands out from one the mouse is over (with
+   framedRows = filled, a framed one in its status color); the one you were in last, a light tint. */
+.row.active-now, .row.active-now:hover,
+.frames-outline .row.framed.active-now, .frames-outline .row.framed.active-now:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+}
+.frames-filled .row.framed.active-now, .frames-filled .row.framed.active-now:hover { background: color-mix(in srgb, var(--c) 32%, transparent); }
+.row.active-recent, .frames-outline .row.framed.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
+.frames-filled .row.framed.active-recent { background: color-mix(in srgb, var(--c) 14%, transparent); }
 /* The row you were in last still lights up fully when hovered, like any row. */
-.row.active-recent:hover { background: var(--hover); }
-.row.framed.active-recent:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
+.row.active-recent:hover, .frames-outline .row.framed.active-recent:hover { background: var(--hover); }
+.frames-filled .row.framed.active-recent:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
 
 /* shells group */
 .group {

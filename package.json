@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.75",
+  "version": "0.3.76",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -930,6 +930,19 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "%setting.showNeedsYou.markdownDescription%"
+        },
+        "herdr.framedRows": {
+          "type": "string",
+          "enum": [
+            "outline",
+            "filled"
+          ],
+          "enumDescriptions": [
+            "%setting.framedRows.enumDescriptions.outline%",
+            "%setting.framedRows.enumDescriptions.filled%"
+          ],
+          "default": "outline",
+          "description": "%setting.framedRows.description%"
         },
         "herdr.spaceOrder": {
           "type": "string",

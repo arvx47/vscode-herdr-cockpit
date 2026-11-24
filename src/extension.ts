@@ -10,7 +10,7 @@ import { allPanes, AgentStatus, countByStatus, findPane, Model, Pane, Space } fr
 import { HerdrPanel, PanelAction } from './sidebar/panel';
 import { SessionSync } from './state/sync';
 import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leaderProcess } from './state/activity';
-import { AgentNames, agentNameParts, buildViewState, herdrTabLabel, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
+import { AgentNames, agentNameParts, buildViewState, FramedRows, herdrTabLabel, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
 import { AgentProfile, isAccountRow, profileOfAgent, profileOfConfigDir, readAgentList, startingTable } from './agents/agentProfiles';
 import { agentLogo } from './agents/agentLogos';
 import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
@@ -88,6 +88,13 @@ export function activate(ctx: vscode.ExtensionContext) {
   // When did each agent enter its current state? (observed locally; Herdr exposes only a sequence number)
   const stateSince = new Map<string, { status?: AgentStatus; at: number }>();
   const showShells = () => cfg().get<boolean>('showShellPanes', true);
+  /** herdr.framedRows: anything but `filled` is the outline (the default). */
+  const framedRows = (): FramedRows => {
+    if (cfg().get<string>('framedRows', 'outline') === 'filled') {
+      return 'filled';
+    }
+    return 'outline';
+  };
   /**
    * Change a setting where its current value comes from: a toggle written to the user settings does nothing
    * while the workspace sets the value.
@@ -603,6 +610,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         here: (sp) => flow.isOpenHere(sp),
         elsewhere: (sp) => flow.isOpenElsewhere(sp),
         needsYou: cfg().get<boolean>('showNeedsYou', false),
+        framedRows: framedRows(),
         thisWindow: thisWindowView(),
         worktrees: backend.capabilities.worktrees,
         activePane: active,
