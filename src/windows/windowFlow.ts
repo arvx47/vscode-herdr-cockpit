@@ -9,7 +9,7 @@ import { errorText } from '../util/errors';
 import { attachOrder, findPane, Model, Pane, Space } from '../state/model';
 import { decidePlacement, followsInto, insideFolders, Placement, WindowMode } from './placement';
 import { isMounted, mountSpace, PREFIX } from './folders';
-import { LINK_VERSION, normPath, spacesWorkspaceFile, windowOfPid, windowWithSpace, writePendingLink } from './hubFiles';
+import { LINK_VERSION, normPath, spacesWorkspaceFile, WindowRecord, windowOfPid, windowWithSpace, writePendingLink } from './hubFiles';
 import { isWelcomeTab } from '../terminal/tabRestore';
 import type { AttachTerminals } from '../terminal/terminals';
 
@@ -255,10 +255,9 @@ export class WindowFlow {
     // Herdr), so the same pane isn't open twice and this copy doesn't turn read-only when that window takes it.
     this.deps.terms.closeSpace(space.id);
     const cwd = normPath(space.cwd);
-    // Aimed at a folder that window has: the space's, or (matched by label after its folder moved) its first.
     let target = cwd;
-    if (win && !win.folders.includes(cwd)) {
-      target = win.folders[0];
+    if (win) {
+      target = folderFor(win, space);
     }
     this.handOver(space, pane, target);
     if (win && !win.focus) {
@@ -269,6 +268,27 @@ export class WindowFlow {
     const here = !win && !vscode.workspace.workspaceFolders?.length;
     // An editor brings forward the window that already has this folder or workspace instead of opening another.
     await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: !here });
+  }
+
+  /**
+   * A link (open or review) for a space another window has open: hand it to that window and bring it forward.
+   * False when no other window has the space.
+   */
+  async sendLink(space: Space, linkPath: string, query: string): Promise<boolean> {
+    const win = this.otherWindow(space);
+    if (!win) {
+      return false;
+    }
+    // As in openInWindow: the space lives in that window, so its tabs here only detach.
+    this.deps.terms.closeSpace(space.id);
+    writePendingLink(vscode.env.uriScheme, linkPath, query, undefined, folderFor(win, space));
+    if (!win.focus) {
+      vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: "${space.label}" is open in another window (an untitled workspace). Switch to it from the Window menu.`);
+      return true;
+    }
+    // The editor brings forward the window that already has this folder or workspace.
+    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(win.focus), { forceNewWindow: true });
+    return true;
   }
 
   /**
@@ -494,4 +514,15 @@ export class WindowFlow {
       this.deps.backend.focusAgent(pane.id).catch(() => {});
     }
   }
+}
+
+/** The folder of another window a hand-off is aimed at: the space's, or (matched by label after its folder moved) its first. */
+function folderFor(win: WindowRecord, space: Space): string {
+  if (space.cwd) {
+    const cwd = normPath(space.cwd);
+    if (win.folders.includes(cwd)) {
+      return cwd;
+    }
+  }
+  return win.folders[0];
 }

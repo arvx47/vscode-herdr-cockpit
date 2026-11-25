@@ -44,6 +44,23 @@ export interface LinkDeps {
   /** Switch this window to the space unless it already shows it. */
   showSpace(space: Space): Promise<void>;
   attachPane(space: Space, pane: Pane): Promise<void>;
+  /** The space is open in this window. */
+  isOpenHere(space: Space): boolean;
+  /** Hand the link to another window that has the space open and bring it forward; false when none has it. */
+  sendToWindow(space: Space, linkPath: string, query: string): Promise<boolean>;
+}
+
+/** The space (and pane) a link names, as Herdr has them now: the pane's space, else by id, else by label. */
+function linkTarget(req: { space?: string; pane?: string; label?: string }, model: Model | undefined) {
+  let hit: { space: Space; pane: Pane } | undefined;
+  if (req.pane) {
+    hit = findPane(model, req.pane);
+  }
+  let space = hit?.space ?? model?.spaces.find((s) => s.id === req.space);
+  if (!space && req.label) {
+    space = model?.spaces.find((s) => s.label === req.label);
+  }
+  return { space, pane: hit?.pane };
 }
 
 export class Links implements vscode.Disposable {
@@ -74,7 +91,8 @@ export class Links implements vscode.Disposable {
 
   /**
    * A link from the Herdr plugin (or anywhere: links are validated in parseLink and can only pick a space,
-   * pane or file). Links act in the Cockpit window; another window hands them over and opens the hub.
+   * pane or file). A link for a space acts in the window that has the space open (this one, or another window
+   * it's handed to); anything else acts in the Cockpit window, so another window hands it over and opens the hub.
    */
   async handle(uri: vscode.Uri) {
     let req: LinkRequest;
@@ -85,6 +103,14 @@ export class Links implements vscode.Disposable {
       return;
     }
     if (!this.deps.isHubWindow()) {
+      const where = await this.windowFor(req, uri);
+      if (where === 'here') {
+        await this.run(req);
+        return;
+      }
+      if (where === 'sent') {
+        return;
+      }
       // Any web page can open a link: without a Cockpit window open, ask before creating and opening one.
       if (!hubOpen(this.scheme)) {
         const pick = await vscode.window.showInformationMessage(
@@ -101,6 +127,28 @@ export class Links implements vscode.Disposable {
       return;
     }
     await this.run(req);
+  }
+
+  /**
+   * Where a link that reached a window other than the Cockpit window acts: 'here' when this window has its space
+   * open, 'sent' when it was handed to another window that has it, 'hub' otherwise (no space, another Herdr
+   * session, not connected, or no window has the space).
+   */
+  private async windowFor(req: LinkRequest, uri: vscode.Uri): Promise<'here' | 'sent' | 'hub'> {
+    if (req.kind === 'file' || (req.session !== undefined && req.session !== this.currentSession()) || !this.deps.isConnected()) {
+      return 'hub';
+    }
+    const { space } = linkTarget(req, this.deps.model());
+    if (!space) {
+      return 'hub';
+    }
+    if (this.deps.isOpenHere(space)) {
+      return 'here';
+    }
+    if (await this.deps.sendToWindow(space, uri.path, uri.query)) {
+      return 'sent';
+    }
+    return 'hub';
   }
 
   private async run(req: LinkRequest) {
@@ -160,15 +208,7 @@ export class Links implements vscode.Disposable {
     if (!d.isConnected() && !(await d.ensureConnected())) {
       return;
     }
-    const now = d.model();
-    let hit: { space: Space; pane: Pane } | undefined;
-    if (req.pane) {
-      hit = findPane(now, req.pane);
-    }
-    let sp = hit?.space ?? now?.spaces.find((s) => s.id === req.space);
-    if (!sp && req.label) {
-      sp = now?.spaces.find((s) => s.label === req.label);
-    }
+    const { space: sp, pane } = linkTarget(req, d.model());
     vscode.commands.executeCommand('herdr.spaces.focus').then(undefined, () => {});
     if (!sp) {
       if (req.space || req.label || req.pane) {
@@ -177,12 +217,12 @@ export class Links implements vscode.Disposable {
       return;
     }
     if (req.kind === 'review') {
-      await d.review(sp, hit?.pane);
+      await d.review(sp, pane);
       return;
     }
     await d.showSpace(sp);
-    if (hit) {
-      await d.attachPane(sp, hit.pane);
+    if (pane) {
+      await d.attachPane(sp, pane);
     }
   }
 

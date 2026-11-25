@@ -1374,6 +1374,8 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
     },
     attachPane: (sp, pane) => flow.attachPane(sp, pane),
+    isOpenHere: (sp) => flow.isOpenHere(sp),
+    sendToWindow: (sp, linkPath, query) => flow.sendLink(sp, linkPath, query),
   });
 
   const commands = new Commands({
