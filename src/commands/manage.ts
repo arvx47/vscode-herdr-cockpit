@@ -665,7 +665,7 @@ async function openClosedWorktree(deps: ManageDeps, w: ClosedWorktree) {
 
 /**
  * The branch button on a repository's card: a new worktree, or one of that repo's worktrees that's on disk with no
- * space (closed, or made by another tool), opened as a space. With nothing to open it goes straight to New Worktree….
+ * space (closed, or made by another tool), opened as a space. With nothing to open, the list says so.
  */
 export async function worktreeMenu(deps: ManageDeps, from?: Space) {
   if (!from?.cwd) {
@@ -678,10 +678,6 @@ export async function worktreeMenu(deps: ManageDeps, from?: Space) {
   const { found, failed } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Looking for worktrees…' }, () =>
     findClosedWorktrees(deps, from),
   );
-  if (!found.length && !failed) {
-    await newWorktree(deps, from);
-    return;
-  }
   // A worktree card stands for its repo.
   let repoName = from.label;
   if (from.worktree?.is_linked_worktree) {
@@ -692,8 +688,12 @@ export async function worktreeMenu(deps: ManageDeps, from?: Space) {
   if (repoSpace(deps.spaces(), from)) {
     items.push({ label: 'New worktree…', description: 'a new branch and checkout', iconPath: new vscode.ThemeIcon('git-branch-create'), create: true });
   }
+  items.push({ label: 'Open an existing worktree', kind: vscode.QuickPickItemKind.Separator });
   if (found.length) {
-    items.push({ label: 'Open an existing worktree', kind: vscode.QuickPickItemKind.Separator }, ...worktreeItems(found));
+    items.push(...worktreeItems(found));
+  } else if (!failed) {
+    // Said in the list rather than skipping it, so the button always does the same thing. Picking it does nothing.
+    items.push({ label: 'No worktree to open', description: 'every worktree of this repository already has a space', iconPath: new vscode.ThemeIcon('info') });
   }
   let placeHolder = 'Start a new worktree, or open one that has no space (files as you left them)';
   if (failed) {
