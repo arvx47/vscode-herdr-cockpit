@@ -184,7 +184,11 @@
     <dd>Pick one of the editor's <b>Recent folders</b> (those that don't have a space yet; worktrees aren't listed), or
       <b>Choose a folder…</b>. Then name it and choose what to start. The window switches to the new space. New git worktrees
       come from the <span class="codicon codicon-git-branch-create"></span> on a repository's card instead (below).</dd>
-    <dt><span class="codicon codicon-git-branch-create"></span> New worktree (the <span class="codicon codicon-git-branch-create"></span> on a repository's name line, right-click a space, or <b>Herdr Cockpit: New Worktree…</b>)</dt>
+    <dt><span class="codicon codicon-git-branch-create"></span> Worktrees (the <span class="codicon codicon-git-branch-create"></span> on a repository's name line)</dt>
+    <dd>Lists <b>New worktree…</b> (below) and, under <b>Open an existing worktree</b>, that repository's worktrees that are on
+      disk but have no space (closed, or made by another tool), so you can start one or pick one up again in one place.
+      Picking one works like <b>Reopen worktree</b> (below). When there's nothing to open, it goes straight to New worktree.</dd>
+    <dt><span class="codicon codicon-git-branch-create"></span> New worktree (from the <span class="codicon codicon-git-branch-create"></span> above, right-click a space, or <b>Herdr Cockpit: New Worktree…</b>)</dt>
     <dd>The quick way to start a new piece of work, like a ticket, in a repository you already have a space for. It asks one
       thing: the branch name. Type a ticket key (<code>OUT-9656</code>), paste the ticket's link (its key is used), or any branch
       name. The branch starts from the repository's main branch (the one <code>origin/HEAD</code> names, else <code>main</code> or

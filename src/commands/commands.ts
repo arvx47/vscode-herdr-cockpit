@@ -18,7 +18,7 @@ import type { Links } from '../windows/links';
 import { binaryFound, serverStatus } from '../drivers/herdr/connection';
 import { HERDR_PROTOCOL } from '../drivers/herdr/herdrTypes';
 import { showHelp } from '../sidebar/help';
-import { closeInHerdr, ManageDeps, newSpace, newTab, newWorktree, rename, reopenTab, reopenWorktree, splitPane } from './manage';
+import { closeInHerdr, ManageDeps, newSpace, newTab, newWorktree, rename, reopenTab, reopenWorktree, splitPane, worktreeMenu } from './manage';
 import { pickClaudeAccount, setUpClaudeUsage } from '../agents/usageSetup';
 import { ClaudeAccount, claudeAccountKey } from '../agents/usage';
 import { DOWN_TEXT, fileReference } from './notices';
@@ -453,6 +453,14 @@ export class Commands {
           return;
         }
         await newWorktree(d.manage, itemOf(t)?.space);
+      }),
+      // The branch button on a repository's card: a new worktree, or one of the repo's that has no space.
+      vscode.commands.registerCommand('herdr.worktreeMenu', async (t?: Target) => {
+        if (!d.backend.capabilities.worktrees) {
+          void vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: worktree spaces need the Herdr driver (herdr.driver).`);
+          return;
+        }
+        await worktreeMenu(d.manage, itemOf(t)?.space);
       }),
       // A worktree still on disk whose space is gone: from a card, that repo's; else every repo's.
       vscode.commands.registerCommand('herdr.reopenWorktree', async (t?: Target) => {

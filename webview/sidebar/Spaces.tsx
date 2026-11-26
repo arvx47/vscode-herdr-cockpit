@@ -362,8 +362,8 @@ function SpaceCard({ sp, ui, update, showShells, worktrees, reorder, spacesReord
           <IconButton
             icon="git-branch-create"
             className="card-btn"
-            title={`New worktree of ${sp.label}: a new branch and checkout for one piece of work (a ticket), in a space of its own`}
-            onClick={() => post('newWorktree', { spaceId: sp.id })}
+            title={`Worktrees of ${sp.label}: start a new one (a branch and checkout for one piece of work, like a ticket) or open one that has no space`}
+            onClick={() => post('worktreeMenu', { spaceId: sp.id })}
           />
         )}
         {!sp.here && (

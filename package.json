@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.80",
+  "version": "0.3.81",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -257,6 +257,12 @@
         "icon": "$(git-branch-create)"
       },
       {
+        "command": "herdr.worktreeMenu",
+        "title": "%command.worktreeMenu%",
+        "category": "%category%",
+        "icon": "$(git-branch-create)"
+      },
+      {
         "command": "herdr.reopenWorktree",
         "title": "%command.reopenWorktree%",
         "category": "%category%",
@@ -416,6 +422,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "herdr.worktreeMenu",
+          "when": "false"
+        },
         {
           "command": "herdr.unmountSpace",
           "when": "false"

@@ -59,6 +59,7 @@ const PANEL_COMMANDS: Record<string, string> = {
   newSpace: 'herdr.newSpace',
   newSpaceHere: 'herdr.newSpaceHere',
   newWorktree: 'herdr.newWorktree',
+  worktreeMenu: 'herdr.worktreeMenu',
   addSpaceHere: 'herdr.addToWorkspace',
   openTui: 'herdr.openTui',
   refresh: 'herdr.refresh',

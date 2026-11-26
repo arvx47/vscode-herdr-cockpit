@@ -606,11 +606,29 @@ export async function reopenWorktree(deps: ManageDeps, from?: Space) {
     vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: no closed worktree to reopen. ${where}`);
     return;
   }
-  type Item = vscode.QuickPickItem & { w?: ClosedWorktree };
-  const items: Item[] = [];
+  let title = 'Reopen worktree';
+  if (repoName) {
+    title = `Reopen a worktree of ${repoName}`;
+  }
+  let placeHolder = 'Which worktree? It opens as a space again, files as you left them';
+  if (failed) {
+    // Some repos didn't answer: this list may be missing their worktrees.
+    placeHolder = `Which worktree? (Herdr couldn't list ${failed} folder(s); the ${EXTENSION_NAME} output shows why)`;
+  }
+  const pick = await vscode.window.showQuickPick(worktreeItems(found), { title, placeHolder, matchOnDetail: true });
+  if (pick?.w) {
+    await openClosedWorktree(deps, pick.w);
+  }
+}
+
+type WorktreeItem = vscode.QuickPickItem & { w?: ClosedWorktree; create?: boolean };
+
+/** One pick item per closed worktree, under a separator per repo when there are several. */
+function worktreeItems(found: ClosedWorktree[]): WorktreeItem[] {
+  const items: WorktreeItem[] = [];
   const repos = new Set(found.map((w) => w.repoFolder));
   for (const w of found) {
-    const prev = items.at(-1) as Item | undefined;
+    const prev = items.at(-1);
     if (repos.size > 1 && prev?.w?.repoFolder !== w.repoFolder) {
       items.push({ label: w.repoName, kind: vscode.QuickPickItemKind.Separator });
     }
@@ -623,20 +641,11 @@ export async function reopenWorktree(deps: ManageDeps, from?: Space) {
     }
     items.push({ label: worktreeLabel(w), description, detail: tildePath(w.path), iconPath: new vscode.ThemeIcon('repo-forked'), w });
   }
-  let title = 'Reopen worktree';
-  if (repoName) {
-    title = `Reopen a worktree of ${repoName}`;
-  }
-  let placeHolder = 'Which worktree? It opens as a space again, files as you left them';
-  if (failed) {
-    // Some repos didn't answer: this list may be missing their worktrees.
-    placeHolder = `Which worktree? (Herdr couldn't list ${failed} folder(s); the ${EXTENSION_NAME} output shows why)`;
-  }
-  const pick = await vscode.window.showQuickPick(items, { title, placeHolder, matchOnDetail: true });
-  const w = pick?.w;
-  if (!w) {
-    return;
-  }
+  return items;
+}
+
+/** A space for a worktree that's on disk without one, named after its branch, started like a new worktree. */
+async function openClosedWorktree(deps: ManageDeps, w: ClosedWorktree) {
   const label = worktreeLabel(w);
   const what = await worktreeStart(deps, label);
   if (!what) {
@@ -652,6 +661,50 @@ export async function reopenWorktree(deps: ManageDeps, from?: Space) {
     }
     return withProfileTab(deps, what, spaceId, w.path, first.id);
   }, 'Opening');
+}
+
+/**
+ * The branch button on a repository's card: a new worktree, or one of that repo's worktrees that's on disk with no
+ * space (closed, or made by another tool), opened as a space. With nothing to open it goes straight to New Worktree….
+ */
+export async function worktreeMenu(deps: ManageDeps, from?: Space) {
+  if (!from?.cwd) {
+    await newWorktree(deps, from);
+    return;
+  }
+  if (!(await deps.ensureConnected())) {
+    return;
+  }
+  const { found, failed } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Looking for worktrees…' }, () =>
+    findClosedWorktrees(deps, from),
+  );
+  if (!found.length && !failed) {
+    await newWorktree(deps, from);
+    return;
+  }
+  // A worktree card stands for its repo.
+  let repoName = from.label;
+  if (from.worktree?.is_linked_worktree) {
+    repoName = from.worktree.repo_name;
+  }
+  const items: WorktreeItem[] = [];
+  // New needs the repo's own space; without it, only the worktrees on disk are offered.
+  if (repoSpace(deps.spaces(), from)) {
+    items.push({ label: 'New worktree…', description: 'a new branch and checkout', iconPath: new vscode.ThemeIcon('git-branch-create'), create: true });
+  }
+  if (found.length) {
+    items.push({ label: 'Open an existing worktree', kind: vscode.QuickPickItemKind.Separator }, ...worktreeItems(found));
+  }
+  let placeHolder = 'Start a new worktree, or open one that has no space (files as you left them)';
+  if (failed) {
+    placeHolder = `Herdr couldn't list this repository's worktrees; the ${EXTENSION_NAME} output shows why`;
+  }
+  const pick = await vscode.window.showQuickPick(items, { title: `Worktrees of ${repoName}`, placeHolder, matchOnDetail: true });
+  if (pick?.create) {
+    await newWorktree(deps, from);
+  } else if (pick?.w) {
+    await openClosedWorktree(deps, pick.w);
+  }
 }
 
 /**
