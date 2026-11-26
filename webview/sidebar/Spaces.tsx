@@ -3,8 +3,8 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import type { SpaceView, ViewState } from '../../src/sidebar/viewState';
 import { ago } from '../../src/util/format';
-import { post, postReorder, useNow, type UiState } from './host';
-import { AgentRow, type Reorder, shellState, ShellRow } from './Rows';
+import { post, postReorder, postSpaceOrder, useNow, type UiState } from './host';
+import { AgentRow, keepFocus, type Reorder, shellState, ShellRow, useDragMove } from './Rows';
 import { FoldHeading, Icon, IconButton, menuContext, pressable } from './ui';
 
 type Update = (change: (ui: UiState) => UiState) => void;
@@ -136,25 +136,10 @@ function GitLine({ sp }: { sp: SpaceView }) {
   );
 }
 
-/**
- * Moving rows within one of a space's lists (`agents` or `shells`); what's saved is the whole space's order, the
- * other list as it shows. Only the sidebar's order: Herdr's tabs stay where they are.
- */
-function reorderOf(sp: SpaceView, list: 'agents' | 'shells'): Reorder | undefined {
-  const rows = sp[list];
-  if (rows.length < 2) {
-    return undefined;
-  }
-  const save = (ids: string[]) => {
-    let order = [...ids, ...sp.shells.map((p) => p.id)];
-    if (list === 'shells') {
-      order = [...sp.agents.map((p) => p.id), ...ids];
-    }
-    postReorder(sp.id, order);
-  };
-  const ids = rows.map((p) => p.id);
+/** Moving items within one list (`ids` in the order they show); `save` gets the list's new order. */
+function listReorder(group: string, ids: string[], save: (ids: string[]) => void): Reorder {
   return {
-    group: `${sp.id}/${list}`,
+    group,
     move(id, target, after) {
       const rest = ids.filter((x) => x !== id);
       let at = rest.indexOf(target);
@@ -176,6 +161,40 @@ function reorderOf(sp: SpaceView, list: 'agents' | 'shells'): Reorder | undefine
       save(next);
     },
   };
+}
+
+/**
+ * Moving rows within one of a space's lists (`agents` or `shells`); what's saved is the whole space's order, the
+ * other list as it shows. Only the sidebar's order: Herdr's tabs stay where they are.
+ */
+function reorderOf(sp: SpaceView, list: 'agents' | 'shells'): Reorder | undefined {
+  const rows = sp[list];
+  if (rows.length < 2) {
+    return undefined;
+  }
+  return listReorder(
+    `${sp.id}/${list}`,
+    rows.map((p) => p.id),
+    (ids) => {
+      let order = [...ids, ...sp.shells.map((p) => p.id)];
+      if (list === 'shells') {
+        order = [...sp.agents.map((p) => p.id), ...ids];
+      }
+      postReorder(sp.id, order);
+    },
+  );
+}
+
+/** Moving space cards within one section (This window, Other windows, Other spaces, or the one list). Sidebar only. */
+function spacesReorder(section: string, spaces: SpaceView[]): Reorder | undefined {
+  if (spaces.length < 2) {
+    return undefined;
+  }
+  return listReorder(
+    `spaces/${section}`,
+    spaces.map((sp) => sp.id),
+    postSpaceOrder,
+  );
 }
 
 function ShellGroup({ sp, ui, update }: { sp: SpaceView; ui: UiState; update: Update }) {
@@ -247,12 +266,25 @@ function FolderLine({ sp }: { sp: SpaceView }) {
   );
 }
 
-function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; ui: UiState; update: Update; showShells: boolean; worktrees: boolean }) {
+interface CardProps {
+  sp: SpaceView;
+  ui: UiState;
+  update: Update;
+  showShells: boolean;
+  worktrees: boolean;
+  /** The card can be dragged to another place in its section. */
+  reorder?: Reorder;
+  /** You dragged spaces into an order of your own (the menu offers Reset Space Order). */
+  spacesReordered: boolean;
+}
+
+function SpaceCard({ sp, ui, update, showShells, worktrees, reorder, spacesReordered }: CardProps) {
+  const drag = useDragMove(sp.id, reorder);
   // New worktree, when the driver makes worktree spaces.
   const repo = !!sp.git && worktrees;
   const open = ui.open[sp.id] ?? sp.defaultOpen;
   const setOpen = (o: boolean) => update((u) => ({ ...u, open: { ...u.open, [sp.id]: o } }));
-  let cls = `space st-${sp.status ?? 'none'}`;
+  let cls = `space st-${sp.status ?? 'none'}${drag.cls}`;
   if (open) {
     cls += ' open';
   }
@@ -264,7 +296,17 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
     chev += ' closed';
   }
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    if (reorder && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      // Before App's Up/Down navigation sees it.
+      e.preventDefault();
+      e.stopPropagation();
+      let by = 1;
+      if (e.key === 'ArrowUp') {
+        by = -1;
+      }
+      reorder.step(sp.id, by);
+      keepFocus(() => document.querySelector<HTMLElement>(`[data-space="${CSS.escape(sp.id)}"] > .space-head`) ?? undefined);
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
       setOpen(e.key === 'ArrowRight');
     }
@@ -276,6 +318,9 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
   title += '\nClick to fold or unfold. Click an agent or shell to open its tab.';
   if (!sp.here) {
     title += ' Open opens the whole space.';
+  }
+  if (reorder) {
+    title += ' Drag it, or Alt+Up/Down, to move it.';
   }
   let empty = 'No agents in this space';
   if (showShells) {
@@ -295,11 +340,12 @@ function SpaceCard({ sp, ui, update, showShells, worktrees }: { sp: SpaceView; u
     post('switch', { spaceId: sp.id });
   };
   return (
-    <section className={cls} data-space={sp.id}>
+    <section className={cls} data-space={sp.id} {...drag.target}>
       <div
         className="space-head"
         title={title}
-        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo, spaceReordered: sp.reordered })}
+        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo, spaceReordered: sp.reordered, spacesReordered })}
+        {...drag.source}
         {...pressable(() => setOpen(!open), { expanded: open, onKey })}
       >
         <span className={chev}>
@@ -420,7 +466,21 @@ function useActiveRow(state: ViewState, update: Update) {
 
 export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiState; update: Update }) {
   useActiveRow(state, update);
-  const card = (sp: SpaceView) => <SpaceCard key={sp.id} sp={sp} ui={ui} update={update} showShells={state.showShells} worktrees={state.worktrees} />;
+  const cards = (section: string, spaces: SpaceView[]) => {
+    const reorder = spacesReorder(section, spaces);
+    return spaces.map((sp) => (
+      <SpaceCard
+        key={sp.id}
+        sp={sp}
+        ui={ui}
+        update={update}
+        showShells={state.showShells}
+        worktrees={state.worktrees}
+        reorder={reorder}
+        spacesReordered={state.spacesReordered}
+      />
+    ));
+  };
   const { layout } = state;
   let body: ReactNode;
   if (layout.split) {
@@ -433,7 +493,7 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
       <>
         {(here.length > 0 || layout.noSpaceHere) && <div className="sub-label">This window</div>}
         {layout.noSpaceHere && <NoSpaceCard name={layout.noSpaceHere.name} canAdd={layout.noSpaceHere.canAdd} />}
-        {here.map(card)}
+        {cards('here', here)}
         {elsewhere.length > 0 && (
           <FoldHeading
             className="sub-label others-label"
@@ -444,7 +504,7 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
             Other windows <span className="count">{elsewhere.length}</span>
           </FoldHeading>
         )}
-        {elsewhereOpen && elsewhere.map(card)}
+        {elsewhereOpen && cards('elsewhere', elsewhere)}
         {others.length > 0 && (
           <FoldHeading
             className="sub-label others-label"
@@ -455,11 +515,11 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
             Other spaces <span className="count">{others.length}</span>
           </FoldHeading>
         )}
-        {othersOpen && others.map(card)}
+        {othersOpen && cards('others', others)}
       </>
     );
   } else if (state.spaces.length) {
-    body = state.spaces.map(card);
+    body = cards('all', state.spaces);
   } else {
     body = (
       <div className="splash">

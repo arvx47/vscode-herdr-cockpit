@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.78",
+  "version": "0.3.79",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -83,6 +83,11 @@
       {
         "command": "herdr.resetPaneOrder",
         "title": "%command.resetPaneOrder%",
+        "category": "%category%"
+      },
+      {
+        "command": "herdr.resetSpaceOrder",
+        "title": "%command.resetSpaceOrder%",
         "category": "%category%"
       },
       {
@@ -583,6 +588,11 @@
           "command": "herdr.resetPaneOrder",
           "when": "webviewId == herdr.spaces && webviewSection =~ /^space/ && spaceReordered",
           "group": "3_order@1"
+        },
+        {
+          "command": "herdr.resetSpaceOrder",
+          "when": "webviewId == herdr.spaces && webviewSection =~ /^space/ && spacesReordered",
+          "group": "3_order@2"
         },
         {
           "command": "herdr.openInOwnWindow",

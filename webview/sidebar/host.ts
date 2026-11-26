@@ -21,6 +21,11 @@ export function postReorder(spaceId: string, order: string[]) {
   vscode.postMessage({ type: 'reorder', spaceId, order });
 }
 
+/** Save the order you dragged one section's spaces into: their ids as they now show (the sidebar's order only). */
+export function postSpaceOrder(order: string[]) {
+  vscode.postMessage({ type: 'reorderSpaces', order });
+}
+
 export function ready() {
   vscode.postMessage({ type: 'ready' });
 }

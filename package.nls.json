@@ -6,6 +6,7 @@
   "command.switchSpace": "Switch to Space",
   "command.unmountSpace": "Unmount Space",
   "command.resetPaneOrder": "Reset Row Order",
+  "command.resetSpaceOrder": "Reset Space Order",
   "command.openInOwnWindow": "Open in Its Own Window",
   "command.addToWorkspace": "Add to This Window",
   "command.attachInSpaceWindow": "Open in Its Space's Window",

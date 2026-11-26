@@ -170,6 +170,8 @@ export interface ViewState {
    */
   framedRows: FramedRows;
   spaces: SpaceView[];
+  /** You dragged spaces into an order of your own (ViewInputs.spaceOrder; a card's menu offers Reset Space Order). */
+  spacesReordered: boolean;
   layout: SpacesLayout;
   /** Plan usage of the coding agents with local data (Claude Code, Codex, Kiro). */
   usage: UsageView[];
@@ -208,6 +210,8 @@ export interface ViewInputs {
   lastActive?(space: Space): number | undefined;
   /** The order you dragged a space's rows into (pane ids), if you did. */
   paneOrder?(space: Space): string[] | undefined;
+  /** The order you dragged the spaces into (space names), if you did: it wins over `order` for those spaces. */
+  spaceOrder?: string[];
   versions?: { cockpit: string; herdr?: string; driver?: string };
   /** See ViewState.worktrees (default true). */
   worktrees?: boolean;
@@ -757,6 +761,27 @@ export function applyPaneOrder<T extends { id: string }>(rows: T[], order: strin
     .map((x) => x.r);
 }
 
+/**
+ * Spaces in the order you dragged them into: the ones named in `order` first, in that order, then the rest (spaces
+ * created since) in the order they came in. By name, like the rest of what's remembered per space: ids change when
+ * Herdr restarts.
+ */
+export function applySpaceOrder<T extends { label: string }>(spaces: T[], order: string[] | undefined): T[] {
+  if (!order?.length) {
+    return spaces;
+  }
+  const at = new Map<string, number>();
+  order.forEach((label, n) => {
+    if (!at.has(label)) {
+      at.set(label, n);
+    }
+  });
+  return spaces
+    .map((s, n) => ({ s, n, at: at.get(s.label) ?? order.length }))
+    .sort((a, b) => a.at - b.at || a.n - b.n)
+    .map((x) => x.s);
+}
+
 /** A space's shell rows, in the saved order, when shells are shown (herdr.showShellPanes). */
 function shownShells(show: boolean | undefined, shells: PaneView[], order: string[] | undefined): PaneView[] {
   if (!show) {
@@ -772,6 +797,7 @@ export function buildViewState(i: ViewInputs): ViewState {
   if (i.order !== 'herdr' && i.lastActive) {
     ordered = orderByActivity(all, i.lastActive);
   }
+  ordered = applySpaceOrder(ordered, i.spaceOrder);
   const spaces: SpaceView[] = ordered.map((sp) => {
     const agents: PaneView[] = [];
     const shells: PaneView[] = [];
@@ -860,6 +886,7 @@ export function buildViewState(i: ViewInputs): ViewState {
     needsYou,
     framedRows: i.framedRows ?? 'outline',
     spaces,
+    spacesReordered: !!i.spaceOrder?.length,
     layout: spacesLayout(spaces, i.thisWindow),
     // By agent kind: every Claude Code account's card shows while a Claude agent runs.
     usage: i.usage.filter((u) => running.has(u.kind ?? u.id)).map(usageView),

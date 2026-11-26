@@ -113,6 +113,11 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 }
 .space.st-idle::before, .space.st-unknown::before, .space.st-none::before { opacity: 0; }
 .space.herdr-focused { border-color: color-mix(in srgb, var(--vscode-focusBorder) 55%, transparent); }
+/* Dragging a card to reorder its section: the card fades, a line shows where it would land. A shadow, not a
+   pseudo-element: the card clips what overflows it, and ::before is the status bar. */
+.space.dragging { opacity: .45; }
+.space.drop-before { box-shadow: 0 -4px 0 -1px var(--vscode-focusBorder); }
+.space.drop-after { box-shadow: 0 4px 0 -1px var(--vscode-focusBorder); }
 
 .space-head {
   display: flex; align-items: center; gap: 6px;

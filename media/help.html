@@ -128,7 +128,12 @@
   <p>Under its name, each card shows the folder the space lives in (hover for the full path). A worktree space says whose
     checkout it is on the line below its whole folder: <b>Worktree of api-service</b>. Long paths keep their end (<code>~/…/parent/folder</code>).</p>
   <p>The bottom of the sidebar shows the versions: Herdr Cockpit's, and Herdr's while connected (for example <b>Herdr Cockpit v0.3.6 · Herdr 0.9.5</b>).</p>
-  <p><b>Order:</b> spaces keep Herdr's own order. Set <code>herdr.spaceOrder</code> to <code>activity</code> to put spaces with an agent working or waiting on you first, then the most recently active ones (an agent started, finished or asked something, or you switched to the space here or in Herdr); that order is remembered across reloads.</p>
+  <p><b>Order:</b> spaces keep Herdr's own order. Set <code>herdr.spaceOrder</code> to <code>activity</code> to put spaces with an agent working or waiting on you first, then the most recently active ones (an agent started, finished or asked something, or you switched to the space here or in Herdr); that order is remembered across reloads.
+    To put them in an order of your own, drag a space's name line up or down within its section (<b>This window</b>,
+    <b>Other windows</b>, <b>Other spaces</b>), or press <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> on it. That order is only
+    the sidebar's (Herdr's own list of spaces stays as it is) and is kept by space name, so it survives Herdr restarts. Spaces
+    you placed come first, in your order; the others (new spaces, for one) follow in the order above. Right-click a space →
+    <b>Reset Space Order</b> to go back.</p>
   <dl>
     <dt>Click the space name</dt>
     <dd>Expands or collapses the card, like the chevron. It doesn't open anything: click an agent or shell to open it as a tab.
@@ -486,6 +491,7 @@
     <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move between spaces, agents and shells</td></tr>
     <tr><td><kbd>Enter</kbd> / <kbd>Space</kbd></td><td>Same as clicking (fold a space or group, open a terminal tab, press a button)</td></tr>
     <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>On a space: collapse / expand. On an agent or shell: hide / show its details.</td></tr>
+    <tr><td><kbd>Alt</kbd>+<kbd>↑</kbd> <kbd>↓</kbd></td><td>Move a space within its section, or an agent or shell within its space (the sidebar's order only)</td></tr>
   </table>
 </section>
 

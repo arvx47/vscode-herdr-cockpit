@@ -10,7 +10,7 @@ export interface PanelAction {
   paneId?: string;
   /** A Claude Code account's key (a usage card's Set up plan limits…). */
   account?: string;
-  /** `reorder`: the space's pane ids in the order you dragged its rows into. */
+  /** `reorder`: the space's pane ids in the order you dragged its rows into; `reorderSpaces`: one section's space ids. */
   order?: string[];
 }
 
@@ -48,6 +48,8 @@ export class HerdrPanel implements vscode.WebviewViewProvider, vscode.Disposable
           this.flush(true);
         } else if (m?.type === 'reorder' && typeof m.spaceId === 'string' && Array.isArray(m.order)) {
           this.onAction({ command: 'reorder', spaceId: m.spaceId, order: m.order.filter((id: unknown) => typeof id === 'string') });
+        } else if (m?.type === 'reorderSpaces' && Array.isArray(m.order)) {
+          this.onAction({ command: 'reorderSpaces', order: m.order.filter((id: unknown) => typeof id === 'string') });
         } else if (m?.type === 'cmd' && typeof m.command === 'string') {
           let account: string | undefined;
           if (typeof m.account === 'string') {

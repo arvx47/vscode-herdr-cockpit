@@ -112,6 +112,10 @@ export function activate(ctx: vscode.ExtensionContext) {
       reorderPanes(a.spaceId, a.order ?? []);
       return;
     }
+    if (a.command === 'reorderSpaces') {
+      reorderSpaces(a.order ?? []);
+      return;
+    }
     const id = PANEL_COMMANDS[a.command];
     if (id) {
       vscode.commands.executeCommand(id, { spaceId: a.spaceId, paneId: a.paneId, account: a.account } satisfies Target);
@@ -519,6 +523,43 @@ export function activate(ctx: vscode.ExtensionContext) {
     savePaneOrder();
     render();
   }
+  /**
+   * The order you dragged the spaces into (space names, like paneOrder). Only the sidebar's: Herdr's own order of
+   * its spaces stays as it is.
+   */
+  const SPACE_ORDER_KEY = 'herdr.spaceDragOrder';
+  let spaceOrder = ctx.globalState.get<string[]>(SPACE_ORDER_KEY, []);
+  function saveSpaceOrder() {
+    void ctx.globalState.update(SPACE_ORDER_KEY, spaceOrder.slice(0, 500));
+  }
+  /**
+   * The webview's drop: `order` is one section's spaces (ids) as they now show. Their names go first; the other
+   * names you placed keep their order after them (they show in other sections, so where they sit doesn't change).
+   */
+  function reorderSpaces(order: string[]) {
+    const labels: string[] = [];
+    for (const id of order) {
+      const sp = model?.spaces.find((s) => s.id === id);
+      if (sp && !labels.includes(sp.label)) {
+        labels.push(sp.label);
+      }
+    }
+    if (!labels.length) {
+      return;
+    }
+    spaceOrder = [...labels, ...spaceOrder.filter((l) => !labels.includes(l))];
+    saveSpaceOrder();
+    render();
+  }
+  ctx.subscriptions.push(
+    vscode.commands.registerCommand('herdr.resetSpaceOrder', () => {
+      if (spaceOrder.length) {
+        spaceOrder = [];
+        saveSpaceOrder();
+        render();
+      }
+    }),
+  );
   ctx.subscriptions.push(
     vscode.commands.registerCommand('herdr.resetPaneOrder', (t?: Target) => {
       const sp = model?.spaces.find((s) => s.id === t?.spaceId);
@@ -605,6 +646,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         order: cfg().get<'activity' | 'herdr'>('spaceOrder', 'herdr'),
         lastActive: (sp) => spaceActivity.get(sp.label),
         paneOrder: (sp) => paneOrder.get(sp.label),
+        spaceOrder,
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: versions(),
         here: (sp) => flow.isOpenHere(sp),

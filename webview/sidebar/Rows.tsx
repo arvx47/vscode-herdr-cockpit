@@ -12,14 +12,13 @@ const LIVE_MS = 12000;
 export type ShellState = 'live' | 'running' | 'prompt' | 'failed' | 'unknown';
 
 /**
- * Moving a row with the keyboard re-inserts it (React moves the focused row's node when it goes down), and the
- * browser drops its focus: for a second, while the host sends the new order, the row takes the focus back.
+ * Moving a row or a space with the keyboard re-inserts it (React moves the focused node when it goes down), and the
+ * browser drops its focus: for a second, while the host sends the new order, what `find` returns takes it back.
  */
-function keepFocus(paneId: string) {
+export function keepFocus(find: () => HTMLElement | undefined) {
   const until = Date.now() + 1000;
   const check = () => {
-    // The row in its space, not its copy in Needs you (that list has no reordering).
-    const el = [...document.querySelectorAll<HTMLElement>(`[data-pane="${CSS.escape(paneId)}"]`)].find((r) => !r.closest('.attention'));
+    const el = find();
     if (el && document.activeElement !== el && (document.activeElement === document.body || document.activeElement === null)) {
       el.focus();
     }
@@ -51,8 +50,9 @@ export function shellState(p: PaneView, now: number): ShellState {
 }
 
 /**
- * Dragging a row within its list (a space's agents, or its shells). `group` names the list: a row only takes
- * drops from its own. `move` puts a row before or after another; `step` moves it one place (Alt+Up/Down).
+ * Dragging an item within its list (a space's agents or its shells, or one section's spaces). `group` names the
+ * list: an item only takes drops from its own. `move` puts one before or after another; `step` moves it one place
+ * (Alt+Up/Down).
  */
 export interface Reorder {
   group: string;
@@ -70,22 +70,28 @@ interface RowProps {
   reorder?: Reorder;
 }
 
-/** The row being dragged; one drag at a time, so the module keeps it rather than every list. */
+/** What's being dragged (a row or a space card); one drag at a time, so the module keeps it rather than every list. */
 let dragging: { id: string; group: string } | undefined;
 
-/** Drag and drop for a row: where a drop would land (a line above or below it) and the handlers. */
-function useRowDrag(p: PaneView, reorder: Reorder | undefined) {
+/**
+ * Drag and drop within one list (`reorder.group`): where a drop would land (a line above or below the item) and
+ * the handlers. `source` goes on what you grab, `target` on what takes the drop; for a row they're the same element.
+ * Drops from another list are left alone, so a row dragged over a space card (or the other way) does nothing.
+ */
+export function useDragMove(id: string, reorder: Reorder | undefined) {
   const [drop, setDrop] = useState<'before' | 'after'>();
   const [dragged, setDragged] = useState(false);
   if (!reorder) {
-    return { cls: '', props: {} };
+    return { cls: '', source: {}, target: {} };
   }
-  const accepts = () => dragging?.group === reorder.group && dragging.id !== p.id;
-  const props = {
+  const accepts = () => dragging?.group === reorder.group && dragging.id !== id;
+  const source = {
     draggable: true,
     onDragStart: (e: DragEvent) => {
-      dragging = { id: p.id, group: reorder.group };
-      e.dataTransfer.setData('application/x-herdr-pane', p.id);
+      // A row inside a space card: the card's own drag doesn't start too.
+      e.stopPropagation();
+      dragging = { id, group: reorder.group };
+      e.dataTransfer.setData('application/x-herdr-move', id);
       e.dataTransfer.effectAllowed = 'move';
       setDragged(true);
     },
@@ -93,6 +99,8 @@ function useRowDrag(p: PaneView, reorder: Reorder | undefined) {
       dragging = undefined;
       setDragged(false);
     },
+  };
+  const target = {
     onDragOver: (e: DragEvent<HTMLElement>) => {
       if (!accepts()) {
         return;
@@ -107,7 +115,7 @@ function useRowDrag(p: PaneView, reorder: Reorder | undefined) {
       }
     },
     onDragLeave: (e: DragEvent<HTMLElement>) => {
-      // Moving onto one of the row's own children isn't leaving it.
+      // Moving onto one of its own children isn't leaving it.
       if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
         setDrop(undefined);
       }
@@ -119,7 +127,7 @@ function useRowDrag(p: PaneView, reorder: Reorder | undefined) {
         return;
       }
       e.preventDefault();
-      reorder.move(from.id, p.id, drop === 'after');
+      reorder.move(from.id, id, drop === 'after');
     },
   };
   let cls = '';
@@ -129,13 +137,13 @@ function useRowDrag(p: PaneView, reorder: Reorder | undefined) {
   if (dragged) {
     cls += ' dragging';
   }
-  return { cls, props };
+  return { cls, source, target };
 }
 
 /** What every row shares: the frame, click to attach, the right-click menu, keyboard expand/collapse. */
 function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line1: ReactNode; body: ReactNode; side: ReactNode }) {
   const { p } = props;
-  const drag = useRowDrag(p, props.reorder);
+  const drag = useDragMove(p.id, props.reorder);
   let cls = `row ${props.className}${drag.cls}`;
   if (p.focused) {
     cls += ' herdr-focused';
@@ -163,7 +171,8 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
         by = -1;
       }
       props.reorder.step(p.id, by);
-      keepFocus(p.id);
+      // The row in its space, not its copy in Needs you (that list has no reordering).
+      keepFocus(() => [...document.querySelectorAll<HTMLElement>(`[data-pane="${CSS.escape(p.id)}"]`)].find((r) => !r.closest('.attention')));
     } else if (!props.attention && p.more && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       props.onExpand(e.key === 'ArrowRight');
@@ -176,7 +185,8 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
       title={`${p.name} · ${p.id}\n${hint}`}
       data-vscode-context={menuContext({ webviewSection: p.kind, spaceId: p.spaceId, paneId: p.id, spaceHere: p.spaceMounted })}
       {...pressable(() => post('attach', { spaceId: p.spaceId, paneId: p.id }), { onKey })}
-      {...drag.props}
+      {...drag.source}
+      {...drag.target}
     >
       {props.avatar}
       <div className="main">

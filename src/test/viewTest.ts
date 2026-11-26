@@ -9,7 +9,7 @@ import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../state/model';
 import type { Space } from '../state/model';
 import { ago, left } from '../util/format';
-import { applyPaneOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
+import { applyPaneOrder, applySpaceOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
 import type { PaneActivity } from '../state/activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
 
@@ -135,6 +135,24 @@ console.log('✓ view state from real snapshot');
   assert.deepStrictEqual(ow2.agents.map((x) => x.id), sp('w2').agents.map((x) => x.id), 'agents keep their order');
   assert.deepStrictEqual([ow2.reordered, ordered.spaces.find((x) => x.id === 'w5')!.reordered], [true, false]);
   console.log("✓ rows in the order you dragged them into, new ones after in Herdr's order");
+}
+
+{
+  // Spaces you dragged: by name, in your order, the rest (new spaces) after in the order they came in.
+  const named = ['a', 'b', 'c', 'd'].map((label) => ({ label }));
+  assert.deepStrictEqual(applySpaceOrder(named, ['c', 'a']).map((s) => s.label), ['c', 'a', 'b', 'd']);
+  assert.deepStrictEqual(applySpaceOrder(named, ['gone', 'd', 'd']).map((s) => s.label), ['d', 'a', 'b', 'c'], 'names no longer there are skipped');
+  assert.strictEqual(applySpaceOrder(named, []), named);
+  const base = { model, showShells: true, since: () => undefined, git: () => undefined, mounted: () => false, attached: () => false, activity: () => undefined, usage: [], connection: { kind: 'connected' as const, expectedProtocol: 22 } };
+  const labels = model.spaces.map((s) => s.label);
+  const last = labels[labels.length - 1];
+  const dragged = buildViewState({ ...base, order: 'herdr', spaceOrder: [last] });
+  assert.deepStrictEqual(dragged.spaces.map((s) => s.label), [last, ...labels.filter((l) => l !== last)]);
+  assert.deepStrictEqual([dragged.spacesReordered, buildViewState({ ...base, order: 'herdr' }).spacesReordered], [true, false]);
+  // Over the activity order too: a placed space stays where you put it even while another one gets busy.
+  const busy = buildViewState({ ...base, spaceOrder: [last], lastActive: () => 1 });
+  assert.strictEqual(busy.spaces[0].label, last);
+  console.log('✓ spaces in the order you dragged them into, over herdr.spaceOrder');
 }
 
 // ---- space filter: only this window's spaces are listed; counters, Needs you and labels still cover all
