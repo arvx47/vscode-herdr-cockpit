@@ -480,7 +480,7 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
     <>
       <div className="section-label">
         Spaces
-        <button className="icon-btn label-btn" title="New space: a folder or a new git worktree" aria-label="New space" onClick={() => post('newSpace')}>
+        <button className="icon-btn label-btn" title="New space in a folder" aria-label="New space" onClick={() => post('newSpace')}>
           <Icon name="add" />
         </button>
       </div>

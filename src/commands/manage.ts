@@ -14,6 +14,7 @@ import type { Pane, Space } from '../state/model';
 import { agentRowOf, ownTabLabel, paneName, tabName } from '../sidebar/viewState';
 import { branchFromInput, branchProblem } from './branchName';
 import { ClosedWorktree, closedWorktrees, herdrWorktreeRepos, worktreeLabel, worktreeListFolders } from './worktreeList';
+import { recentFolders } from './recentFolders';
 import { tildePath } from '../util/paths';
 import { AgentProfile, profileOfAgent } from '../agents/agentProfiles';
 
@@ -384,27 +385,14 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
 }
 
 /**
- * New space: in a folder you pick, or on a new git worktree of an existing space's repo. With `folder` (e.g. this
- * window's), the space goes there without asking where.
+ * New space: in a recent folder or one you pick (worktrees have their own button on a repository's card). With
+ * `folder` (e.g. this window's), the space goes there without asking where.
  */
 export async function newSpace(deps: ManageDeps, folder?: string) {
   if (!(await deps.ensureConnected())) return;
   const title = 'New space';
-  let dirPath = folder;
-  let from: Space | undefined;
-  if (!dirPath) {
-    const picked = await pickNewSpacePlace(deps, title);
-    if (!picked) return;
-    if (picked.reopen) {
-      return reopenWorktree(deps);
-    }
-    dirPath = picked.dir;
-    from = picked.from;
-  }
-
-  if (!dirPath) {
-    return newWorktree(deps, from);
-  }
+  const dirPath = folder ?? (await pickNewSpaceFolder(deps, title));
+  if (!dirPath) return;
   const dir = dirPath;
   const name = await vscode.window.showInputBox({ title, prompt: 'Space name', value: path.basename(dir), validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
   if (!name?.trim()) return;
@@ -667,39 +655,32 @@ export async function reopenWorktree(deps: ManageDeps, from?: Space) {
 }
 
 /**
- * Where a new space goes: a folder you pick (`dir`), a new worktree of a space's repo (`from`), or a closed
- * worktree again (`reopen`).
+ * The folder a new space lives in: one opened recently in the editor (`_workbench.getRecentlyOpened`, VS Code's
+ * own list), or one you choose. Worktrees aren't offered here: a repository's card has its own New worktree button.
  */
-async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir?: string; from?: Space; reopen?: boolean } | undefined> {
-  type Item = vscode.QuickPickItem & { folder?: boolean; from?: Space; reopen?: boolean };
-  // Herdr starts new worktrees from the repo's own space, not from another worktree's: offer each repo once.
-  const repos = repoSpaces(deps);
+async function pickNewSpaceFolder(deps: ManageDeps, title: string): Promise<string | undefined> {
+  type Item = vscode.QuickPickItem & { dir?: string };
+  const spaceFolders = deps.spaces().flatMap((s) => {
+    if (s.cwd) {
+      return [s.cwd];
+    }
+    return [];
+  });
+  const recent = recentFolders(await editorRecentFolders(deps), spaceFolders, os.homedir());
   const items: Item[] = [
-    { label: 'Choose a folder…', iconPath: new vscode.ThemeIcon('folder-opened'), detail: 'The space opens in that folder', folder: true },
-    ...(repos.length ? [{ label: 'New git worktree of', kind: vscode.QuickPickItemKind.Separator } as Item] : []),
-    ...repos.map((s): Item => ({
-      label: s.label,
-      iconPath: new vscode.ThemeIcon('repo-forked'),
-      description: 'a new branch from its main branch',
-      detail: 'A separate checkout for one piece of work, so agents can work without touching this one',
-      from: s,
-    })),
+    { label: 'Choose a folder…', iconPath: new vscode.ThemeIcon('folder-opened'), detail: 'The space opens in that folder' },
   ];
-  if (deps.capabilities.worktrees) {
-    items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
-    items.push({
-      label: 'Reopen a closed worktree…',
-      iconPath: new vscode.ThemeIcon('history'),
-      detail: 'A worktree still on disk whose space is gone from the sidebar',
-      reopen: true,
-    });
+  if (recent.length) {
+    items.push({ label: 'Recent folders', kind: vscode.QuickPickItemKind.Separator });
+    for (const dir of recent) {
+      items.push({ label: path.basename(dir), description: tildePath(path.dirname(dir)), iconPath: new vscode.ThemeIcon('folder'), dir });
+    }
   }
-  const where = await vscode.window.showQuickPick(items, { title, placeHolder: 'Where should the new space live?' });
+  const where = await vscode.window.showQuickPick(items, { title, placeHolder: 'Which folder should the new space live in?', matchOnDescription: true });
   if (!where) return;
-  if (where.reopen) {
-    return { reopen: true };
+  if (where.dir) {
+    return where.dir;
   }
-  if (!where.folder) return { from: where.from };
   const near = deps.spaces().find((s) => s.cwd)?.cwd;
   const [dir] =
     (await vscode.window.showOpenDialog({
@@ -710,8 +691,28 @@ async function pickNewSpacePlace(deps: ManageDeps, title: string): Promise<{ dir
       openLabel: 'Use this folder',
       defaultUri: vscode.Uri.file(near ? path.dirname(near) : os.homedir()),
     })) ?? [];
-  if (!dir) return;
-  return { dir: dir.fsPath };
+  return dir?.fsPath;
+}
+
+/** The editor's recently opened local folders, newest first (an internal command: empty if it isn't there). */
+async function editorRecentFolders(deps: ManageDeps): Promise<string[]> {
+  try {
+    const recent = await vscode.commands.executeCommand<{ workspaces?: Array<{ folderUri?: vscode.Uri }> }>('_workbench.getRecentlyOpened');
+    const folders: string[] = [];
+    for (const w of recent?.workspaces ?? []) {
+      if (!w.folderUri) {
+        continue;
+      }
+      const uri = vscode.Uri.from(w.folderUri);
+      if (uri.scheme === 'file') {
+        folders.push(uri.fsPath);
+      }
+    }
+    return folders;
+  } catch (e) {
+    deps.log(`recent folders: ${err(e)}`);
+    return [];
+  }
 }
 
 /** Rename a space, or a pane (shells: the pane label; agents: the agent's name). */
