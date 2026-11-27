@@ -181,13 +181,20 @@
   <h2>Create, rename and close</h2>
   <dl>
     <dt><span class="codicon codicon-add"></span> New space (next to "Spaces")</dt>
-    <dd>Pick one of the editor's <b>Recent folders</b> (those that don't have a space yet; worktrees aren't listed), or
-      <b>Choose a folder…</b>. Then name it and choose what to start. The window switches to the new space. New git worktrees
-      come from the <span class="codicon codicon-git-branch-create"></span> on a repository's card instead (below).</dd>
+    <dd>Also offers worktrees: <b>New worktree…</b> (below; it asks which repository when you have several), and, under
+      <b>Worktrees without a space</b>, every repository's worktrees that are on disk with no space (they show up a moment
+      after the list opens). Picking one works like <b>Reopen worktree</b>. Or pick one of the editor's <b>Recent folders</b> (those that don't have a space yet, worktree folders left out), or
+      <b>Choose a folder…</b>. Then name it and choose what to start. The window switches to the new space. A repository's
+      card has its own <span class="codicon codicon-git-branch-create"></span> for that repository's worktrees (below).</dd>
     <dt><span class="codicon codicon-git-branch-create"></span> Worktrees (the <span class="codicon codicon-git-branch-create"></span> on a repository's name line)</dt>
-    <dd>Lists <b>New worktree…</b> (below) and, under <b>Open an existing worktree</b>, that repository's worktrees that are on
-      disk but have no space (closed, or made by another tool), so you can start one or pick one up again in one place.
-      Picking one works like <b>Reopen worktree</b> (below). When there's nothing to open, the list says <b>No worktree to open</b>.</dd>
+    <dd>Lists <b>New worktree…</b> (below) and, under <b>Worktrees</b>, every worktree of that repository that's on disk,
+      whether it has a space or not (closed, or made by another tool). Each says where its space is (<b>open in this window</b>,
+      <b>has a space</b>, or <b>no space</b>) and, under its folder, what it holds: uncommitted files and commits the main branch
+      doesn't have, or <b>nothing beyond the main branch</b> (that part fills in a moment later, and only in a trusted window).
+      Picking one goes to its space, or opens one for it like <b>Reopen worktree</b> (below). The
+      <span class="codicon codicon-trash"></span> on a row deletes that worktree's folder, after asking: its space closes too,
+      the branch stays in the repository, and uncommitted files are lost (the dialog says how many). Then the list comes back,
+      to delete another. With no worktree yet, the list says <b>No worktree yet</b>.</dd>
     <dt><span class="codicon codicon-git-branch-create"></span> New worktree (from the <span class="codicon codicon-git-branch-create"></span> above, right-click a space, or <b>Herdr Cockpit: New Worktree…</b>)</dt>
     <dd>The quick way to start a new piece of work, like a ticket, in a repository you already have a space for. It asks one
       thing: the branch name. Type a ticket key (<code>OUT-9656</code>), paste the ticket's link (its key is used), or any branch

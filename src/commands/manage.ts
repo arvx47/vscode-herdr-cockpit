@@ -13,7 +13,8 @@ import { repoSpace } from '../state/model';
 import type { Pane, Space } from '../state/model';
 import { agentRowOf, ownTabLabel, paneName, tabName } from '../sidebar/viewState';
 import { branchFromInput, branchProblem } from './branchName';
-import { ClosedWorktree, closedWorktrees, herdrWorktreeRepos, worktreeLabel, worktreeListFolders } from './worktreeList';
+import { ClosedWorktree, closedWorktrees, herdrWorktreeRepos, linkedWorktrees, worktreeLabel, worktreeListFolders } from './worktreeList';
+import type { WorktreeState } from '../util/gitInfo';
 import { recentFolders } from './recentFolders';
 import { tildePath } from '../util/paths';
 import { AgentProfile, profileOfAgent } from '../agents/agentProfiles';
@@ -44,6 +45,10 @@ export interface ManageDeps {
   branchOf(cwd?: string): string | undefined;
   /** The branch new worktrees start from (gitInfo.ts mainBranch()); undefined when git can't say. */
   mainBranch(cwd: string): Promise<string | undefined>;
+  /** A worktree's uncommitted changes and commits beyond `base` (gitInfo.ts worktreeState()); undefined when git can't say. */
+  worktreeState(cwd: string, base?: string): Promise<WorktreeState | undefined>;
+  /** Switches this window to the space, like clicking its card. */
+  switchTo(space: Space): Promise<unknown>;
   /** The space is open in this window (its folder is one of this window's). */
   isOpenHere(space: Space): boolean;
   /** Agent names in use (agent names must be unique). */
@@ -385,13 +390,26 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
 }
 
 /**
- * New space: in a recent folder or one you pick (worktrees have their own button on a repository's card). With
+ * New space: in a recent folder or one you pick, or on a worktree (a new one, or one on disk without a space). With
  * `folder` (e.g. this window's), the space goes there without asking where.
  */
 export async function newSpace(deps: ManageDeps, folder?: string) {
   if (!(await deps.ensureConnected())) return;
   const title = 'New space';
-  const dirPath = folder ?? (await pickNewSpaceFolder(deps, title));
+  let dirPath = folder;
+  if (!dirPath) {
+    // The "+" beside Spaces: a folder, or a worktree (a new one, or one on disk that has no space).
+    const where = await pickSpaceOrFolder(deps);
+    if (where?.newWorktree) {
+      await newWorktree(deps);
+      return;
+    }
+    if (where?.worktree) {
+      await openClosedWorktree(deps, where.worktree);
+      return;
+    }
+    dirPath = where?.dir;
+  }
   if (!dirPath) return;
   const dir = dirPath;
   const name = await vscode.window.showInputBox({ title, prompt: 'Space name', value: path.basename(dir), validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
@@ -531,7 +549,12 @@ async function withProfileTab(deps: ManageDeps, what: What, spaceId: string, cwd
 }
 
 /** The worktrees that exist on disk but have no space, from every repo Herdr knows (or only `from`'s). */
-async function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<{ found: ClosedWorktree[]; failed: number }> {
+function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<{ found: ClosedWorktree[]; failed: number }> {
+  return findWorktrees(deps, from, false);
+}
+
+/** The worktrees on disk of every repo Herdr knows (or only `from`'s): with `all`, also the ones that have a space. */
+async function findWorktrees(deps: ManageDeps, from: Space | undefined, all: boolean): Promise<{ found: ClosedWorktree[]; failed: number }> {
   // Each entry: the folders to try in turn until worktree.list answers (one repo's checkouts), and whether it's
   // known to be a repository (a failure there is worth saying; a space on a plain folder just has nothing).
   let groups: { folders: string[]; repo: boolean }[];
@@ -574,7 +597,11 @@ async function findClosedWorktrees(deps: ManageDeps, from?: Space): Promise<{ fo
     lists.push(...(await Promise.all(groups.slice(i, i + 6).map(listFrom))));
   }
   const failed = groups.filter((g, i) => g.repo && lists[i] === undefined).length;
-  return { found: closedWorktrees(lists.filter((l) => l !== undefined)), failed };
+  const answered = lists.filter((l) => l !== undefined);
+  if (all) {
+    return { found: linkedWorktrees(answered), failed };
+  }
+  return { found: closedWorktrees(answered), failed };
 }
 
 /**
@@ -664,8 +691,9 @@ async function openClosedWorktree(deps: ManageDeps, w: ClosedWorktree) {
 }
 
 /**
- * The branch button on a repository's card: a new worktree, or one of that repo's worktrees that's on disk with no
- * space (closed, or made by another tool), opened as a space. With nothing to open, the list says so.
+ * The branch button on a repository's card: every worktree of that repo, open or not, with what it holds
+ * (uncommitted changes, commits the main branch doesn't have). Picking one goes to its space, or opens one for it;
+ * its trash button deletes it. New worktree… comes first when the repo has its own space.
  */
 export async function worktreeMenu(deps: ManageDeps, from?: Space) {
   if (!from?.cwd) {
@@ -675,44 +703,206 @@ export async function worktreeMenu(deps: ManageDeps, from?: Space) {
   if (!(await deps.ensureConnected())) {
     return;
   }
-  const { found, failed } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Looking for worktrees…' }, () =>
-    findClosedWorktrees(deps, from),
-  );
   // A worktree card stands for its repo.
   let repoName = from.label;
   if (from.worktree?.is_linked_worktree) {
     repoName = from.worktree.repo_name;
   }
-  const items: WorktreeItem[] = [];
+  type Item = vscode.QuickPickItem & { w?: ClosedWorktree; create?: boolean };
+  const DELETE: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('trash'), tooltip: 'Delete this worktree…' };
+  const qp = vscode.window.createQuickPick<Item>();
+  qp.title = `Worktrees of ${repoName}`;
+  qp.placeholder = 'Looking for worktrees…';
+  qp.matchOnDescription = true;
+  qp.matchOnDetail = true;
+  qp.busy = true;
+  const top: Item[] = [];
   // New needs the repo's own space; without it, only the worktrees on disk are offered.
   if (repoSpace(deps.spaces(), from)) {
-    items.push({ label: 'New worktree…', description: 'a new branch and checkout', iconPath: new vscode.ThemeIcon('git-branch-create'), create: true });
+    top.push({ label: 'New worktree…', description: 'a new branch and checkout', iconPath: new vscode.ThemeIcon('git-branch-create'), create: true });
   }
-  items.push({ label: 'Open an existing worktree', kind: vscode.QuickPickItemKind.Separator });
-  if (found.length) {
-    items.push(...worktreeItems(found));
-  } else if (!failed) {
-    // Said in the list rather than skipping it, so the button always does the same thing. Picking it does nothing.
-    items.push({ label: 'No worktree to open', description: 'every worktree of this repository already has a space', iconPath: new vscode.ThemeIcon('info') });
-  }
-  let placeHolder = 'Start a new worktree, or open one that has no space (files as you left them)';
+  qp.items = top;
+  const chosen = new Promise<{ item?: Item; remove?: boolean }>((resolve) => {
+    qp.onDidAccept(() => resolve({ item: qp.selectedItems[0] }));
+    qp.onDidTriggerItemButton((e) => resolve({ item: e.item, remove: true }));
+    qp.onDidHide(() => resolve({}));
+  });
+  qp.show();
+
+  const { found, failed } = await findWorktrees(deps, from, true);
+  const spaces = deps.spaces();
+  const items: Item[] = [...top, { label: 'Worktrees', kind: vscode.QuickPickItemKind.Separator }];
+  const shown = (states: (WorktreeState | undefined)[]) => {
+    const rows: Item[] = found.map((w, i) => worktreeRow(w, spaces, states[i], deps.isOpenHere));
+    if (!rows.length && !failed) {
+      // Said in the list rather than skipping it, so the button always does the same thing. Picking it does nothing.
+      rows.push({ label: 'No worktree yet', description: 'New worktree… makes one', iconPath: new vscode.ThemeIcon('info') });
+    }
+    return [...items, ...rows.map((r): Item => {
+      if (r.w) {
+        return { ...r, buttons: [DELETE] };
+      }
+      return r;
+    })];
+  };
+  qp.items = shown([]);
+  qp.placeholder = 'Pick one to go to it (or open it again); the trash button deletes it';
   if (failed) {
-    placeHolder = `Herdr couldn't list this repository's worktrees; the ${EXTENSION_NAME} output shows why`;
+    qp.placeholder = `Herdr couldn't list this repository's worktrees; the ${EXTENSION_NAME} output shows why`;
   }
-  const pick = await vscode.window.showQuickPick(items, { title: `Worktrees of ${repoName}`, placeHolder, matchOnDetail: true });
-  if (pick?.create) {
+  // What each holds comes from git, after the list is up (several checkouts take a moment).
+  const base = await deps.mainBranch(found[0]?.repoFolder ?? from.cwd);
+  const states: (WorktreeState | undefined)[] = [];
+  for (let i = 0; i < found.length; i += 6) {
+    states.push(...(await Promise.all(found.slice(i, i + 6).map((w) => deps.worktreeState(w.path, base).catch(() => undefined)))));
+  }
+  // Keep what's typed and the highlighted row: replacing the items would move it back to the top.
+  const active = qp.activeItems[0]?.w?.path;
+  qp.items = shown(states);
+  const again = qp.items.find((i) => active && i.w?.path === active);
+  if (again) {
+    qp.activeItems = [again];
+  }
+  qp.busy = false;
+
+  const { item, remove } = await chosen;
+  qp.dispose();
+  if (item?.create) {
     await newWorktree(deps, from);
-  } else if (pick?.w) {
-    await openClosedWorktree(deps, pick.w);
+    return;
+  }
+  const w = item?.w;
+  if (!w) {
+    return;
+  }
+  const state = states[found.indexOf(w)];
+  if (remove) {
+    if (await deleteWorktree(deps, w, state, base)) {
+      // Back to the list, so several can go one after the other.
+      await worktreeMenu(deps, from);
+    }
+    return;
+  }
+  const space = spaces.find((sp) => sp.id === w.spaceId);
+  if (space) {
+    await deps.switchTo(space);
+  } else {
+    await openClosedWorktree(deps, w);
+  }
+}
+
+/** One worktree in the list: its branch, where its space is, and what it holds. */
+function worktreeRow(w: ClosedWorktree, spaces: Space[], state: WorktreeState | undefined, isOpenHere: (s: Space) => boolean): vscode.QuickPickItem & { w: ClosedWorktree } {
+  const space = spaces.find((sp) => sp.id === w.spaceId);
+  let where = 'no space: picking it opens one';
+  if (space && isOpenHere(space)) {
+    where = 'open in this window';
+  } else if (space) {
+    where = 'has a space';
+  }
+  let icon = 'folder';
+  if (space) {
+    icon = 'repo-forked';
+  }
+  const parts = [where];
+  if (!w.branch) {
+    parts.push('detached');
+  }
+  return {
+    label: worktreeLabel(w),
+    description: parts.join(' · '),
+    detail: [tildePath(w.path), holds(state)].filter(Boolean).join(' · '),
+    iconPath: new vscode.ThemeIcon(icon),
+    w,
+  };
+}
+
+/** "1 commit", "3 commits". */
+function counted(n: number, word: string): string {
+  if (n === 1) {
+    return `1 ${word}`;
+  }
+  return `${n} ${word}s`;
+}
+
+/** "3 uncommitted files · 2 commits not in main", "nothing beyond main", or nothing while git hasn't answered. */
+function holds(state: WorktreeState | undefined): string {
+  if (!state) {
+    return '';
+  }
+  const parts: string[] = [];
+  if (state.changes) {
+    parts.push(counted(state.changes, 'uncommitted file'));
+  }
+  if (state.ahead) {
+    parts.push(`${counted(state.ahead, 'commit')} not in the main branch`);
+  }
+  if (!parts.length && state.ahead === 0) {
+    return 'nothing beyond the main branch';
+  }
+  if (!parts.length) {
+    return 'no uncommitted changes';
+  }
+  return parts.join(' · ');
+}
+
+/**
+ * Deletes a worktree's folder (its space too, when it has one), after confirming. Herdr deletes worktrees only
+ * through their space (worktree.remove takes a space), so one without a space gets one first, closed again when
+ * the delete doesn't happen. The branch itself stays in the repository. True when it was deleted.
+ */
+async function deleteWorktree(deps: ManageDeps, w: ClosedWorktree, state: WorktreeState | undefined, base: string | undefined): Promise<boolean> {
+  const label = worktreeLabel(w);
+  const lost: string[] = [];
+  if (state?.changes) {
+    lost.push(`${counted(state.changes, 'uncommitted file')} will be lost.`);
+  }
+  if (state?.ahead && w.branch) {
+    lost.push(`Its ${counted(state.ahead, 'commit')} not in ${base} stay on the branch ${w.branch}.`);
+  }
+  let stops = '';
+  const space = deps.spaces().find((sp) => sp.id === w.spaceId);
+  if (space) {
+    stops = ` Its space "${space.label}" closes and everything running in it stops.`;
+  }
+  let detail = `This deletes the folder ${tildePath(w.path)}.${stops} The branch stays in the repository.`;
+  if (lost.length) {
+    detail += `\n\n${lost.join(' ')}`;
+  }
+  const ok = await vscode.window.showWarningMessage(
+    `Delete the worktree "${label}"?`,
+    { modal: true, detail },
+    'Delete Worktree',
+  );
+  if (!ok) {
+    return false;
+  }
+  let spaceId = w.spaceId;
+  let openedForIt = false;
+  try {
+    if (!spaceId) {
+      const opened = await deps.actions.openWorktreeSpace({ cwd: w.repoFolder, path: w.path, label });
+      spaceId = opened.workspace.workspace_id;
+      openedForIt = !opened.already_open;
+    }
+    await deps.actions.removeWorktree(spaceId, (state?.changes ?? 0) > 0);
+    return true;
+  } catch (e) {
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: the worktree "${label}" wasn't deleted: ${err(e)}`);
+    if (openedForIt && spaceId) {
+      await deps.actions.closeSpace(spaceId).catch(() => undefined);
+    }
+    return false;
   }
 }
 
 /**
- * The folder a new space lives in: one opened recently in the editor (`_workbench.getRecentlyOpened`, VS Code's
- * own list), or one you choose. Worktrees aren't offered here: a repository's card has its own New worktree button.
+ * Where a new space lives: one of the folders opened recently in the editor (`_workbench.getRecentlyOpened`, VS
+ * Code's own list), one you choose, a new worktree, or a worktree on disk that has no space.
  */
-async function pickNewSpaceFolder(deps: ManageDeps, title: string): Promise<string | undefined> {
-  type Item = vscode.QuickPickItem & { dir?: string };
+async function pickSpaceOrFolder(deps: ManageDeps): Promise<{ dir?: string; worktree?: ClosedWorktree; newWorktree?: boolean } | undefined> {
+  type Item = vscode.QuickPickItem & { dir?: string; worktree?: ClosedWorktree; newWorktree?: boolean; choose?: boolean };
+  const title = 'New space';
   const spaceFolders = deps.spaces().flatMap((s) => {
     if (s.cwd) {
       return [s.cwd];
@@ -721,19 +911,66 @@ async function pickNewSpaceFolder(deps: ManageDeps, title: string): Promise<stri
   });
   const recent = recentFolders(await editorRecentFolders(deps), spaceFolders, os.homedir());
   const items: Item[] = [
-    { label: 'Choose a folder…', iconPath: new vscode.ThemeIcon('folder-opened'), detail: 'The space opens in that folder' },
+    { label: 'Choose a folder…', iconPath: new vscode.ThemeIcon('folder-opened'), detail: 'The space opens in that folder', choose: true },
   ];
+  // A worktree needs a repository that has its own space (New worktree… asks which, when there are several).
+  if (repoSpaces(deps).length) {
+    items.push({ label: 'New worktree…', iconPath: new vscode.ThemeIcon('git-branch-create'), detail: 'A new branch and checkout of one of your repositories', newWorktree: true });
+  }
   if (recent.length) {
     items.push({ label: 'Recent folders', kind: vscode.QuickPickItemKind.Separator });
     for (const dir of recent) {
       items.push({ label: path.basename(dir), description: tildePath(path.dirname(dir)), iconPath: new vscode.ThemeIcon('folder'), dir });
     }
   }
-  const where = await vscode.window.showQuickPick(items, { title, placeHolder: 'Which folder should the new space live in?', matchOnDescription: true });
+  const qp = vscode.window.createQuickPick<Item>();
+  qp.title = title;
+  qp.placeholder = 'A folder or a worktree for the new space';
+  qp.matchOnDescription = true;
+  qp.matchOnDetail = true;
+  qp.items = items;
+  qp.busy = true;
+  const chosen = new Promise<Item | undefined>((resolve) => {
+    qp.onDidAccept(() => resolve(qp.selectedItems[0]));
+    qp.onDidHide(() => resolve(undefined));
+  });
+  qp.show();
+  // Worktrees on disk without a space, from every repo Herdr knows: asking each takes a moment, so they come after.
+  void findClosedWorktrees(deps)
+    .then(({ found }) => {
+      if (!found.length) {
+        return;
+      }
+      const active = qp.activeItems[0];
+      const rows: Item[] = worktreeItems(found).map((i) => {
+        if (i.w) {
+          return { ...i, worktree: i.w };
+        }
+        return i;
+      });
+      qp.items = [...items, { label: 'Worktrees without a space', kind: vscode.QuickPickItemKind.Separator }, ...rows];
+      // Replacing the items moves the highlight back to the top: keep it where it was.
+      if (active) {
+        qp.activeItems = [active];
+      }
+    })
+    .catch((e) => deps.log(`closed worktrees: ${err(e)}`))
+    .finally(() => {
+      qp.busy = false;
+    });
+  const where = await chosen;
+  qp.dispose();
   if (!where) return;
-  if (where.dir) {
-    return where.dir;
+  if (where.worktree) {
+    return { worktree: where.worktree };
   }
+  if (where.newWorktree) {
+    return { newWorktree: true };
+  }
+  if (where.dir) {
+    return { dir: where.dir };
+  }
+  if (!where.choose) return;
   const near = deps.spaces().find((s) => s.cwd)?.cwd;
   const [dir] =
     (await vscode.window.showOpenDialog({
@@ -744,7 +981,8 @@ async function pickNewSpaceFolder(deps: ManageDeps, title: string): Promise<stri
       openLabel: 'Use this folder',
       defaultUri: vscode.Uri.file(near ? path.dirname(near) : os.homedir()),
     })) ?? [];
-  return dir?.fsPath;
+  if (!dir) return;
+  return { dir: dir.fsPath };
 }
 
 /** The editor's recently opened local folders, newest first (an internal command: empty if it isn't there). */

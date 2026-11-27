@@ -13,7 +13,7 @@ import { ActivityTarget, ActivityWatcher, describeProcess, isShellProcess, leade
 import { AgentNames, agentNameParts, buildViewState, FramedRows, herdrTabLabel, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, TAB_PREFIX, tabName, ViewConnection, ViewInputs, ViewState } from './sidebar/viewState';
 import { AgentProfile, isAccountRow, profileOfAgent, profileOfConfigDir, readAgentList, startingTable } from './agents/agentProfiles';
 import { agentLogo } from './agents/agentLogos';
-import { gitInfo, hasChanges, mainBranch } from './util/gitInfo';
+import { gitInfo, hasChanges, mainBranch, worktreeState } from './util/gitInfo';
 import { isMounted, PREFIX } from './windows/folders';
 import { AttachTerminals, TerminalLocationSetting } from './terminal/terminals';
 import { TabAction } from './drivers/paneTab';
@@ -1392,6 +1392,13 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
       return mainBranch(cwd);
     },
+    worktreeState: async (cwd, base) => {
+      if (!vscode.workspace.isTrusted) {
+        return undefined;
+      }
+      return worktreeState(cwd, base);
+    },
+    switchTo: (space) => flow.switchTo(space),
     isOpenHere: (space) => flow.isOpenHere(space),
     agentNames: () => model?.spaces.flatMap((s) => s.agents.map((a) => a.raw.agent?.name).filter((n): n is string => !!n)) ?? [],
     herdrAgentKinds: () => herdrAgentKinds(),

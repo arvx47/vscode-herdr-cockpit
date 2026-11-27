@@ -234,3 +234,35 @@ export async function mainBranch(cwd: string): Promise<string | undefined> {
   }
   return undefined;
 }
+
+/** What a worktree holds that would be lost if it were deleted (worktreeState()). */
+export interface WorktreeState {
+  /** Changed paths, new files included. */
+  changes: number;
+  /** Commits on its HEAD that `base` doesn't have; undefined without a base. */
+  ahead?: number;
+}
+
+/**
+ * A worktree's uncommitted changes and its commits beyond `base` (the main branch), for the worktree list.
+ * Undefined when git can't tell (not a checkout, or it can't run safely here). Like gitInfo(), callers skip it in
+ * untrusted windows.
+ */
+export async function worktreeState(cwd: string, base?: string): Promise<WorktreeState | undefined> {
+  const filters = await filterOverrides(cwd);
+  if (!filters) {
+    return undefined;
+  }
+  const status = await run(cwd, filters, ['status', '--porcelain=v1', '--untracked-files=normal', '--ignore-submodules=all']);
+  if (status === undefined) {
+    return undefined;
+  }
+  const state: WorktreeState = { changes: status.split('\n').filter(Boolean).length };
+  if (base) {
+    const ahead = await run(cwd, filters, ['rev-list', '--count', `refs/heads/${base}..HEAD`]);
+    if (ahead !== undefined) {
+      state.ahead = Number(ahead.trim()) || 0;
+    }
+  }
+  return state;
+}

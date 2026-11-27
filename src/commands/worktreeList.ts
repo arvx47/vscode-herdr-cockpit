@@ -12,6 +12,8 @@ export interface ClosedWorktree {
   repoName: string;
   /** The repo's own folder: Herdr opens a worktree only from it (worktree.open refuses a linked worktree's). */
   repoFolder: string;
+  /** The space Herdr has open on it, if any (linkedWorktrees() only; closedWorktrees() has none). */
+  spaceId?: string;
 }
 
 /**
@@ -71,22 +73,33 @@ export function worktreeListFolders(spaces: { cwd?: string; worktree?: { repo_ke
 }
 
 /**
- * The linked worktrees without a space, each once, by repo then branch. Skipped: the repo's own checkout, bare
- * repos, and prunable ones (git's word for a worktree whose folder is gone).
+ * Every linked worktree, each once, by repo then branch, with the space Herdr has open on it. Skipped: the repo's
+ * own checkout, bare repos, and prunable ones (git's word for a worktree whose folder is gone).
  */
-export function closedWorktrees(lists: WorktreeListResult[]): ClosedWorktree[] {
+export function linkedWorktrees(lists: WorktreeListResult[]): ClosedWorktree[] {
   const out: ClosedWorktree[] = [];
   const seen = new Set<string>();
   for (const list of lists) {
     for (const w of list.worktrees) {
-      if (!w.is_linked_worktree || w.is_bare || w.is_prunable || w.open_workspace_id || seen.has(w.path)) {
+      if (!w.is_linked_worktree || w.is_bare || w.is_prunable || seen.has(w.path)) {
         continue;
       }
       seen.add(w.path);
-      out.push({ path: w.path, branch: w.branch ?? undefined, repoName: list.source.repo_name, repoFolder: list.source.source_checkout_path });
+      out.push({
+        path: w.path,
+        branch: w.branch ?? undefined,
+        repoName: list.source.repo_name,
+        repoFolder: list.source.source_checkout_path,
+        ...(w.open_workspace_id && { spaceId: w.open_workspace_id }),
+      });
     }
   }
   return out.sort((a, b) => a.repoName.localeCompare(b.repoName) || worktreeLabel(a).localeCompare(worktreeLabel(b)));
+}
+
+/** The linked worktrees without a space (linkedWorktrees() minus the open ones). */
+export function closedWorktrees(lists: WorktreeListResult[]): ClosedWorktree[] {
+  return linkedWorktrees(lists).filter((w) => !w.spaceId);
 }
 
 /** The space name a reopened worktree gets: its branch, like New Worktree…, else its folder's name. */

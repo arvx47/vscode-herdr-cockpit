@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.83",
+  "version": "0.3.87",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -798,6 +798,11 @@
           ],
           "default": "folder",
           "markdownDescription": "%setting.windowMode.markdownDescription%"
+        },
+        "herdr.groupWorktrees": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "%setting.groupWorktrees.markdownDescription%"
         },
         "herdr.closeTerminalsOnSwitch": {
           "type": "boolean",

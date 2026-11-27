@@ -6,7 +6,7 @@ import { EXTENSION_NAME, MESSAGE_PREFIX } from '../util/brand';
 import * as fs from 'fs';
 import type { Backend } from '../drivers/backend';
 import { errorText } from '../util/errors';
-import { attachOrder, findPane, Model, Pane, Space } from '../state/model';
+import { attachOrder, findPane, Model, Pane, sameRepoSpaces, Space } from '../state/model';
 import { decidePlacement, followsInto, insideFolders, Placement, WindowMode } from './placement';
 import { isMounted, mountSpace, PREFIX } from './folders';
 import { LINK_VERSION, normPath, spacesWorkspaceFile, WindowRecord, windowOfPid, windowWithSpace, writePendingLink } from './hubFiles';
@@ -271,6 +271,48 @@ export class WindowFlow {
   }
 
   /**
+   * herdr.groupWorktrees: whether another space of this space's repository is open here, or in another window.
+   * Only for a driver with a server (a window's own session keeps its spaces anyway).
+   */
+  private repoFacts(space: Space): { repoHere?: boolean; repoWindow?: boolean } {
+    if (!this.cfg().get<boolean>('groupWorktrees', false) || !this.deps.backend.capabilities.server) {
+      return {};
+    }
+    const others = sameRepoSpaces(this.deps.model()?.spaces ?? [], space);
+    if (others.some((s) => this.isOpenHere(s))) {
+      return { repoHere: true };
+    }
+    if (others.some((s) => this.otherWindow(s))) {
+      return { repoWindow: true };
+    }
+    return {};
+  }
+
+  /**
+   * herdr.groupWorktrees: hand the space to the window that has another space of its repository, aimed at that
+   * space's folder there. That window then adds it (its own placement sees the repository open there).
+   */
+  private async openInRepoWindow(space: Space, pane?: Pane) {
+    for (const other of sameRepoSpaces(this.deps.model()?.spaces ?? [], space)) {
+      const win = this.otherWindow(other);
+      if (!win) {
+        continue;
+      }
+      // As in openInWindow: the space lives in that window, so its tabs here only detach.
+      this.deps.terms.closeSpace(space.id);
+      this.handOver(space, pane, folderFor(win, other));
+      if (!win.focus) {
+        vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: "${other.label}" is open in another window (an untitled workspace). Switch to it from the Window menu.`);
+        return;
+      }
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(win.focus), { forceNewWindow: true });
+      return;
+    }
+    // The other window closed meanwhile: a window of its own, like without the setting.
+    await this.openInWindow(space, pane);
+  }
+
+  /**
    * A link (open or review) for a space another window has open: hand it to that window and bring it forward.
    * False when no other window has the space.
    */
@@ -372,6 +414,7 @@ export class WindowFlow {
       local: !this.deps.backend.capabilities.server,
       workspaceFile: !!vscode.workspace.workspaceFile,
       elsewhere: this.deps.backend.windowOf?.(space.id) !== undefined,
+      ...this.repoFacts(space),
     });
     let choice: Placement | undefined;
     switch (decision) {
@@ -386,6 +429,9 @@ export class WindowFlow {
         return 'elsewhere';
       case 'window':
         await this.openInWindow(space, pane);
+        return 'elsewhere';
+      case 'repoWindow':
+        await this.openInRepoWindow(space, pane);
         return 'elsewhere';
       case 'ask':
         choice = await this.askPlacement(space, pane);

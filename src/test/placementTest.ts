@@ -1,6 +1,7 @@
 // Which window a space opens in (src/windows/placement.ts), case by case.
 import * as assert from 'assert';
 import { decidePlacement, followsInto, insideFolders, PlaceFacts } from '../windows/placement';
+import { sameRepoSpaces, Space } from '../state/model';
 
 const base: PlaceFacts = { pane: false, mode: 'folder', ownWindow: false, openHere: false, mounted: false, otherWindow: false, hasFolders: true };
 const cases: [string, Partial<PlaceFacts>, ReturnType<typeof decidePlacement>][] = [
@@ -28,6 +29,13 @@ const cases: [string, Partial<PlaceFacts>, ReturnType<typeof decidePlacement>][]
   ['a session of this window, workspace mode', { local: true, mode: 'workspace', workspaceFile: true }, 'add'],
   ['a session of another window: opens in that window', { local: true, elsewhere: true }, 'window'],
   ['a session of another window, even with a workspace file here', { local: true, elsewhere: true, workspaceFile: true }, 'window'],
+  ['groupWorktrees: its repository is open here', { repoHere: true }, 'add'],
+  ['groupWorktrees: its repository is open here, over a remembered own window', { repoHere: true, remembered: 'window' }, 'add'],
+  ['groupWorktrees: its repository is open in another window', { repoWindow: true }, 'repoWindow'],
+  ['groupWorktrees: here wins over another window', { repoHere: true, repoWindow: true }, 'add'],
+  ['groupWorktrees: its own window still wins', { repoHere: true, otherWindow: true }, 'window'],
+  ['groupWorktrees: right-click Open in Its Own Window still wins', { repoHere: true, how: 'window' }, 'window'],
+  ['groupWorktrees: workspace mode is one window anyway', { repoWindow: true, mode: 'workspace' }, 'askHub'],
 ];
 for (const [what, facts, expected] of cases) {
   assert.strictEqual(decidePlacement({ ...base, ...facts }), expected, what);
@@ -52,3 +60,19 @@ assert.ok(!insideFolders('/code', ['/code/repo']), 'a parent is not inside');
 console.log('✓ spaces in a subfolder of this window');
 
 console.log('\nplacement tests passed');
+
+// herdr.groupWorktrees: which spaces are of the same repository
+{
+  const sp = (id: string, cwd: string, worktree?: Partial<NonNullable<Space['worktree']>>) => ({ id, label: id, cwd, worktree }) as unknown as Space;
+  const app = sp('w1', '/r/app');
+  const wtA = sp('w2', '/wt/app/a', { repo_key: '/r/app/.git', repo_root: '/r/app', is_linked_worktree: true });
+  const wtB = sp('w3', '/wt/app/b', { repo_key: '/r/app/.git', repo_root: '/r/app', is_linked_worktree: true });
+  const web = sp('w4', '/r/web', { repo_key: '/r/web/.git', repo_root: '/r/web', is_linked_worktree: false });
+  const plain = sp('w5', '/notes');
+  const all = [app, wtA, wtB, web, plain];
+  assert.deepStrictEqual(sameRepoSpaces(all, wtA).map((s) => s.id), ['w1', 'w3'], 'the repo space (by its root) and the other worktree');
+  assert.deepStrictEqual(sameRepoSpaces(all, app).map((s) => s.id), ['w2', 'w3'], "the repo space's worktrees");
+  assert.deepStrictEqual(sameRepoSpaces(all, web).map((s) => s.id), [], 'a repo alone');
+  assert.deepStrictEqual(sameRepoSpaces(all, plain).map((s) => s.id), [], 'not a repository');
+  console.log('✓ spaces of the same repository');
+}

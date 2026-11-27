@@ -37,6 +37,10 @@ export interface PlaceFacts {
   workspaceFile?: boolean;
   /** With `local`: another window's session runs the space, so it opens there. */
   elsewhere?: boolean;
+  /** herdr.groupWorktrees is on and another space of the same repository (its checkout or a worktree) is open here. */
+  repoHere?: boolean;
+  /** herdr.groupWorktrees is on and another window has a space of the same repository open. */
+  repoWindow?: boolean;
 }
 
 /**
@@ -46,8 +50,9 @@ export interface PlaceFacts {
  * - window: open it in its own window (the one that has it, else a new one)
  * - askHub: workspace mode outside the Cockpit window: offer the Cockpit window (or use this one)
  * - ask: folder mode: ask own window or this one (unless remembered)
+ * - repoWindow: folder mode, herdr.groupWorktrees: the window that has another space of its repository
  */
-export type PlaceDecision = 'here' | 'add' | 'stay' | 'window' | 'askHub' | 'ask';
+export type PlaceDecision = 'here' | 'add' | 'stay' | 'window' | 'askHub' | 'ask' | 'repoWindow';
 
 /**
  * `p` is inside one of `folders` (a subfolder; the folder itself doesn't count). Plain paths, no file system:
@@ -103,7 +108,14 @@ export function decidePlacement(f: PlaceFacts): PlaceDecision {
   if (f.mode === 'workspace') {
     return 'askHub';
   }
-  // 3. Folder mode. A window without a folder becomes the space's window; otherwise ask (or what was remembered).
+  // 3. Folder mode with herdr.groupWorktrees: a repository's spaces share a window, this one first.
+  if (f.repoHere) {
+    return 'add';
+  }
+  if (f.repoWindow) {
+    return 'repoWindow';
+  }
+  // 4. Folder mode. A window without a folder becomes the space's window; otherwise ask (or what was remembered).
   if (!f.hasFolders) {
     return 'window';
   }

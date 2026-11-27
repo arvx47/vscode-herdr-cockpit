@@ -362,7 +362,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees, reorder, spacesReord
           <IconButton
             icon="git-branch-create"
             className="card-btn"
-            title={`Worktrees of ${sp.label}: start a new one (a branch and checkout for one piece of work, like a ticket) or open one that has no space`}
+            title={`Worktrees of ${sp.label}: start a new one (a branch and checkout for one piece of work, like a ticket), go to or open one, or delete one`}
             onClick={() => post('worktreeMenu', { spaceId: sp.id })}
           />
         )}
@@ -540,7 +540,7 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
     <>
       <div className="section-label">
         Spaces
-        <button className="icon-btn label-btn" title="New space in a folder" aria-label="New space" onClick={() => post('newSpace')}>
+        <button className="icon-btn label-btn" title="New space: in a folder, or on a git worktree (new, or one that has no space)" aria-label="New space" onClick={() => post('newSpace')}>
           <Icon name="add" />
         </button>
       </div>

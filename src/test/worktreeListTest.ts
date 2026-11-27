@@ -3,7 +3,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { closedWorktrees, herdrWorktreeRepos, worktreeLabel, worktreeListFolders } from '../commands/worktreeList';
+import { closedWorktrees, herdrWorktreeRepos, linkedWorktrees, worktreeLabel, worktreeListFolders } from '../commands/worktreeList';
 import type { WorktreeInfo, WorktreeListResult } from '../drivers/herdr/herdrTypes';
 
 const wt = (p: string, more: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
@@ -33,6 +33,16 @@ assert.deepStrictEqual(found.map((w) => [w.repoName, worktreeLabel(w), w.repoFol
 ]);
 assert.strictEqual(found[0].branch, undefined, 'a detached checkout is named after its folder');
 console.log('✓ closed worktrees: linked, not open, not prunable, each once');
+
+// Every linked worktree, the open ones with their space
+const all = linkedWorktrees([app]);
+assert.deepStrictEqual(all.map((w) => [worktreeLabel(w), w.spaceId]), [
+  ['head', undefined],
+  ['open', 'w4'],
+  ['OUT-1', undefined],
+  ['out-2', undefined],
+]);
+console.log('✓ linked worktrees: open ones too, with their space; not the repo itself or prunable ones');
 
 // Folders to list: each repo once (by Herdr's repo key), plain folders, then Herdr's worktree folders not already there
 assert.deepStrictEqual(

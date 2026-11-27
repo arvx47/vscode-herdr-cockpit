@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { filterOverrides, gitEnv, gitInfo, hasChanges, mainBranch, parseStatus } from '../util/gitInfo';
+import { filterOverrides, gitEnv, gitInfo, hasChanges, mainBranch, parseStatus, worktreeState } from '../util/gitInfo';
 
 // Parser: staged / modified / untracked / conflicts / upstream / ahead-behind.
 const p = parseStatus(
@@ -50,7 +50,7 @@ gitInfo(dir, () => {
   assert.strictEqual(info.lastCommit?.subject, 'tracked');
   assert.strictEqual(gitInfo('/definitely/not/here', () => {}), undefined);
   console.log('✓ git branch + change count; repo fsmonitor/filter commands not executed');
-  failClosed().then(envScrubbed).then(mainBranches).then(changesToReview).then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+  failClosed().then(envScrubbed).then(mainBranches).then(changesToReview).then(worktreeHolds).then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
 });
 setTimeout(() => { console.error('git test timed out'); process.exit(1); }, 4000);
 
@@ -136,4 +136,19 @@ async function changesToReview() {
   assert.strictEqual(await hasChanges(repo, true), false, 'the main branch itself: nothing since it');
   assert.strictEqual(await hasChanges(fs.mkdtempSync(path.join(os.tmpdir(), 'hb-git-norepo-')), false), undefined, 'not a repository');
   console.log('✓ whether there are changes to review');
+}
+
+// The worktree list: what a worktree holds that deleting it would lose.
+async function worktreeHolds() {
+  const commit = '-c user.email=a@b -c user.name=t commit -q --allow-empty -m x';
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-git-wt-'));
+  execSync(`git init -q -b main && git ${commit} && git checkout -q -b ticket`, { cwd: repo });
+  assert.deepStrictEqual(await worktreeState(repo, 'main'), { changes: 0, ahead: 0 }, 'a fresh branch holds nothing');
+  execSync(`git ${commit} && git ${commit}`, { cwd: repo });
+  fs.writeFileSync(path.join(repo, 'new.txt'), 'x');
+  assert.deepStrictEqual(await worktreeState(repo, 'main'), { changes: 1, ahead: 2 }, 'a new file and two commits');
+  assert.deepStrictEqual(await worktreeState(repo), { changes: 1 }, 'no base: no commit count');
+  assert.deepStrictEqual(await worktreeState(repo, 'gone'), { changes: 1 }, 'a base that does not exist: no commit count');
+  assert.strictEqual(await worktreeState(fs.mkdtempSync(path.join(os.tmpdir(), 'hb-git-norepo-'))), undefined, 'not a repository');
+  console.log('✓ what a worktree holds');
 }
