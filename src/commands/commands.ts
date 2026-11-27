@@ -480,6 +480,13 @@ export class Commands {
         }
         if (sp) await newTab(d.manage, sp);
       }),
+      // A shell in a new Herdr tab, no picker: in the space of the Herdr tab you're in (⌘T there), else like New Tab.
+      vscode.commands.registerCommand('herdr.newShell', async () => {
+        const sp = await targetSpace();
+        if (sp) {
+          await newTab(d.manage, sp, {});
+        }
+      }),
       // From the Command Palette: they act on the Herdr tab you're in.
       vscode.commands.registerCommand('herdr.terminal.splitPane', async () => {
         const hit = paneOf({ paneId: d.terms.paneOf(vscode.window.activeTerminal)?.paneId });

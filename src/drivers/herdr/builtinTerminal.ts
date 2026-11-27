@@ -423,6 +423,11 @@ export class HerdrPty implements PaneTab {
       }
       return;
     }
+    if (a === 'new-shell') {
+      // A new shell in this tab's space (⌘T): the command finds the space from the tab you're in.
+      void vscode.commands.executeCommand('herdr.newShell');
+      return;
+    }
     if (!screen || !this.stream || this.ended) return;
     switch (a) {
       case 'find':

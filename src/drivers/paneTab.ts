@@ -7,7 +7,7 @@ import type * as vscode from 'vscode';
  * HerdrPty strips: the keybindings run `workbench.action.terminal.sendSequence`, the one way to get a key past
  * xterm.js (which keeps Shift+PageUp for itself) and to the tab. Programs never see it.
  */
-export const TAB_ACTIONS = ['find', 'find-next', 'find-previous', 'page-up', 'page-down', 'top', 'bottom', 'output', 'copy'] as const;
+export const TAB_ACTIONS = ['find', 'find-next', 'find-previous', 'page-up', 'page-down', 'top', 'bottom', 'output', 'copy', 'new-shell'] as const;
 export type TabAction = (typeof TAB_ACTIONS)[number];
 
 /** How a tab is opened. */

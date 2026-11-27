@@ -31,6 +31,7 @@
   "command.showRaw": "Show Raw Record of This Item",
   "command.openHelp": "How to Read the Sidebar",
   "command.newTab": "New Tab…",
+  "command.newShell": "New Shell in This Space",
   "command.reopenClosedTab": "Reopen Closed Tab (Cockpit Tabs and Editors)",
   "command.rename": "Rename…",
   "command.closeInHerdr": "Close in Herdr…",

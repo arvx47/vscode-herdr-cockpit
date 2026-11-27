@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.82",
+  "version": "0.3.83",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -223,6 +223,12 @@
         "title": "%command.newTab%",
         "category": "%category%",
         "icon": "$(add)"
+      },
+      {
+        "command": "herdr.newShell",
+        "title": "%command.newShell%",
+        "category": "%category%",
+        "icon": "$(terminal)"
       },
       {
         "command": "herdr.reopenClosedTab",
@@ -524,6 +530,10 @@
         },
         {
           "command": "herdr.newTab",
+          "when": "herdr.connected"
+        },
+        {
+          "command": "herdr.newShell",
           "when": "herdr.connected"
         },
         {
@@ -1110,6 +1120,15 @@
       }
     ],
     "keybindings": [
+      {
+        "key": "ctrl+alt+t",
+        "mac": "cmd+t",
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b]777;herdr-cockpit;new-shell\u0007"
+        },
+        "when": "terminalFocus && herdr.terminalActive"
+      },
       {
         "key": "ctrl+shift+c",
         "mac": "cmd+c",
