@@ -26,13 +26,14 @@ export function Icon({ name, spin }: { name: string; spin?: boolean }) {
   return <span className={cls} aria-hidden="true" />;
 }
 
-export function IconButton(props: { icon: string; title: string; className?: string; onClick: () => void; expanded?: boolean }) {
+/** `label`: what a screen reader says, when the tooltip alone wouldn't say which item it acts on (default: `title`). */
+export function IconButton(props: { icon: string; title: string; label?: string; className?: string; onClick: () => void; expanded?: boolean }) {
   const click = (e: MouseEvent) => {
     e.stopPropagation();
     props.onClick();
   };
   return (
-    <button className={`icon-btn ${props.className ?? ''}`} title={props.title} aria-label={props.title} aria-expanded={props.expanded} onClick={click}>
+    <button className={`icon-btn ${props.className ?? ''}`} title={props.title} aria-label={props.label ?? props.title} aria-expanded={props.expanded} onClick={click}>
       <Icon name={props.icon} />
     </button>
   );

@@ -84,6 +84,20 @@ function GitLine({ sp }: { sp: SpaceView }) {
   if (sp.worktree) {
     reviewTitle = "Review this worktree's branch: its commits and uncommitted changes (merge base ↔ working tree)";
   }
+  // Spoken as one phrase ("Review changes: 1 staged, 2 new"): its parts are separate spans with no spaces between.
+  const counts: string[] = [];
+  if (g.conflicts) {
+    counts.push(plural(g.conflicts, 'conflict'));
+  }
+  if (g.staged) {
+    counts.push(`${g.staged} staged`);
+  }
+  if (g.modified) {
+    counts.push(`${g.modified} modified`);
+  }
+  if (g.untracked) {
+    counts.push(`${g.untracked} new`);
+  }
   return (
     <>
       {branch}
@@ -91,6 +105,7 @@ function GitLine({ sp }: { sp: SpaceView }) {
       <button
         className="m changes"
         title={reviewTitle}
+        aria-label={`Review changes: ${counts.join(', ')}`}
         onClick={(e) => {
           e.stopPropagation();
           post('review', { spaceId: sp.id });
@@ -377,6 +392,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees, reorder, spacesReord
           <button
             className="open-btn"
             title={openTitle}
+            aria-label={`Open ${sp.label}`}
             onClick={(e) => {
               e.stopPropagation();
               openSpace();

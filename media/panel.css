@@ -506,3 +506,30 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 
 /* Versions, at the bottom of the sidebar. */
 .versions { color: var(--muted); font-size: var(--fs-sm); text-align: center; padding: 14px 0 8px; opacity: 0.8; user-select: text; }
+
+/* ---------- high contrast themes ----------
+   VS Code puts vscode-high-contrast on the webview's body (dark and light high contrast). There, things are told
+   apart by solid borders in the theme's contrast colors, not by tints: cards, buttons and badges get a border, and
+   hover is the theme's dashed outline instead of a background. */
+body.vscode-high-contrast {
+  --card: transparent;
+  --card-border: var(--vscode-contrastBorder, var(--fg));
+  --hover: transparent;
+}
+body.vscode-high-contrast .open-btn,
+body.vscode-high-contrast .btn,
+body.vscode-high-contrast .section-label .count,
+body.vscode-high-contrast .sub-label .count,
+body.vscode-high-contrast .stat {
+  border: 1px solid var(--vscode-contrastBorder, var(--fg));
+}
+body.vscode-high-contrast .row:hover,
+body.vscode-high-contrast .space-head:hover,
+body.vscode-high-contrast .icon-btn:hover,
+body.vscode-high-contrast .open-btn:hover,
+body.vscode-high-contrast .btn:hover,
+body.vscode-high-contrast button.stat:hover,
+body.vscode-high-contrast .space-meta .changes:hover {
+  outline: 1px dashed var(--vscode-contrastActiveBorder, var(--vscode-focusBorder));
+  outline-offset: -1px;
+}

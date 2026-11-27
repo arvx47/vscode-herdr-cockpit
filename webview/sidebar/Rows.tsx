@@ -225,7 +225,7 @@ function Expander({ p, open, onExpand }: { p: PaneView; open: boolean; onExpand:
     icon = 'chevron-up';
     title = 'Hide details';
   }
-  return <IconButton className="expander" icon={icon} title={title} expanded={open} onClick={() => onExpand(!open)} />;
+  return <IconButton className="expander" icon={icon} title={title} label={`${title}: ${p.name}`} expanded={open} onClick={() => onExpand(!open)} />;
 }
 
 /** Expanded-only extras: chips, then the folder when it isn't the space's. */
