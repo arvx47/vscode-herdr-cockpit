@@ -641,7 +641,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         lastActive: (sp) => spaceActivity.get(sp.label),
         paneOrder: (sp) => paneOrder.get(sp.label),
         spaceOrder,
-        groupWorktrees: cfg().get<boolean>('groupWorktrees', false),
+        groupWorktrees: cfg().get<boolean>('groupWorktrees', true),
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: versions(),
         here: (sp) => flow.isOpenHere(sp),
@@ -1281,19 +1281,15 @@ export function activate(ctx: vscode.ExtensionContext) {
    */
   function startingAgentTable(): Record<string, string> | undefined {
     const agents = cfg().inspect<unknown>('agents')?.globalValue;
-    const oldProfiles = cfg().inspect<unknown>('agentProfiles')?.globalValue;
     const saved = ctx.globalState.get<boolean>(AGENT_LIST_SAVED_KEY, false);
-    if (saved && agents && typeof agents === 'object' && !Array.isArray(agents) && oldProfiles === undefined) {
+    if (saved && agents && typeof agents === 'object' && !Array.isArray(agents)) {
       return undefined;
     }
-    return startingTable(agents, oldProfiles);
+    return startingTable(agents);
   }
   /** Write the starting list (startingAgentTable()) into the user settings, so the Settings page shows every row as yours. */
   async function saveStartingAgents(table: Record<string, string>) {
     await cfg().update('agents', table, vscode.ConfigurationTarget.Global);
-    if (cfg().inspect<unknown>('agentProfiles')?.globalValue !== undefined) {
-      await cfg().update('agentProfiles', undefined, vscode.ConfigurationTarget.Global);
-    }
     await ctx.globalState.update(AGENT_LIST_SAVED_KEY, true);
     log.appendLine(`agents: the list is in your user settings now (${Object.keys(table).join(', ')})`);
   }
@@ -1329,6 +1325,32 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
     return accounts;
   }
+  /**
+   * herdr.autoAttach replaced herdr.autoAttachOnSwitch and herdr.autoAttachShells in 0.3.0; they're no longer
+   * declared (0.3.94). Turned into herdr.autoAttach once, where it isn't set (false = none, shells false = agents).
+   */
+  async function moveOldAutoAttach() {
+    const targets: [vscode.ConfigurationTarget, 'globalValue' | 'workspaceValue'][] = [[vscode.ConfigurationTarget.Global, 'globalValue']];
+    if (vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length) {
+      targets.push([vscode.ConfigurationTarget.Workspace, 'workspaceValue']);
+    }
+    for (const [target, at] of targets) {
+      if (cfg().inspect('autoAttach')?.[at] !== undefined) {
+        continue;
+      }
+      let mode: 'agents' | 'none' | undefined;
+      if (cfg().inspect<boolean>('autoAttachOnSwitch')?.[at] === false) {
+        mode = 'none';
+      } else if (cfg().inspect<boolean>('autoAttachShells')?.[at] === false) {
+        mode = 'agents';
+      }
+      if (mode) {
+        await cfg().update('autoAttach', mode, target);
+        log.appendLine(`herdr.autoAttach set to "${mode}" from the old auto-attach settings`);
+      }
+    }
+  }
+  void moveOldAutoAttach().catch(logError('autoAttach'));
   const starting = startingAgentTable();
   if (starting) {
     void saveStartingAgents(starting).catch(logError('agents'));
@@ -1498,7 +1520,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         // Like a snapshot: not while the names after a reconnect aren't known yet.
         syncTabNames();
       }
-      if (e.affectsConfiguration('herdr.agents') || e.affectsConfiguration('herdr.agentProfiles')) {
+      if (e.affectsConfiguration('herdr.agents')) {
         // Reset in the Settings page: write the starting list again, so its rows are back as yours.
         const again = startingAgentTable();
         if (again) {

@@ -222,25 +222,6 @@ export class WindowFlow {
   }
 
   /**
-   * herdr.autoAttach. Until it's set, the two settings it replaced (0.3.0) still decide: autoAttachOnSwitch
-   * false = none, autoAttachShells false = agents.
-   */
-  private autoAttachMode(): 'all' | 'agents' | 'none' {
-    const set = this.cfg().inspect<'all' | 'agents' | 'none'>('autoAttach');
-    const chosen = set?.workspaceFolderValue ?? set?.workspaceValue ?? set?.globalValue;
-    if (chosen) {
-      return chosen;
-    }
-    if (this.cfg().get<boolean>('autoAttachOnSwitch') === false) {
-      return 'none';
-    }
-    if (this.cfg().get<boolean>('autoAttachShells') === false) {
-      return 'agents';
-    }
-    return 'all';
-  }
-
-  /**
    * Open the space in a window of its own: the one that already has it (brought forward), else a new window on
    * its folder (this one, when this window has no folder). The window that opens it attaches the pane through a
    * pending link aimed at that folder.
@@ -482,7 +463,7 @@ export class WindowFlow {
     if (!opts.pin && this.cfg().get<boolean>('closeTerminalsOnSwitch', true)) {
       terms.closeOtherSpaces(space.id);
     }
-    const mode = this.autoAttachMode();
+    const mode = this.cfg().get<'all' | 'agents' | 'none'>('autoAttach', 'all');
     if (opts.autoAttach ?? mode !== 'none') {
       // Every pane gets its own tab: agents (most urgent first), then shells in Herdr's tab order.
       // Tabs appear in the order they're opened (editor and panel alike): open all, then focus the first.

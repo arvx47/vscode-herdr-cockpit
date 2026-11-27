@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.93",
+  "version": "0.3.94",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -816,7 +816,7 @@
         },
         "herdr.groupWorktrees": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "%setting.groupWorktrees.markdownDescription%"
         },
         "herdr.closeTerminalsOnSwitch": {
@@ -847,24 +847,8 @@
         },
         "herdr.newWorktreeStartsWith": {
           "type": "string",
-          "enum": [
-            "shell",
-            "ask",
-            "claude",
-            "codex",
-            "kiro",
-            "cursor"
-          ],
-          "enumDescriptions": [
-            "%setting.newWorktreeStartsWith.enumDescriptions.shell%",
-            "%setting.newWorktreeStartsWith.enumDescriptions.ask%",
-            "%setting.newWorktreeStartsWith.enumDescriptions.claude%",
-            "%setting.newWorktreeStartsWith.enumDescriptions.codex%",
-            "%setting.newWorktreeStartsWith.enumDescriptions.kiro%",
-            "%setting.newWorktreeStartsWith.enumDescriptions.cursor%"
-          ],
           "default": "shell",
-          "description": "%setting.newWorktreeStartsWith.description%"
+          "markdownDescription": "%setting.newWorktreeStartsWith.markdownDescription%"
         },
         "herdr.autoAttach": {
           "type": "string",
@@ -880,18 +864,6 @@
           ],
           "default": "all",
           "description": "%setting.autoAttach.description%"
-        },
-        "herdr.autoAttachOnSwitch": {
-          "type": "boolean",
-          "default": true,
-          "description": "%setting.autoAttachOnSwitch.description%",
-          "deprecationMessage": "%setting.autoAttachOnSwitch.deprecationMessage%"
-        },
-        "herdr.autoAttachShells": {
-          "type": "boolean",
-          "default": true,
-          "description": "%setting.autoAttachShells.description%",
-          "deprecationMessage": "%setting.autoAttachShells.deprecationMessage%"
         },
         "herdr.agentDescription": {
           "type": "string",
@@ -993,15 +965,6 @@
           ],
           "default": "herdr",
           "description": "%setting.spaceOrder.description%"
-        },
-        "herdr.agentProfiles": {
-          "type": [
-            "object",
-            "array"
-          ],
-          "scope": "machine",
-          "deprecationMessage": "%setting.agentProfiles.deprecationMessage%",
-          "markdownDeprecationMessage": "%setting.agentProfiles.markdownDeprecationMessage%"
         }
       }
     },

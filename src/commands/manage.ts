@@ -17,7 +17,7 @@ import { ClosedWorktree, closedWorktrees, herdrWorktreeRepos, linkedWorktrees, w
 import type { WorktreeState } from '../util/gitInfo';
 import { recentFolders } from './recentFolders';
 import { tildePath } from '../util/paths';
-import { AgentProfile, profileOfAgent } from '../agents/agentProfiles';
+import { AgentProfile, profileOfAgent, worktreeAgent } from '../agents/agentProfiles';
 
 /** What a new tab runs: a plain shell, or an agent kind ("claude", "codex", ...), maybe with a profile's environment. */
 export interface What {
@@ -474,16 +474,19 @@ async function pickRepo(deps: ManageDeps): Promise<Space | undefined> {
   return pick?.s;
 }
 
-/** What a new worktree space starts with (herdr.newWorktreeStartsWith): a shell, an agent, or ask. */
+/**
+ * What a new worktree space starts with (herdr.newWorktreeStartsWith): a shell, ask, a row of herdr.agents by
+ * name (with its variables), or an agent kind.
+ */
 async function worktreeStart(deps: ManageDeps, label: string): Promise<What | undefined> {
-  const start = vscode.workspace.getConfiguration('herdr').get<string>('newWorktreeStartsWith', 'shell');
-  if (start === 'ask') {
+  const start = vscode.workspace.getConfiguration('herdr').get<string>('newWorktreeStartsWith', 'shell').trim();
+  if (start.toLowerCase() === 'ask') {
     return pickWhat(deps, `Start in "${label}"`);
   }
-  if (start === 'shell' || !start) {
+  if (!start || start.toLowerCase() === 'shell') {
     return {};
   }
-  return { kind: start };
+  return worktreeAgent(deps.agentProfiles(), start);
 }
 
 /**

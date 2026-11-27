@@ -115,7 +115,7 @@ export function parseProfileSpec(spec: string): { kind: string; env: Record<stri
 export function readAgentList(user: unknown, home: string, defaults: Record<string, string> = DEFAULT_AGENTS): { profiles: AgentProfile[]; problems: string[] } {
   let table: Record<string, unknown> = { ...defaults };
   if (Array.isArray(user)) {
-    table = startingTable(user, undefined, defaults);
+    table = startingTable(user, defaults);
   } else if (user && typeof user === 'object') {
     table = user as Record<string, unknown>;
   }
@@ -145,10 +145,9 @@ export function readAgentList(user: unknown, home: string, defaults: Record<stri
  * delete a setting's default rows (editing one adds a row next to it). The defaults, with what you have already:
  * - rows of yours (`agents`, a table): a default you renamed (your row whose value is just that agent, which is
  *   all the Settings page saves) takes its place; a value set to empty takes it off; the rest come after;
- * - the old herdr.agents list of agent kinds: those agents, in that order;
- * - the old herdr.agentProfiles (`oldProfiles`): its table, or its list of {name, kind, env} objects.
+ * - the old herdr.agents list of agent kinds: those agents, in that order.
  */
-export function startingTable(agents: unknown, oldProfiles: unknown, defaults: Record<string, string> = DEFAULT_AGENTS): Record<string, string> {
+export function startingTable(agents: unknown, defaults: Record<string, string> = DEFAULT_AGENTS): Record<string, string> {
   const table: Record<string, string> = {};
   if (Array.isArray(agents)) {
     for (const kind of agents.filter((k): k is string => typeof k === 'string' && !!k.trim()).map((k) => k.trim())) {
@@ -180,36 +179,6 @@ export function startingTable(agents: unknown, oldProfiles: unknown, defaults: R
         table[name] = spec;
       }
     }
-  }
-  if (Array.isArray(oldProfiles)) {
-    Object.assign(table, profileTable(oldProfiles));
-  } else if (oldProfiles && typeof oldProfiles === 'object') {
-    for (const [name, spec] of Object.entries(oldProfiles as Record<string, unknown>)) {
-      if (typeof spec === 'string' && spec) {
-        table[name] = spec;
-      }
-    }
-  }
-  return table;
-}
-
-/** The old list format as table rows (name → "agent NAME=value …"), to save it in the format the Settings page edits. */
-function profileTable(list: unknown[]): Record<string, string> {
-  const table: Record<string, string> = {};
-  for (const entry of list) {
-    const e = entry as { name?: unknown; kind?: unknown; env?: unknown } | null;
-    if (!e || typeof e.name !== 'string' || !e.name.trim()) {
-      continue;
-    }
-    const parts = [kindOf(e.kind)];
-    if (e.env && typeof e.env === 'object') {
-      for (const [k, v] of Object.entries(e.env as Record<string, unknown>)) {
-        if (typeof v === 'string' && !/\s/.test(v)) {
-          parts.push(`${k}=${v}`);
-        }
-      }
-    }
-    table[e.name.trim()] = parts.join(' ');
   }
   return table;
 }
@@ -252,4 +221,20 @@ export function profileOfAgent(profiles: readonly AgentProfile[], agentName: str
     return undefined;
   }
   return profiles.find((p) => !p.plain && (agentName === p.slug || new RegExp(`^${p.slug.replace(/[-_]/g, '\\$&')}-\\d+$`).test(agentName)));
+}
+
+/**
+ * herdr.newWorktreeStartsWith's agent (not `shell` or `ask`): the row of that name (any case) with its variables,
+ * else the plain row of that agent kind, else the kind itself.
+ */
+export function worktreeAgent(rows: readonly AgentProfile[], start: string): { kind: string; profile?: AgentProfile } {
+  const wanted = start.trim().toLowerCase();
+  const row = rows.find((r) => r.name.toLowerCase() === wanted) ?? rows.find((r) => r.plain && r.kind === wanted);
+  if (!row) {
+    return { kind: wanted };
+  }
+  if (row.plain) {
+    return { kind: row.kind };
+  }
+  return { kind: row.kind, profile: row };
 }

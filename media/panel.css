@@ -220,7 +220,6 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 
 .space-body { padding: 0 6px 6px; }
 .space:not(.open) .space-body { display: none; }
-/* "New tab" shows while you're on the card (mouse or keyboard), not on every card at once. */
 .empty-note { padding: 4px 8px 6px 24px; font-size: var(--fs-md); color: var(--muted); font-style: italic; }
 
 /* hover-revealed actions */
