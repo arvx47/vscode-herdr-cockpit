@@ -6,6 +6,10 @@ import { post, useNow } from './host';
 import { AgentLogo, Icon, IconButton, menuContext, pressable, Since } from './ui';
 
 const STATUS_LABEL: Record<string, string> = { blocked: 'Blocked', done: 'Done', working: 'Working', idle: 'Idle', unknown: 'Unknown' };
+/** The pill's icon for the states that need you, the same as the counters': the state reads without its color. */
+const NEEDS_ICON: Record<string, string> = { blocked: 'warning', done: 'pass-filled' };
+/** An agent that turned blocked or done this recently flashes its frame, so the change catches the eye. */
+const FRESH_MS = 8000;
 /** A shell counts as showing live output this long after its output last changed. */
 const LIVE_MS = 12000;
 
@@ -279,6 +283,11 @@ export function AgentRow(props: RowProps) {
   if (p.framed && !props.attention) {
     cls += ' framed';
   }
+  // Checked when the row draws, not on a clock: the flash is a fixed animation, so the class staying on a little
+  // longer changes nothing, and it only starts again once the class came off and back.
+  if (NEEDS_ICON[status] && p.since !== undefined && Date.now() - p.since < FRESH_MS) {
+    cls += ' fresh';
+  }
   let logoCls = 'avatar';
   if (p.agentKind) {
     logoCls += ' logo';
@@ -286,6 +295,7 @@ export function AgentRow(props: RowProps) {
   const pill = (
     <span className="state">
       {status === 'working' && <Icon name="sync" spin />}
+      {NEEDS_ICON[status] && <Icon name={NEEDS_ICON[status]} />}
       {p.stateLabel ?? STATUS_LABEL[status] ?? status}
       {p.since && ' '}
       {p.since && <Since t={p.since} />}

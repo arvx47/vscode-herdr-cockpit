@@ -84,8 +84,11 @@
   <p>It lists only <b>this window's</b> agents: those in the spaces open here, or whose tab is open here. Agents of other
     windows' spaces show up in those windows. The section is off by default (setting <code>herdr.showNeedsYou</code>): a blocked or done
     agent is then framed in its status color right in its space. A <b>working</b> agent is always framed too, in blue, so
-    the ones busy right now stand out. By default those frames are the border only, so a row's background only means the
-    tab you're in; the setting <code>herdr.framedRows</code> = <code>filled</code> gives them a light fill too, like the card below.</p>
+    the ones busy right now stand out. A framed row is tinted in its status color, like the card below; blocked and done
+    ones get a stronger border and an icon in their pill (<span class="codicon codicon-warning"></span> blocked,
+    <span class="codicon codicon-pass-filled"></span> done), and flash a few times when they've just changed.</p>
+  <p>The row of the <b>Herdr tab you're in</b> gets a ring in the text color around it and a stronger fill, so it stands
+    out whatever its status color. The tab you were in last keeps a faint ring.</p>
   <div class="demo attention">
     <div class="row agent st-blocked">
       <div class="avatar logo" data-logo="claude"></div>
@@ -289,9 +292,9 @@
       of what the agent is doing, written by Claude Haiku, marked <span class="codicon codicon-sparkle"></span> (open the row to
       read all of it, with its age).</dd>
     <dt><span class="codicon codicon-chevron-down"></span> Details</dt><dd>Shows the rest: the full summary of the latest reply (or, for a blocked or done agent, the end of its screen), chips for the Herdr tab, model and other metadata, and the working folder. Click again (or press <kbd>←</kbd>) to hide. Each row remembers its choice. A row with nothing more to show has no chevron.</dd>
-    <dt>Highlighted row</dt><dd>The terminal tab you're in, in this window: the row looks as if the mouse were over it,
+    <dt>Ringed row</dt><dd>The terminal tab you're in, in this window: a ring in the text color and a stronger fill,
       and the sidebar unfolds and scrolls to it when you move to another tab. While you're in a file instead, the last
-      Herdr tab you were in stays highlighted more faintly.</dd>
+      Herdr tab you were in keeps a faint ring.</dd>
     <dt>Small blue dot after the name</dt><dd>The pane that is focused in Herdr.</dd> (that's Herdr's own focus, from the Herdr app, not the tab you're in here).
     <dt>Click the row</dt><dd>Opens the agent in a terminal tab (or brings its tab forward).</dd>
     <dt>Drag the row</dt><dd>Moves it up or down among its space's agents (shells move among the shells the same way; with the keyboard: <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>). The order is only the sidebar's: Herdr's tabs stay where they are. It's remembered per space; new panes go after the ones you placed, and after Herdr restarts (pane ids change) the rows go back to Herdr's order. Right-click the space → <b>Reset Row Order</b> to go back yourself.</dd>

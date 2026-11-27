@@ -16,6 +16,8 @@
   --hover: color-mix(in srgb, var(--vscode-list-hoverBackground), var(--vscode-foreground) 10%);
   --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
   --radius: 7px;
+  /* The ring around the row of the Herdr tab you're in. */
+  --sel: color-mix(in srgb, var(--vscode-foreground) 85%, transparent);
   /* Text sizes: tiny (pills, chips), small (labels, meta), body (rows), and headings. In rem of the editor's own
      font size (html, below): 10.5px, 11px, 12px, 13px and 14px at the usual 13px, and they grow with it. */
   --fs-xs: .8077rem;
@@ -235,7 +237,8 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   cursor: pointer; outline: none;
 }
 .row:hover { background: var(--hover); }
-.row:has(.row-hit:focus-visible) { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+/* An outline just outside the row, so it shows together with the ring of the tab you're in (a box-shadow). */
+.row:has(.row-hit:focus-visible) { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
 /* The name is the row's keyboard button; the ring goes around the whole row (above). */
 .row-hit { outline: none; }
 /* Dragging a row to reorder its list: the row fades, a line shows where it would land. */
@@ -371,35 +374,45 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .sh-failed .term { color: var(--st-failed); }
 
 /* attention cards reuse rows, framed; so does an agent in its space that's working, or blocked or done when
-   Needs you is off (PaneView.framed) */
+   Needs you is off (PaneView.framed): the whole row tinted in its status color, with a border in it. */
 .attention { padding: 0 8px; }
 .attention .row, .row.framed {
-  background: color-mix(in srgb, var(--c) 7%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c) 28%, transparent);
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
   margin: 6px 0 0;
   /* Taller than a plain row, but the same sides once the border counts (a plain row: 6px left, 4px right), so
      avatars, names and chevrons line up whether a row is framed or not. */
   padding: 8px 3px 8px 5px;
 }
 .row.framed { margin: 4px 0; }
-.attention .row:hover, .row.framed:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
-.attention .where { font-size: var(--fs-sm); color: var(--muted); }
-/* herdr.framedRows = outline (ViewState.framedRows): in a space a framed row keeps its border but no fill, and hovers
-   like any row, so a row's background only means the tab you're in. The Needs you cards keep theirs. */
-.frames-outline .row.framed { background: none; }
-.frames-outline .row.framed:hover { background: var(--hover); }
-/* The Herdr tab you're in: like a hovered row but stronger, so it stands out from one the mouse is over (with
-   framedRows = filled, a framed one in its status color); the one you were in last, a light tint. */
-.row.active-now, .row.active-now:hover,
-.frames-outline .row.framed.active-now, .frames-outline .row.framed.active-now:hover {
-  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+.attention .row:hover, .row.framed:hover { background: color-mix(in srgb, var(--c) 19%, transparent); }
+/* Waiting on you (blocked) or finished (done): a stronger border than a working agent's, so they stand out from it. */
+.attention .row.st-blocked, .attention .row.st-done, .row.framed.st-blocked, .row.framed.st-done {
+  border-color: color-mix(in srgb, var(--c) 65%, transparent);
 }
-.frames-filled .row.framed.active-now, .frames-filled .row.framed.active-now:hover { background: color-mix(in srgb, var(--c) 32%, transparent); }
-.row.active-recent, .frames-outline .row.framed.active-recent { background: color-mix(in srgb, var(--hover) 50%, transparent); }
-.frames-filled .row.framed.active-recent { background: color-mix(in srgb, var(--c) 14%, transparent); }
-/* The row you were in last still lights up fully when hovered, like any row. */
-.row.active-recent:hover, .frames-outline .row.framed.active-recent:hover { background: var(--hover); }
-.frames-filled .row.framed.active-recent:hover { background: color-mix(in srgb, var(--c) 20%, transparent); }
+.attention .where { font-size: var(--fs-sm); color: var(--muted); }
+
+/* The Herdr tab you're in: a ring in the text color (--sel; it reads against every status color, where the theme's
+   blue focus color would vanish on a working agent) and a stronger fill: the status color for a framed row, a
+   neutral one for any other. The one you were in last: a faint ring only, its fill as any row's. */
+.row.active-now, .row.active-now:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--sel);
+}
+.row.framed.active-now, .row.framed.active-now:hover,
+.attention .row.active-now, .attention .row.active-now:hover {
+  background: color-mix(in srgb, var(--c) 28%, transparent);
+  border-color: var(--sel);
+  box-shadow: inset 0 0 0 1px var(--sel);
+}
+.row.active-recent { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sel) 35%, transparent); }
+.row.framed.active-recent, .attention .row.active-recent { box-shadow: none; border-color: color-mix(in srgb, var(--sel) 45%, var(--c)); }
+
+/* An agent that just turned blocked or done (Rows.tsx FRESH_MS): its frame flashes a few times. */
+.row.fresh.framed, .attention .row.fresh { animation: fresh 1.1s ease-out 3; }
+@keyframes fresh {
+  0% { background: color-mix(in srgb, var(--c) 45%, transparent); }
+}
 
 /* shells group */
 .group {
@@ -515,6 +528,8 @@ body.vscode-high-contrast {
   --card: transparent;
   --card-border: var(--vscode-contrastBorder, var(--fg));
   --hover: transparent;
+  /* The text color, not contrastActiveBorder: that one is orange in the dark theme, a blocked agent's color. */
+  --sel: var(--fg);
 }
 body.vscode-high-contrast .open-btn,
 body.vscode-high-contrast .btn,

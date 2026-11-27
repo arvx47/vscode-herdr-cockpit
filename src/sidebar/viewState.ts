@@ -174,11 +174,6 @@ export interface ViewState {
   attention: PaneView[];
   /** The Needs you section is on; when off, blocked and done agents are framed in their space instead (PaneView.needs). */
   needsYou: boolean;
-  /**
-   * herdr.framedRows: how a framed agent row in a space looks (PaneView.framed). `outline`: the border in its status
-   * color and no fill, so only the row of the tab you're in has a background; `filled`: a tinted fill too.
-   */
-  framedRows: FramedRows;
   spaces: SpaceView[];
   /** You dragged spaces into an order of your own (ViewInputs.spaceOrder; a card's menu offers Reset Space Order). */
   spacesReordered: boolean;
@@ -233,16 +228,11 @@ export interface ViewInputs {
   elsewhere?(space: Space): boolean;
   /** herdr.showNeedsYou: list blocked and done agents in a "Needs you" section (default false, as the setting). */
   needsYou?: boolean;
-  /** See ViewState.framedRows (default `outline`, as the setting). */
-  framedRows?: FramedRows;
   /** See ViewState.thisWindow. */
   thisWindow?: { name: string };
   /** The pane of the Herdr tab you're in, or were in last (`now` false): see PaneView.active. */
   activePane?: { id: string; now: boolean };
 }
-
-/** herdr.framedRows: see ViewState.framedRows. */
-export type FramedRows = 'outline' | 'filled';
 
 /**
  * Spaces with an agent working or waiting on you first, then the most recently active; ties keep Herdr's order.
@@ -921,7 +911,6 @@ export function buildViewState(i: ViewInputs): ViewState {
     totals,
     attention,
     needsYou,
-    framedRows: i.framedRows ?? 'outline',
     spaces: listed,
     spacesReordered: !!i.spaceOrder?.length,
     layout,

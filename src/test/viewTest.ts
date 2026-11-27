@@ -187,11 +187,6 @@ assert.deepStrictEqual(buildViewState({ ...needy, here: () => false }).attention
 const off = buildViewState({ ...needy, here: () => true, needsYou: false });
 assert.deepStrictEqual([off.attention, off.needsYou, allNeedy.needsYou], [[], false, true], 'the section can be turned off');
 assert.strictEqual(buildViewState({ ...needy, needsYou: undefined }).needsYou, false, 'off by default, like the herdr.showNeedsYou setting');
-assert.deepStrictEqual(
-  [buildViewState(needy).framedRows, buildViewState({ ...needy, framedRows: 'filled' }).framedRows],
-  ['outline', 'filled'],
-  'framed rows are outlines by default, like the herdr.framedRows setting',
-);
 assert.ok(off.spaces.flatMap((x) => x.agents).every((a) => a.needs), 'with the section off, waiting agents are framed in their space');
 assert.ok(allNeedy.spaces.flatMap((x) => x.agents).every((a) => !a.needs), 'with it on, they are not');
 assert.ok(off.spaces.flatMap((x) => x.agents).every((a) => a.framed), 'agents needing you are framed in their space');
