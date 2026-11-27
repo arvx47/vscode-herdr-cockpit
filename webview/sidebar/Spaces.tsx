@@ -231,7 +231,10 @@ function ShellGroup({ sp, ui, update }: { sp: SpaceView; ui: UiState; update: Up
   );
 }
 
-/** Where the space lives: its folder (shortened, the full path on hover), and for a worktree, whose checkout it is. */
+/**
+ * Where the space lives: its folder (shortened, the full path on hover), and for a worktree, whose checkout it is
+ * (left out under its repository's card, herdr.groupWorktrees: where it's drawn says so).
+ */
 function FolderLine({ sp }: { sp: SpaceView }) {
   const f = sp.folder;
   if (!f) {
@@ -242,6 +245,14 @@ function FolderLine({ sp }: { sp: SpaceView }) {
   if (f.worktreeOf) {
     title = `A worktree of ${f.worktreeOf}: its own checkout and branch\n${title}`;
     icon = 'repo-forked';
+  }
+  if (f.worktreeOf && sp.under) {
+    return (
+      <div className="space-folder" title={title}>
+        <Icon name={icon} />
+        <span className="folder-path">{f.text}</span>
+      </div>
+    );
   }
   if (f.worktreeOf) {
     // Two lines: its whole folder (shortened, Herdr's worktree folders all look alike), then whose checkout it is.
@@ -468,7 +479,7 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
   useActiveRow(state, update);
   const cards = (section: string, spaces: SpaceView[]) => {
     const reorder = spacesReorder(section, spaces);
-    return spaces.map((sp) => (
+    const card = (sp: SpaceView) => (
       <SpaceCard
         key={sp.id}
         sp={sp}
@@ -479,7 +490,25 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
         reorder={reorder}
         spacesReordered={state.spacesReordered}
       />
-    ));
+    );
+    // herdr.groupWorktrees: a repository's worktree spaces come right after it (viewState.ts groupUnderRepos), drawn
+    // indented under its card along a guide line.
+    const out: ReactNode[] = [];
+    for (const sp of spaces) {
+      if (sp.under) {
+        continue;
+      }
+      out.push(card(sp));
+      const kids = spaces.filter((c) => c.under === sp.id);
+      if (kids.length) {
+        out.push(
+          <div key={`${sp.id}/worktrees`} className="space-children">
+            {kids.map(card)}
+          </div>,
+        );
+      }
+    }
+    return out;
   };
   const { layout } = state;
   let body: ReactNode;

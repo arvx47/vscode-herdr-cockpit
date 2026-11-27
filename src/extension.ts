@@ -648,6 +648,7 @@ export function activate(ctx: vscode.ExtensionContext) {
         lastActive: (sp) => spaceActivity.get(sp.label),
         paneOrder: (sp) => paneOrder.get(sp.label),
         spaceOrder,
+        groupWorktrees: cfg().get<boolean>('groupWorktrees', false),
         // In the sidebar itself: the secondary sidebar shows a single view as a tab and drops its description.
         versions: versions(),
         here: (sp) => flow.isOpenHere(sp),

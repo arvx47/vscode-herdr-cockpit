@@ -109,6 +109,11 @@ export interface SpaceView {
   shells: PaneView[];
   /** You dragged its rows into an order of your own (the card's menu offers Reset Row Order). */
   reordered: boolean;
+  /**
+   * herdr.groupWorktrees: a worktree space listed right under its repository's card (same section), drawn indented
+   * below it. The repository space's id.
+   */
+  under?: string;
 }
 
 /** The connection, as the sidebar shows it (see Conn in sync.ts). */
@@ -212,6 +217,8 @@ export interface ViewInputs {
   paneOrder?(space: Space): string[] | undefined;
   /** The order you dragged the spaces into (space names), if you did: it wins over `order` for those spaces. */
   spaceOrder?: string[];
+  /** herdr.groupWorktrees: list each worktree space right under its repository's space, indented. */
+  groupWorktrees?: boolean;
   versions?: { cockpit: string; herdr?: string; driver?: string };
   /** See ViewState.worktrees (default true). */
   worktrees?: boolean;
@@ -847,6 +854,18 @@ export function buildViewState(i: ViewInputs): ViewState {
       a.framed = a.needs || a.status === 'working';
     }
   }
+  const layout = spacesLayout(spaces, i.thisWindow);
+  let listed = spaces;
+  if (i.groupWorktrees) {
+    const repoOf = new Map<string, string>();
+    for (const sp of all) {
+      const repo = repoSpace(all, sp);
+      if (repo && repo.id !== sp.id) {
+        repoOf.set(sp.id, repo.id);
+      }
+    }
+    listed = groupUnderRepos(spaces, (id) => repoOf.get(id), layout.split);
+  }
   let activeRow: ViewState['activeRow'];
   if (i.activePane) {
     for (const s of spaces) {
@@ -885,9 +904,9 @@ export function buildViewState(i: ViewInputs): ViewState {
     attention,
     needsYou,
     framedRows: i.framedRows ?? 'outline',
-    spaces,
+    spaces: listed,
     spacesReordered: !!i.spaceOrder?.length,
-    layout: spacesLayout(spaces, i.thisWindow),
+    layout,
     // By agent kind: every Claude Code account's card shows while a Claude agent runs.
     usage: i.usage.filter((u) => running.has(u.kind ?? u.id)).map(usageView),
     versions: i.versions,
@@ -895,6 +914,49 @@ export function buildViewState(i: ViewInputs): ViewState {
     thisWindow: i.thisWindow,
     activeRow,
   };
+}
+
+/** The sidebar section a space is listed in, when the list is split (spacesLayout). */
+function sectionOf(s: SpaceView): string {
+  if (s.here) {
+    return 'here';
+  }
+  if (s.elsewhere) {
+    return 'elsewhere';
+  }
+  return 'others';
+}
+
+/**
+ * herdr.groupWorktrees: each worktree space moved right after its repository's space and marked `under` it, when both
+ * are listed in the same section (`split`: This window / Other windows / Other spaces; else one list). Worktrees keep
+ * their order among themselves; a worktree whose repository has no space, or is in another section, stays where it was.
+ */
+export function groupUnderRepos(spaces: SpaceView[], repoOf: (id: string) => string | undefined, split: boolean): SpaceView[] {
+  const byId = new Map(spaces.map((s) => [s.id, s]));
+  const children = new Map<string, SpaceView[]>();
+  for (const s of spaces) {
+    const repo = byId.get(repoOf(s.id) ?? '');
+    if (!repo || repo === s || (split && sectionOf(repo) !== sectionOf(s))) {
+      continue;
+    }
+    if (!children.has(repo.id)) {
+      children.set(repo.id, []);
+    }
+    children.get(repo.id)!.push(s);
+  }
+  const nested = new Set([...children.values()].flat());
+  const out: SpaceView[] = [];
+  for (const s of spaces) {
+    if (nested.has(s)) {
+      continue;
+    }
+    out.push(s);
+    for (const c of children.get(s.id) ?? []) {
+      out.push({ ...c, under: s.id });
+    }
+  }
+  return out;
 }
 
 /**

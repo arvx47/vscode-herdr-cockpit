@@ -221,34 +221,6 @@ export function normalize(res: SessionSnapshotResult): Model {
 }
 
 /**
- * The other spaces of `s`'s repository: its own checkout's space and its linked worktrees' (Herdr's `repo_key`; a
- * repo space Herdr has no worktree info for counts by its folder being the repo's root). Empty outside a repository.
- */
-export function sameRepoSpaces(spaces: Space[], s: Space): Space[] {
-  const key = repoKeyOf(spaces, s);
-  if (!key) {
-    return [];
-  }
-  return spaces.filter((p) => p !== s && p.id !== s.id && repoKeyOf(spaces, p) === key);
-}
-
-function repoKeyOf(spaces: Space[], s: Space): string | undefined {
-  if (s.worktree) {
-    return s.worktree.repo_key;
-  }
-  if (!s.cwd) {
-    return undefined;
-  }
-  const cwd = path.resolve(s.cwd);
-  for (const p of spaces) {
-    if (p.worktree?.is_linked_worktree && path.resolve(p.worktree.repo_root) === cwd) {
-      return p.worktree.repo_key;
-    }
-  }
-  return undefined;
-}
-
-/**
  * The space to start a new worktree from: the space itself, or for a linked worktree space, its repo's main
  * space (same repo, not a linked worktree, or open on the repo's folder). None when that space isn't open.
  */

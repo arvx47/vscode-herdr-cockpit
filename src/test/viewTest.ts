@@ -8,8 +8,9 @@ import { describeProcess, isShellProcess, summarizeAgent, summarizeShell } from 
 import * as vm from 'vm';
 import { allPanes, attachOrder, countByStatus, findPane, needingAttention, normalize, repoSpace } from '../state/model';
 import type { Space } from '../state/model';
+import type { SpaceView } from '../sidebar/viewState';
 import { ago, left } from '../util/format';
-import { applyPaneOrder, applySpaceOrder, buildViewState, folderLine, headline, herdrTabLabel, orderByActivity, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
+import { applyPaneOrder, applySpaceOrder, buildViewState, folderLine, groupUnderRepos, headline, herdrTabLabel, orderByActivity, ownTabLabel, paneName, setAccountRows, setAgentNames, setProfileNames, shortPath, spacesLayout, tabName, todayLines, usageView } from '../sidebar/viewState';
 import type { PaneActivity } from '../state/activity';
 import type { PaneProcessInfo, SessionSnapshotResult } from '../drivers/herdr/herdrTypes';
 
@@ -490,5 +491,19 @@ assert.strictEqual(ownTabLabel('3', 'w1:t3'), undefined, "Herdr's number");
 assert.strictEqual(ownTabLabel('', 'w1:t3'), undefined);
 assert.strictEqual(ownTabLabel(undefined, 'w1:t3'), undefined);
 console.log("✓ a tab's own label");
+
+// herdr.groupWorktrees: worktree spaces right under their repository's card
+{
+  const sv = (id: string, here = false) => ({ id, label: id, here, elsewhere: false }) as unknown as SpaceView;
+  const repoOf: Record<string, string> = { wtA: 'app', wtB: 'app', wtW: 'web', wtGone: 'nope' };
+  const list = [sv('wtA'), sv('notes'), sv('app'), sv('wtGone'), sv('wtB'), sv('web', true), sv('wtW')];
+  const one = groupUnderRepos(list, (id) => repoOf[id], false);
+  assert.deepStrictEqual(one.map((s) => `${s.id}${s.under ? '<' + s.under : ''}`), ['notes', 'app', 'wtA<app', 'wtB<app', 'wtGone', 'web', 'wtW<web'], 'one list: each under its repo, in their order');
+  const split = groupUnderRepos(list, (id) => repoOf[id], true);
+  assert.ok(!split.find((s) => s.id === 'wtW')!.under, 'a repository in another section: not nested');
+  assert.strictEqual(split.find((s) => s.id === 'wtA')!.under, 'app', 'same section: nested');
+  assert.ok(!list.some((s) => s.under), 'the input is left alone');
+  console.log('✓ worktree spaces grouped under their repository');
+}
 
 console.log('\nview tests passed');
