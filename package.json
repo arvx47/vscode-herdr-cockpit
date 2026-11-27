@@ -2,7 +2,7 @@
   "name": "herdr-cockpit",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.91",
+  "version": "0.3.92",
   "publisher": "sriharirao",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -273,6 +273,12 @@
         "title": "%command.reopenWorktree%",
         "category": "%category%",
         "icon": "$(history)"
+      },
+      {
+        "command": "herdr.deleteWorktree",
+        "title": "%command.deleteWorktree%",
+        "category": "%category%",
+        "icon": "$(trash)"
       },
       {
         "command": "herdr.setupClaudeUsage",
@@ -553,6 +559,10 @@
           "when": "herdr.connected"
         },
         {
+          "command": "herdr.deleteWorktree",
+          "when": "false"
+        },
+        {
           "command": "herdr.focusAttention",
           "when": "herdr.connected"
         },
@@ -668,6 +678,11 @@
           "command": "herdr.rename",
           "when": "webviewId == herdr.spaces && webviewSection",
           "group": "7_edit@1"
+        },
+        {
+          "command": "herdr.deleteWorktree",
+          "when": "webviewId == herdr.spaces && webviewSection =~ /^space/ && spaceWorktree",
+          "group": "8_close@2"
         },
         {
           "command": "herdr.closeInHerdr",

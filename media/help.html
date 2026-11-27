@@ -140,7 +140,7 @@
       </section>
     </div>
   </div>
-  <p>The bottom of the sidebar shows the versions: Herdr Cockpit's, and Herdr's while connected (for example <b>Herdr Cockpit v0.3.91 · Herdr 0.9.5</b>).</p>
+  <p>The bottom of the sidebar shows the versions: Herdr Cockpit's, and Herdr's while connected (for example <b>Herdr Cockpit v0.3.92 · Herdr 0.9.5</b>).</p>
   <p><b>Order:</b> spaces keep Herdr's own order. Set <code>herdr.spaceOrder</code> to <code>activity</code> to put spaces with an agent working or waiting on you first, then the most recently active ones (an agent started, finished or asked something, or you switched to the space here or in Herdr); that order is remembered across reloads.
     To put them in an order of your own, drag a space's name line up or down within its section (<b>This window</b>,
     <b>Other windows</b>, <b>Other spaces</b>), or press <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> on it. That order is only
@@ -206,8 +206,9 @@
       doesn't have, or <b>nothing beyond the main branch</b> (that part fills in a moment later, and only in a trusted window).
       Picking one goes to its space, or opens one for it like <b>Reopen worktree</b> (below). The
       <span class="codicon codicon-trash"></span> on a row deletes that worktree's folder, after asking: its space closes too,
-      the branch stays in the repository, and uncommitted files are lost (the dialog says how many). Then the list comes back,
-      to delete another. With no worktree yet, the list says <b>No worktree yet</b>.</dd>
+      the branch stays in the repository, and uncommitted files are lost (the dialog says how many). The list doesn't open
+      again afterwards. With no worktree yet, the list says <b>No worktree yet</b>. A worktree space's card also has
+      <b>Delete Worktree…</b> in its right-click menu: the same question and delete, for that space's folder.</dd>
     <dt><span class="codicon codicon-git-branch-create"></span> New worktree (from the <span class="codicon codicon-git-branch-create"></span> above, right-click a space, or <b>Herdr Cockpit: New Worktree…</b>)</dt>
     <dd>The quick way to start a new piece of work, like a ticket, in a repository you already have a space for. It asks one
       thing: the branch name. Type a ticket key (<code>OUT-9656</code>), paste the ticket's link (its key is used), or any branch

@@ -40,6 +40,7 @@
   "command.newWorktree": "New Worktree…",
   "command.reopenWorktree": "Reopen Worktree…",
   "command.worktreeMenu": "Worktrees of This Repository…",
+  "command.deleteWorktree": "Delete Worktree…",
   "command.setupClaudeUsage": "Set Up Claude Plan Limits…",
   "command.setKiroCredits": "Set Kiro Monthly Credits…",
   "command.startServer": "Start Herdr",

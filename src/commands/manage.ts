@@ -777,10 +777,8 @@ export async function worktreeMenu(deps: ManageDeps, from?: Space) {
   }
   const state = states[found.indexOf(w)];
   if (remove) {
-    if (await deleteWorktree(deps, w, state, base)) {
-      // Back to the list, so several can go one after the other.
-      await worktreeMenu(deps, from);
-    }
+    // Not back to the list afterwards: the user found it reopening (with New worktree… on top) confusing.
+    await deleteWorktree(deps, w, state, base);
     return;
   }
   const space = spaces.find((sp) => sp.id === w.spaceId);
@@ -789,6 +787,35 @@ export async function worktreeMenu(deps: ManageDeps, from?: Space) {
   } else {
     await openClosedWorktree(deps, w);
   }
+}
+
+/**
+ * Delete Worktree… on a worktree space's card: the same confirmation and delete as the trash button in the
+ * worktree list, for that space's checkout.
+ */
+export async function deleteWorktreeSpace(deps: ManageDeps, space: Space) {
+  const wt = space.worktree;
+  if (!wt?.is_linked_worktree) {
+    vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: "${space.label}" isn't a worktree space, so there's no worktree to delete.`);
+    return;
+  }
+  if (!(await deps.ensureConnected())) {
+    return;
+  }
+  // Herdr's list has the branch; when it doesn't answer, the space's own record is enough to delete it.
+  const { found } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: 'Looking for the worktree…' }, () =>
+    findWorktrees(deps, space, true),
+  );
+  let w = found.find((f) => f.spaceId === space.id || f.path === wt.checkout_path);
+  if (!w) {
+    w = { path: wt.checkout_path, repoName: wt.repo_name, repoFolder: wt.repo_root, spaceId: space.id };
+  }
+  if (!w.spaceId) {
+    w = { ...w, spaceId: space.id };
+  }
+  const base = await deps.mainBranch(w.repoFolder);
+  const state = await deps.worktreeState(w.path, base).catch(() => undefined);
+  await deleteWorktree(deps, w, state, base);
 }
 
 /** One worktree in the list: its branch, where its space is, and what it holds. */

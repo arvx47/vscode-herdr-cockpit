@@ -363,7 +363,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees, reorder, spacesReord
       <div
         className="space-head"
         title={title}
-        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo, spaceReordered: sp.reordered, spacesReordered })}
+        data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo, spaceWorktree: sp.worktree && worktrees, spaceReordered: sp.reordered, spacesReordered })}
         {...drag.source}
         onClick={() => setOpen(!open)}
       >

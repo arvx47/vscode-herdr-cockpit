@@ -18,7 +18,7 @@ import type { Links } from '../windows/links';
 import { binaryFound, serverStatus } from '../drivers/herdr/connection';
 import { HERDR_PROTOCOL } from '../drivers/herdr/herdrTypes';
 import { showHelp } from '../sidebar/help';
-import { closeInHerdr, ManageDeps, newSpace, newTab, newWorktree, rename, reopenTab, reopenWorktree, splitPane, worktreeMenu } from './manage';
+import { closeInHerdr, deleteWorktreeSpace, ManageDeps, newSpace, newTab, newWorktree, rename, reopenTab, reopenWorktree, splitPane, worktreeMenu } from './manage';
 import { pickClaudeAccount, setUpClaudeUsage } from '../agents/usageSetup';
 import { ClaudeAccount, claudeAccountKey } from '../agents/usage';
 import { DOWN_TEXT, fileReference } from './notices';
@@ -469,6 +469,14 @@ export class Commands {
           return;
         }
         await reopenWorktree(d.manage, itemOf(t)?.space);
+      }),
+      // Right-click on a worktree space's card: delete its checkout (and close the space).
+      vscode.commands.registerCommand('herdr.deleteWorktree', async (t?: Target) => {
+        const sp = itemOf(t)?.space;
+        if (!sp) {
+          return;
+        }
+        await deleteWorktreeSpace(d.manage, sp);
       }),
       vscode.commands.registerCommand('herdr.newTab', async (t?: Target) => {
         // From the keyboard there's no target: use the space you're working in, like a "+" terminal.
