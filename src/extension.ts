@@ -422,7 +422,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     }
     const bin = binary();
     if (!binaryFound(bin)) {
-      const pick = await vscode.window.showErrorMessage(`Herdr isn't installed (looked for ${bin}).`, 'Install Herdr', 'Settings');
+      const pick = await vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: Herdr isn't installed (looked for ${bin}). Install it, or set its path in Settings.`, 'Install Herdr', 'Settings');
       if (pick === 'Install Herdr') {
         vscode.commands.executeCommand('herdr.openInstallDocs');
       } else if (pick === 'Settings') {

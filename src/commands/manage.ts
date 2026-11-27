@@ -234,7 +234,7 @@ export function startAgent(deps: ManageDeps, paneId: string, kind: string, where
 async function openCreated(deps: ManageDeps, paneId: string, what: What, where: string) {
   const hit = await deps.findPane(paneId);
   if (!hit) {
-    vscode.window.showWarningMessage(`Herdr created ${paneId} but it hasn't appeared yet. Refresh and click it in the sidebar.`);
+    vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: the new tab was created but hasn't shown up yet. Click Refresh in the sidebar's ⋯ menu, then click it there.`);
     return;
   }
   await deps.attach(hit.space, hit.pane, what.kind);
@@ -370,7 +370,7 @@ export async function reopenTab(deps: ManageDeps, closed: ClosedTab) {
     }
     const hit = await deps.findPane(paneId);
     if (!hit) {
-      vscode.window.showWarningMessage(`Herdr created ${paneId} but it hasn't appeared yet. Refresh and click it in the sidebar.`);
+      vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: the new tab was created but hasn't shown up yet. Click Refresh in the sidebar's ⋯ menu, then click it there.`);
       return;
     }
     await deps.attach(hit.space, hit.pane, closed.agentKind);
@@ -1012,7 +1012,7 @@ export async function rename(deps: ManageDeps, target: { space: Space; pane?: Pa
   if (!pane) {
     const label = await vscode.window.showInputBox({ title: 'Rename space', value: space.label, validateInput: (v) => (v.trim() ? undefined : 'Enter a name') });
     if (!label?.trim()) return;
-    await deps.actions.renameSpace(space.id, label.trim()).catch((e) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`));
+    await deps.actions.renameSpace(space.id, label.trim()).catch((e) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't rename "${space.label}": ${err(e)}`));
     return;
   }
   const tab = space.tabs.find((t) => t.id === pane.tabId);
@@ -1036,7 +1036,7 @@ export async function rename(deps: ManageDeps, target: { space: Space; pane?: Pa
     const updated = await deps.findPane(pane.id);
     if (updated) await deps.renameTerminal(pane.id, tabName(updated.space.tabs.find((t) => t.id === pane.tabId), updated.pane));
   } catch (e) {
-    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`);
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't rename ${current}: ${err(e)}`);
   }
 }
 
@@ -1067,7 +1067,7 @@ export async function closeInHerdr(deps: ManageDeps, target: { space: Space; pan
       await deps.actions.closeSpace(space.id);
     } catch (e: any) {
       if (e?.code !== 'workspace_group_close_required') {
-        return void vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`);
+        return void vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't close "${space.label}": ${err(e)}`);
       }
       const all = await vscode.window.showWarningMessage(
         `"${space.label}" has worktree spaces.`,
@@ -1075,7 +1075,7 @@ export async function closeInHerdr(deps: ManageDeps, target: { space: Space; pan
         'Close All',
       );
       if (all) {
-        await deps.actions.closeSpace(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
+        await deps.actions.closeSpace(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't close "${space.label}" and its worktree spaces: ${err(e2)}`));
       }
     }
     return;
@@ -1094,7 +1094,7 @@ export async function closeInHerdr(deps: ManageDeps, target: { space: Space; pan
   if (!ok) return;
   const only = !tab || tab.panes.length <= 1;
   await (only && tab ? deps.actions.closeTab(tab.id) : deps.actions.closePane(pane.id)).catch((e) =>
-    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e)}`),
+    vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't close "${name}": ${err(e)}`),
   );
 }
 
@@ -1117,7 +1117,7 @@ async function removeWorktree(deps: ManageDeps, space: Space) {
       'Delete Anyway',
     );
     if (force) {
-      await deps.actions.removeWorktree(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: ${err(e2)}`));
+      await deps.actions.removeWorktree(space.id, true).catch((e2) => vscode.window.showErrorMessage(`${MESSAGE_PREFIX}: couldn't delete the worktree "${space.label}": ${err(e2)}`));
     }
   }
 }

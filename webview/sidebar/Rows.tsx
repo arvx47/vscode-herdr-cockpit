@@ -140,8 +140,13 @@ export function useDragMove(id: string, reorder: Reorder | undefined) {
   return { cls, source, target };
 }
 
-/** What every row shares: the frame, click to attach, the right-click menu, keyboard expand/collapse. */
-function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line1: ReactNode; body: ReactNode; side: ReactNode }) {
+/**
+ * What every row shares: the frame, click to attach, the right-click menu, keyboard expand/collapse. The whole row
+ * takes a mouse click; for the keyboard and screen readers the button is the name (`line1` gets it), so the row's
+ * own buttons (Review, the chevron) sit beside it rather than inside another button. `label` is what a screen
+ * reader says for it: the name and its status.
+ */
+function RowFrame(props: RowProps & { className: string; label: string; avatar: ReactNode; line1: (name: ReactNode) => ReactNode; body: ReactNode; side: ReactNode }) {
   const { p } = props;
   const drag = useDragMove(p.id, props.reorder);
   let cls = `row ${props.className}${drag.cls}`;
@@ -154,6 +159,7 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
   if (props.expanded) {
     cls += ' open';
   }
+  const open = () => post('attach', { spaceId: p.spaceId, paneId: p.id });
   let hint = 'Click to open it in a terminal tab';
   if (p.attached) {
     hint = 'Click to show its terminal tab';
@@ -172,7 +178,12 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
       }
       props.reorder.step(p.id, by);
       // The row in its space, not its copy in Needs you (that list has no reordering).
-      keepFocus(() => [...document.querySelectorAll<HTMLElement>(`[data-pane="${CSS.escape(p.id)}"]`)].find((r) => !r.closest('.attention')));
+      keepFocus(
+        () =>
+          [...document.querySelectorAll<HTMLElement>(`[data-pane="${CSS.escape(p.id)}"]`)]
+            .find((r) => !r.closest('.attention'))
+            ?.querySelector<HTMLElement>('.row-hit') ?? undefined,
+      );
     } else if (!props.attention && p.more && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       props.onExpand(e.key === 'ArrowRight');
@@ -182,15 +193,19 @@ function RowFrame(props: RowProps & { className: string; avatar: ReactNode; line
     <div
       className={cls}
       data-pane={p.id}
-      title={`${p.name} · ${p.id}\n${hint}`}
+      title={`${p.name}\n${hint}`}
       data-vscode-context={menuContext({ webviewSection: p.kind, spaceId: p.spaceId, paneId: p.id, spaceHere: p.spaceMounted })}
-      {...pressable(() => post('attach', { spaceId: p.spaceId, paneId: p.id }), { onKey })}
+      onClick={open}
       {...drag.source}
       {...drag.target}
     >
       {props.avatar}
       <div className="main">
-        {props.line1}
+        {props.line1(
+          <span className="name row-hit" aria-label={props.label} {...pressable(open, { onKey })}>
+            {p.name}
+          </span>,
+        )}
         {props.attention && <div className="where">{p.spaceLabel}</div>}
         {props.body}
       </div>
@@ -337,24 +352,27 @@ export function AgentRow(props: RowProps) {
       {...props}
       expanded={!!open}
       className={cls}
+      label={`${p.name}, ${p.stateLabel ?? STATUS_LABEL[status] ?? status}`}
       avatar={
         <div className={logoCls}>
           <AgentLogo kind={p.agentKind} fallback={p.agentKind || p.name || '?'} />
         </div>
       }
-      line1={
+      line1={(name) => (
         <div className="line1">
-          <span className="name">{p.name}</span>
+          {name}
           {p.agentName && <span className="agent-name">{p.agentName}</span>}
           {pill}
         </div>
-      }
+      )}
       body={body}
       side={
         <>
-          <span className="actions">
-            <IconButton icon="diff" title="Review the changes in this agent's folder" onClick={() => post('review', { spaceId: p.spaceId, paneId: p.id })} />
-          </span>
+          {p.reviewable && (
+            <span className="actions">
+              <IconButton icon="diff" title="Review the changes in this agent's folder" onClick={() => post('review', { spaceId: p.spaceId, paneId: p.id })} />
+            </span>
+          )}
           {!props.attention && <Expander p={p} open={!!open} onExpand={props.onExpand} />}
         </>
       }
@@ -411,21 +429,22 @@ export function ShellRow(props: RowProps) {
       {...props}
       expanded={open}
       className={`shell sh-${st}`}
+      label={`${p.name}, shell, ${SHELL_PILL[st]}`}
       avatar={
         <div className="avatar">
           <Icon name="terminal" />
         </div>
       }
-      line1={
+      line1={(name) => (
         <div className="line1">
-          <span className="name">{p.name}</span>
+          {name}
           <span className="state">
             {SHELL_PILL[st]}
             {showSince && ' '}
             {showSince && <Since t={sh!.changedAt!} />}
           </span>
         </div>
-      }
+      )}
       body={body}
       side={<Expander p={p} open={open} onExpand={props.onExpand} />}
     />

@@ -257,6 +257,7 @@ console.log('✓ a window with its own folders is marked for the "no space here"
   );
   assert.deepStrictEqual(folderLine(orphan, all), { text: '/wt/gone/y', worktreeOf: 'gone' }, "no repo space: Herdr's repo name");
   assert.strictEqual(folderLine(sp('x', ''), all), undefined, 'no folder known: no line');
+  assert.strictEqual(folderLine(sp('app', '/r/app'), all), undefined, "a folder named like the space: no line");
   console.log('✓ space cards show their folder, and a worktree its repo');
 }
 
@@ -503,6 +504,9 @@ console.log("✓ a tab's own label");
   assert.ok(!split.find((s) => s.id === 'wtW')!.under, 'a repository in another section: not nested');
   assert.strictEqual(split.find((s) => s.id === 'wtA')!.under, 'app', 'same section: nested');
   assert.ok(!list.some((s) => s.under), 'the input is left alone');
+  const wt = { ...sv('wtX'), path: '~/.herdr/worktrees/app/fix-1234', folder: { text: '~/.herdr/worktrees/app/fix-1234', worktreeOf: 'app' } } as SpaceView;
+  const nested = groupUnderRepos([sv('app'), wt], (id) => (id === 'wtX' ? 'app' : undefined), false)[1];
+  assert.deepStrictEqual(nested.folder, { text: '~/…/app/fix-1234', worktreeOf: 'app' }, "nested: the folder's end");
   console.log('✓ worktree spaces grouped under their repository');
 }
 

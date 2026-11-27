@@ -5,16 +5,9 @@ import type { SpaceView, ViewState } from '../../src/sidebar/viewState';
 import { ago } from '../../src/util/format';
 import { post, postReorder, postSpaceOrder, useNow, type UiState } from './host';
 import { AgentRow, keepFocus, type Reorder, shellState, ShellRow, useDragMove } from './Rows';
-import { FoldHeading, Icon, IconButton, menuContext, pressable } from './ui';
+import { FoldHeading, Icon, IconButton, menuContext, plural, pressable } from './ui';
 
 type Update = (change: (ui: UiState) => UiState) => void;
-
-const plural = (k: number, one: string) => {
-  if (k === 1) {
-    return `${k} ${one}`;
-  }
-  return `${k} ${one}s`;
-};
 
 /** Branch · last commit · upstream sync · working-tree state, which doubles as the space's Review button. */
 function GitLine({ sp }: { sp: SpaceView }) {
@@ -37,17 +30,17 @@ function GitLine({ sp }: { sp: SpaceView }) {
     <span className="m branch" title={`${worktree}Branch ${g.branch}\n${last}`}>
       <Icon name={branchIcon} />
       <span className="bn">{g.branch || '?'}</span>
-      {g.lastCommit && <span className="age">{ago(now - g.lastCommit.at)}</span>}
+      {g.lastCommit && <span className="age">{ago(now - g.lastCommit.at)} ago</span>}
     </span>
   );
   let sync: ReactNode = null;
   if (g.detached) {
     sync = null;
   } else if (!g.upstream) {
+    // Just the icon: most local branches have no upstream, and the words on every card were noise.
     sync = (
-      <span className="m muted" title="This branch doesn't track a remote branch (never pushed, or pushed without -u)">
+      <span className="m muted" role="img" aria-label="No upstream" title="No upstream: this branch doesn't track a remote branch (never pushed, or pushed without -u)">
         <Icon name="cloud-upload" />
-        no upstream
       </span>
     );
   } else if (g.ahead || g.behind) {
@@ -316,7 +309,7 @@ function SpaceCard({ sp, ui, update, showShells, worktrees, reorder, spacesReord
         by = -1;
       }
       reorder.step(sp.id, by);
-      keepFocus(() => document.querySelector<HTMLElement>(`[data-space="${CSS.escape(sp.id)}"] > .space-head`) ?? undefined);
+      keepFocus(() => document.querySelector<HTMLElement>(`[data-space="${CSS.escape(sp.id)}"] > .space-head .space-name`) ?? undefined);
     } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
       setOpen(e.key === 'ArrowRight');
@@ -357,12 +350,15 @@ function SpaceCard({ sp, ui, update, showShells, worktrees, reorder, spacesReord
         title={title}
         data-vscode-context={menuContext({ webviewSection: section, spaceId: sp.id, spaceRepo: repo, spaceReordered: sp.reordered, spacesReordered })}
         {...drag.source}
-        {...pressable(() => setOpen(!open), { expanded: open, onKey })}
+        onClick={() => setOpen(!open)}
       >
         <span className={chev}>
           <Icon name="chevron-down" />
         </span>
-        <span className="space-name">{sp.label}</span>
+        {/* The keyboard's and screen readers' button: the card's own buttons sit beside it, not inside it. */}
+        <span className="space-name" {...pressable(() => setOpen(!open), { expanded: open, onKey })}>
+          {sp.label}
+        </span>
         <span className="dots">
           {sp.agents.map((a) => (
             <span key={a.id} className={`dot st-${a.status ?? 'unknown'}`} title={`${a.name}: ${a.status}`} />
@@ -421,11 +417,11 @@ function NoSpaceCard({ name, canAdd }: { name: string; canAdd: boolean }) {
       <div className="no-space-sub">A space shows here when its folder is open in this window.</div>
       <div className="no-space-btns">
         <button className="btn" onClick={() => post('newSpaceHere')}>
-          Create space here
+          Create Space Here
         </button>
         {canAdd && (
           <button className="btn secondary" onClick={() => post('addSpaceHere')}>
-            Add a space…
+            Add a Space…
           </button>
         )}
       </div>
@@ -559,7 +555,7 @@ export function SpacesSection({ state, ui, update }: { state: ViewState; ui: UiS
         <p>A space is a folder with its agents and shells.</p>
         <div className="btns">
           <button className="btn" onClick={() => post('newSpace')}>
-            New space
+            New Space
           </button>
         </div>
       </div>

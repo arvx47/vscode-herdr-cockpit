@@ -29,7 +29,7 @@ function Meter({ w }: { w: UsageView['windows'][number] }) {
   return (
     <div className={`meter lvl-${w.level}`} title={`${w.label} window: ${pct}% used`}>
       <span className="ml">{w.label}</span>
-      <span className="bar">
+      <span className="bar" role="progressbar" aria-label={`${w.label} window used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, pct)}>
         <span className="fill" style={{ width: `${Math.min(100, pct)}%` }} />
       </span>
       <span className="pct">{pct}%</span>
@@ -80,12 +80,12 @@ function UsageRow({ u }: { u: UsageView }) {
       <>
         <div className="ustat" title={tip}>
           <b>{amount(c.month)}</b>
-          {allowance} credits this month · {amount(c.today)} today
+          {allowance} credits this month · {amount(c.today)}&nbsp;today
         </div>
         {!c.limit && (
           <button className="link-btn" title="Kiro doesn't share your plan's allowance with other tools; enter it once to see a bar" onClick={() => post('setKiroCredits')}>
             <Icon name="edit" />
-            Set monthly credits…
+            Set Monthly Credits…
           </button>
         )}
       </>
@@ -140,7 +140,7 @@ function UsageRow({ u }: { u: UsageView }) {
         {u.canSetUpLimits && (
           <button className="link-btn" title="Claude Code shares plan limits only with a status line; set one up" onClick={() => post('setupClaudeUsage', { account: u.account ?? '' })}>
             <Icon name="graph" />
-            Set up plan limits…
+            Set Up Plan Limits…
           </button>
         )}
       </div>

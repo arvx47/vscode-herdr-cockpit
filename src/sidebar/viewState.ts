@@ -65,6 +65,11 @@ export interface PaneView {
   };
   /** The working folder, when it isn't the space's own (that one is on the space card). */
   cwd?: string;
+  /**
+   * An agent row offers Review: its folder has uncommitted changes, or it's a worktree space (whose review covers
+   * the branch's commits too), or git hasn't said yet. False when its folder is known to be clean.
+   */
+  reviewable?: boolean;
   /** Expanding the row shows something its two lines don't: without it the row has no chevron. */
   more: boolean;
   /** Its space's name (shown on Needs you rows, which sit outside their space). */
@@ -514,6 +519,10 @@ export function folderLine(sp: Space, spaces: Space[]): { text: string; worktree
   }
   const line: { text: string; worktreeOf?: string } = { text: shortPath(p) };
   const wt = sp.worktree;
+  if (!wt?.is_linked_worktree && folderName(p) === sp.label) {
+    // "api-service" over "~/code/api-service" says nothing new (the card's tooltip still has the path).
+    return undefined;
+  }
   if (wt?.is_linked_worktree) {
     // The repo's own space by its name in the sidebar, else Herdr's name for the repository.
     const repo = repoSpace(spaces, sp);
@@ -521,6 +530,12 @@ export function folderLine(sp: Space, spaces: Space[]): { text: string; worktree
     line.text = p;
   }
   return line;
+}
+
+/** A path's last part, "~/code/app/" → "app". */
+function folderName(p: string): string {
+  const parts = p.split(/[\\/]+/).filter(Boolean);
+  return parts[parts.length - 1] ?? '';
 }
 
 /** A shell named after its Herdr tab: Herdr numbers unnamed tabs ("2"), which reads as "Tab 2". */
@@ -677,6 +692,8 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     preview = [];
   }
   const cwd = ownCwd(p, space);
+  const git = i.git(p.cwd ?? space.cwd);
+  const reviewable = !git || git.changes > 0 || !!space.worktree?.is_linked_worktree;
   const request = i.request?.(p.id);
   const summary = i.summary?.(p.id);
   // Collapsed, the row shows your last message, else the task, else the gist; expanded, all of them plus the
@@ -712,6 +729,7 @@ function agentView(space: Space, tab: Tab | undefined, p: Pane, i: ViewInputs): 
     summary,
     preview,
     cwd,
+    reviewable,
     more,
     spaceLabel: space.label,
     spaceMounted: i.mounted(space),
@@ -953,7 +971,13 @@ export function groupUnderRepos(spaces: SpaceView[], repoOf: (id: string) => str
     }
     out.push(s);
     for (const c of children.get(s.id) ?? []) {
-      out.push({ ...c, under: s.id });
+      // Under its repository the card is narrower: keep the folder's end (~/…/app/fix-1234), which tells worktrees
+      // apart, rather than its whole path cut off at the end. The tooltip still has it all.
+      let folder = c.folder;
+      if (folder && c.path) {
+        folder = { ...folder, text: shortPath(c.path) };
+      }
+      out.push({ ...c, under: s.id, folder });
     }
   }
   return out;

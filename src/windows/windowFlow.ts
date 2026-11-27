@@ -160,8 +160,8 @@ export class WindowFlow {
     const r = await mountSpace(space, pin);
     if (r === 'no-window') {
       const pick = await vscode.window.showWarningMessage(
-        `${MESSAGE_PREFIX}: open a folder or the ${EXTENSION_NAME} window first, so spaces can be mounted next to it.`,
-        'Set up Cockpit window',
+        `${MESSAGE_PREFIX}: open a folder or the ${EXTENSION_NAME} window first, so the space's folder can be added next to it.`,
+        'Open Cockpit Window',
       );
       if (pick) {
         vscode.commands.executeCommand('herdr.setupHub');

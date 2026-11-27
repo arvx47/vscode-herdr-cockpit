@@ -7,12 +7,13 @@ const fs = require('fs');
 const path = require('path');
 const out = path.join(__dirname, 'build');
 const lib = (m) => require(path.join(__dirname, '..', '..', 'out', m));
-const { HerdrClient, resolveSocketPath } = lib('herdrClient');
-const { normalize } = lib('model');
-const { buildViewState, setAgentNames, shortPath } = lib('viewState');
-const { ActivityWatcher } = lib('activity');
-const { gitInfo } = lib('gitInfo');
-const { HerdrStream } = lib('herdrStream');
+const { HerdrClient, resolveSocketPath } = lib('drivers/herdr/herdrClient');
+const { normalize } = lib('state/model');
+const { buildViewState, setAgentNames, shortPath } = lib('sidebar/viewState');
+const { ActivityWatcher } = lib('state/activity');
+const { HerdrBackend } = lib('drivers/herdr/herdrBackend');
+const { gitInfo } = lib('util/gitInfo');
+const { HerdrStream } = lib('drivers/herdr/herdrStream');
 const { Terminal } = require('@xterm/headless');
 const { SerializeAddon } = require('@xterm/addon-serialize');
 
@@ -39,7 +40,8 @@ function toHtml(bytes, cols, rows) {
   // Real git status and pane activity, like the sidebar reads them.
   const git = (cwd) => gitInfo(cwd, () => {});
   for (const sp of model.spaces) git(sp.cwd);
-  const activity = new ActivityWatcher(client);
+  // It reads panes through the driver (process info and text), like the extension.
+  const activity = new ActivityWatcher(new HerdrBackend(client));
   const targets = model.spaces.flatMap((s) => s.tabs.flatMap((t) => t.panes)).map((p) => ({ paneId: p.id, kind: p.isAgent ? 'agent' : 'shell', status: p.status }));
   await activity.poll(targets);
   await sleep(1500);
@@ -69,6 +71,8 @@ function toHtml(bytes, cols, rows) {
     here: (sp) => sp.label === 'api-service',
     attached: (id) => id.startsWith('w1:'),
     activity: (id) => activity.get(id),
+    // The agents' screens (the images show what each one is doing or asking): the demo has no Claude transcripts.
+    description: 'screen',
     usage,
     connection: { kind: 'connected', expectedProtocol: 22 },
   });

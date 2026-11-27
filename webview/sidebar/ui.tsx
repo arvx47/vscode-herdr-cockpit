@@ -10,6 +10,14 @@ declare global {
   }
 }
 
+/** "1 space", "3 spaces". */
+export function plural(k: number, one: string): string {
+  if (k === 1) {
+    return `${k} ${one}`;
+  }
+  return `${k} ${one}s`;
+}
+
 export function Icon({ name, spin }: { name: string; spin?: boolean }) {
   let cls = `codicon codicon-${name}`;
   if (spin) {

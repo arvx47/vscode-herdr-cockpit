@@ -11,7 +11,7 @@
 // note on its bottom row saying who has it, and the first keystroke takes control back (that keystroke isn't
 // sent: it could answer an agent's question).
 import * as vscode from 'vscode';
-import { EXTENSION_NAME } from '../../util/brand';
+import { EXTENSION_NAME, MESSAGE_PREFIX } from '../../util/brand';
 import { errorText } from '../../util/errors';
 import { HerdrStream, isTakenOver, StreamMode } from './herdrStream';
 import { FindController } from './termFindController';
@@ -562,7 +562,7 @@ export class HerdrPty implements PaneTab {
       ed.selection = new vscode.Selection(end, end);
       ed.revealRange(new vscode.Range(end, end));
     } catch (e) {
-      void vscode.window.showWarningMessage(`Couldn't read this pane's output from Herdr: ${errorText(e)}`);
+      void vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: couldn't read this pane's output: ${errorText(e)}`);
     }
   }
 

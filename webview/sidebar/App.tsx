@@ -6,7 +6,7 @@ import { post, ready, useUiState } from './host';
 import { AgentRow } from './Rows';
 import { SpacesSection } from './Spaces';
 import { Banner, Disconnected, Versions } from './Status';
-import { Icon } from './ui';
+import { Icon, plural } from './ui';
 import { UsageSection } from './Usage';
 
 const COUNTED = ['blocked', 'done', 'working', 'idle'] as const;
@@ -21,7 +21,7 @@ function Counters({ state }: { state: ViewState }) {
       <div className="top">
         <div className="stats">
           <span className="stat quiet">
-            {state.spaces.length} spaces · {t.agents} agents
+            {plural(state.spaces.length, 'space')} · {plural(t.agents, 'agent')}
           </span>
         </div>
       </div>
@@ -116,7 +116,15 @@ export function App() {
     return () => window.removeEventListener('message', onMessage);
   }, []);
   if (!state) {
-    return null;
+    // Until the extension sends its first state (a moment after the view opens).
+    return (
+      <div className="splash">
+        <div className="big">
+          <Icon name="sync" spin />
+        </div>
+        <h2>Connecting to Herdr…</h2>
+      </div>
+    );
   }
   const live = (
     <div className="sr-only" aria-live="polite">

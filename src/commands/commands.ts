@@ -263,7 +263,7 @@ export class Commands {
           `expected protocol: ${HERDR_PROTOCOL}`,
         ].join('\n');
         await vscode.env.clipboard.writeText(text);
-        vscode.window.showInformationMessage(`${EXTENSION_NAME}: diagnostics copied to the clipboard.`);
+        vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: diagnostics copied to the clipboard.`);
       }),
       vscode.commands.registerCommand('herdr.connectionMenu', async () => {
         if (d.isConnected()) return vscode.commands.executeCommand('herdr.focusAttention');
@@ -449,7 +449,7 @@ export class Commands {
       // From a space card (its repo), or the Command Palette / a key (the repo open in this window, else ask).
       vscode.commands.registerCommand('herdr.newWorktree', async (t?: Target) => {
         if (!d.backend.capabilities.worktrees) {
-          void vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: worktree spaces need the Herdr driver (herdr.driver).`);
+          void vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: worktree spaces need Herdr, which runs them; panes run by the editor can't have one.`);
           return;
         }
         await newWorktree(d.manage, itemOf(t)?.space);
@@ -457,7 +457,7 @@ export class Commands {
       // The branch button on a repository's card: a new worktree, or one of the repo's that has no space.
       vscode.commands.registerCommand('herdr.worktreeMenu', async (t?: Target) => {
         if (!d.backend.capabilities.worktrees) {
-          void vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: worktree spaces need the Herdr driver (herdr.driver).`);
+          void vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: worktree spaces need Herdr, which runs them; panes run by the editor can't have one.`);
           return;
         }
         await worktreeMenu(d.manage, itemOf(t)?.space);
@@ -465,7 +465,7 @@ export class Commands {
       // A worktree still on disk whose space is gone: from a card, that repo's; else every repo's.
       vscode.commands.registerCommand('herdr.reopenWorktree', async (t?: Target) => {
         if (!d.backend.capabilities.worktrees) {
-          void vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: worktree spaces need the Herdr driver (herdr.driver).`);
+          void vscode.window.showInformationMessage(`${MESSAGE_PREFIX}: worktree spaces need Herdr, which runs them; panes run by the editor can't have one.`);
           return;
         }
         await reopenWorktree(d.manage, itemOf(t)?.space);

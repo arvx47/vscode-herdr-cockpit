@@ -44,7 +44,7 @@ function Links() {
   );
   return (
     <p className="links">
-      {link('copyDiagnostics', 'Copy diagnostics')} · {link('setupHub', 'Set up Cockpit window')} · {link('openHelp', 'Help')}
+      {link('copyDiagnostics', 'Copy Diagnostics')} · {link('setupHub', 'Open Cockpit Window')} · {link('openHelp', 'Help')}
     </p>
   );
 }
@@ -95,7 +95,7 @@ export function Disconnected({ state }: { state: ViewState }) {
         <>
           <Btn act="openInstallDocs" label="Install Herdr" primary />
           <Btn act="refresh" label="Retry" />
-          <Btn act="openSettings" label="Set herdr path" />
+          <Btn act="openSettings" label="Set Herdr Path" />
         </>
       ),
       extra: <PathLine label="Looked for" path={c.binary} />,

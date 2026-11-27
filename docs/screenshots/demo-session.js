@@ -8,8 +8,9 @@ const os = require('os');
 const path = require('path');
 const { execFileSync, spawn } = require('child_process');
 const lib = (m) => require(path.join(__dirname, '..', '..', 'out', m));
-const { HerdrClient, resolveSocketPath } = lib('herdrClient');
-const { resolveBinary, serverEnv, serverStatus } = lib('connection');
+const { HerdrClient, resolveSocketPath } = lib('drivers/herdr/herdrClient');
+const { resolveBinary, serverStatus } = lib('drivers/herdr/connection');
+const { terminalEnv } = lib('util/env');
 
 const SESSION = 'hb-demo';
 const herdr = resolveBinary();
@@ -85,7 +86,7 @@ async function start() {
   makeRepos(root);
 
   const log = fs.openSync(path.join(root, 'server.log'), 'a');
-  spawn(herdr, ['--session', SESSION, 'server'], { detached: true, stdio: ['ignore', log, log], env: serverEnv(env) }).unref();
+  spawn(herdr, ['--session', SESSION, 'server'], { detached: true, stdio: ['ignore', log, log], env: terminalEnv(env) }).unref();
   for (let i = 0; i < 50 && !(await serverStatus(herdr, env))?.running; i++) await sleep(300);
 
   const c = new HerdrClient(() => resolveSocketPath(undefined, SESSION));

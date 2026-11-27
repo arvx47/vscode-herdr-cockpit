@@ -2,7 +2,7 @@
 // between windows of one editor through ~/.herdr-cockpit/pending-link.json. Moved out of extension.ts's
 // activate(); what a link does with a space or pane goes back through LinkDeps.
 import * as vscode from 'vscode';
-import { EXTENSION_NAME } from '../util/brand';
+import { EXTENSION_NAME, MESSAGE_PREFIX } from '../util/brand';
 import * as fs from 'fs';
 import * as os from 'os';
 import { sessionSocketPath } from '../drivers/herdr/herdrClient';
@@ -99,7 +99,7 @@ export class Links implements vscode.Disposable {
     try {
       req = parseLink(uri.path, uri.query);
     } catch (e) {
-      vscode.window.showWarningMessage(`${EXTENSION_NAME}: can't open this link: ${errorText(e)}.`);
+      vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: can't open this link: ${errorText(e)}.`);
       return;
     }
     if (!this.deps.isHubWindow()) {
@@ -195,7 +195,7 @@ export class Links implements vscode.Disposable {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(req.path)).then(undefined, () => undefined);
       if (!doc) {
-        vscode.window.showWarningMessage(`${EXTENSION_NAME}: can't open ${req.path}.`);
+        vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: can't open ${req.path}.`);
         return;
       }
       const pos = new vscode.Position(Math.max(0, (req.line ?? 1) - 1), Math.max(0, (req.col ?? 1) - 1));
@@ -212,7 +212,7 @@ export class Links implements vscode.Disposable {
     vscode.commands.executeCommand('herdr.spaces.focus').then(undefined, () => {});
     if (!sp) {
       if (req.space || req.label || req.pane) {
-        vscode.window.showWarningMessage(`${EXTENSION_NAME}: that space or pane isn't running anymore.`);
+        vscode.window.showWarningMessage(`${MESSAGE_PREFIX}: that space or pane isn't running anymore. It may have closed in Herdr.`);
       }
       return;
     }

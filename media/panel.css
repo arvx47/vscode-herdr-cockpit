@@ -16,13 +16,15 @@
   --hover: color-mix(in srgb, var(--vscode-list-hoverBackground), var(--vscode-foreground) 10%);
   --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
   --radius: 7px;
-  /* Text sizes: tiny (pills, chips), small (labels, meta), body (rows), and headings. */
-  --fs-xs: 10.5px;
-  --fs-sm: 11px;
-  --fs-md: 12px;
-  --fs-lg: 13px;
-  --fs-xl: 14px;
+  /* Text sizes: tiny (pills, chips), small (labels, meta), body (rows), and headings. In rem of the editor's own
+     font size (html, below): 10.5px, 11px, 12px, 13px and 14px at the usual 13px, and they grow with it. */
+  --fs-xs: .8077rem;
+  --fs-sm: .8462rem;
+  --fs-md: .9231rem;
+  --fs-lg: 1rem;
+  --fs-xl: 1.0769rem;
 }
+html { font-size: var(--vscode-font-size, 13px); }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -136,7 +138,9 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
 .space-head:hover { background: var(--hover); }
 /* The highlight follows the card's rounded top-right corner (the top-left one is the status bar's gutter). */
 .space-head { border-radius: 0 calc(var(--radius) - 1px) 0 0; }
-.space-head:focus-visible { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+.space-head:has(.space-name:focus-visible) { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+/* The name is the header's keyboard button; the ring goes around the whole header (above). */
+.space-name { outline: none; }
 .chev {
   display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px;
   color: var(--muted); transition: transform .12s ease;
@@ -231,7 +235,9 @@ button.stat:hover { background: color-mix(in srgb, var(--c) 26%, transparent); }
   cursor: pointer; outline: none;
 }
 .row:hover { background: var(--hover); }
-.row:focus-visible { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+.row:has(.row-hit:focus-visible) { box-shadow: inset 0 0 0 1px var(--vscode-focusBorder); }
+/* The name is the row's keyboard button; the ring goes around the whole row (above). */
+.row-hit { outline: none; }
 /* Dragging a row to reorder its list: the row fades, a line shows where it would land. */
 .row { position: relative; }
 .row.dragging { opacity: .45; }
